@@ -13,8 +13,13 @@ moving from the wrong side of the house edge to the right side of it, which is
 why the balance numbers below are load-bearing rather than decorative.
 
 Verified by headless simulation against the shipping code (400k–600k spins):
-neutral wheel measures −2.7%, and the first level of Gilded Payouts moves an
-even-money layout to **+1.1%** — the first purchase is a real turning point.
+the neutral wheel measures **-2.7027%**, matching the analytic figure exactly.
+
+Note that the old "first purchase flips you positive" turning point is **gone**
+along with Gilded Payouts and Comp Points. Nothing in the shop now moves the
+edge on its own the way a flat payout multiplier did — the levers are Ivory,
+relics, Weighted Wheel and Second Ball. The opening act is longer than it was
+and has not been re-measured.
 
 ## Implemented
 
@@ -23,7 +28,7 @@ even-money layout to **+1.1%** — the first purchase is a real turning point.
 - **Bets** — straights (35:1), dozens and columns (2:1), red/black, odd/even,
   high/low (1:1). `engine/bets.ts`. The zero loses every outside bet; that is
   the edge being modelled.
-- **12 upgrades** (`game/upgrades.ts`) and **14 relics** (`game/relics.ts`).
+- **11 upgrades** (`game/upgrades.ts`) and **15 relics** (`game/relics.ts`).
   Upgrades carry a `section` — `"table"` or `"change"` — and the shop groups by
   it, so the Loose Change upgrades do not bury the wheel's own.
 - **Loose Change** (`ui/LooseChange.tsx`) — the coin-catching mini game that
@@ -541,9 +546,11 @@ pays **+$12** (`10 net x 1.2`), where the old engine paid +$14
 
 ## Open questions
 
-- **Is the negative-EV opening too short?** One purchase (25 chips) flips it
-  positive. That is deliberate — an idle game that bleeds is not an idle game —
-  but the premise might deserve a longer first act.
+- **How long is the negative-EV opening now?** It used to be one 25-chip
+  purchase. With the flat payout multiplier and the rebate both withdrawn, the
+  cheapest route onto the right side of the edge is unmeasured — it may now be
+  too *long*, which is the opposite of the original worry and just as bad for an
+  idle game.
 - **Straight-bet builds are only viable with Neighbour's Cut.** Straights carry
   brutal variance; without that relic they are a trap. Either that is the point,
   or straights need a second support.
