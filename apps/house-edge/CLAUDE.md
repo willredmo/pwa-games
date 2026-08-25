@@ -15,11 +15,9 @@ why the balance numbers below are load-bearing rather than decorative.
 Verified by headless simulation against the shipping code (400k–600k spins):
 the neutral wheel measures **-2.7027%**, matching the analytic figure exactly.
 
-Note that the old "first purchase flips you positive" turning point is **gone**
-along with Gilded Payouts and Comp Points. Nothing in the shop now moves the
-edge on its own the way a flat payout multiplier did — the levers are Ivory,
-relics, Weighted Wheel and Second Ball. The opening act is longer than it was
-and has not been re-measured.
+The turning point is **Comp Points level 3**, around $530 all in: an even-money
+layout needs roughly 5.3% back to break even against the zero, and level 3 gives
+7.5%. Measured at +0.83% on red and +4.95% on a straight.
 
 ## Implemented
 
@@ -28,7 +26,7 @@ and has not been re-measured.
 - **Bets** — straights (35:1), dozens and columns (2:1), red/black, odd/even,
   high/low (1:1). `engine/bets.ts`. The zero loses every outside bet; that is
   the edge being modelled.
-- **11 upgrades** (`game/upgrades.ts`) and **15 relics** (`game/relics.ts`).
+- **12 upgrades** (`game/upgrades.ts`) and **15 relics** (`game/relics.ts`).
   Upgrades carry a `section` — `"table"` or `"change"` — and the shop groups by
   it, so the Loose Change upgrades do not bury the wheel's own.
 - **Loose Change** (`ui/LooseChange.tsx`) — the coin-catching mini game that
@@ -539,6 +537,11 @@ nine bonuses were individually profitable on a hedge**:
 So this was never fixable field by field — Gilded Payouts and Comp Points were
 only the cheapest two doors. `resolveSpin` now settles on the **net**.
 
+Both were withdrawn at the time as a stopgap. **Comp Points has since come
+back**, because net settlement removed the reason it was pulled — see below.
+Gilded Payouts stays retired: a flat multiplier on every win is a different
+thing from softening a loss, and Ivory already fills that role.
+
 Each ball is tallied twice: once at true European odds with no edge at all
 (`baseProfit`), and once with every win-side multiplier applied
 (`bonusProfit`). Then:
@@ -571,6 +574,40 @@ straight bet with everything equipped runs +1554%.
 
 The one build that reaches exactly 0.000% is En Prison at max level, which makes
 a hedge genuinely lossless. That is fine: 0% cannot grow a bankroll.
+
+### Comp Points is back, and only net settlement makes that safe
+A rebate hands back a share of a losing spin. Under the old per-bet settlement
+that was a money printer: 7.5% back took a red/black hedge to **+1.15%**,
+because the losing half of a risk-free position collected a rebate it had never
+risked anything to earn.
+
+Under net settlement the same upgrade is harmless. The rebate comes off what the
+spin **actually lost**, and the loss branch is clamped at zero, so a position
+that never loses never collects. Driven through the real `buildEdge` path rather
+than a hand-made Edge, with every loss-side relic stacked:
+
+| build | red | straight | hedge r+b |
+| --- | --- | --- | --- |
+| nothing | -2.48% | -2.44% | -2.71% |
+| Comp Points L3 | +0.83% | +4.95% | -2.47% |
+| Comp Points L12 (max) | +12.91% | +25.89% | -1.89% |
+| max + Comp Suite x3 | +22.58% | +45.82% | -1.34% |
+| max + En Prison max | +14.67% | +29.99% | **0.00%** |
+| everything, 60 Ivory | +509% | +7674% | **0.00%** |
+
+Worst risk-free-layout EV across the lot: **0.000%**, never positive. The 0.00%
+rows are the known En Prison case — a fully insured zero makes a hedge lossless
+but still unable to grow.
+
+`REBATE_PER_LEVEL` is 2.5% over 12 levels. An even-money bet needs about
+**5.3%** back to break even against the zero, so level 3 is the turning point —
+about $530 all in against a $400 opening bankroll. That is deliberate: it
+restores a first act that had gone missing, since with the flat multiplier
+withdrawn nothing in the shop moved the edge on its own.
+
+Note it is **no longer in `RETIRED_UPGRADES`**. Leaving it there would have had
+`load()` delete the level on every load, so the upgrade would have been
+unbuyable in the least obvious way possible.
 
 ### Best ball takes the spin
 Every ball is settled in full against the whole layout and the **single best
@@ -712,11 +749,11 @@ pays **+$12** (`10 net x 1.2`), where the old engine paid +$14
 
 ## Open questions
 
-- **How long is the negative-EV opening now?** It used to be one 25-chip
-  purchase. With the flat payout multiplier and the rebate both withdrawn, the
-  cheapest route onto the right side of the edge is unmeasured — it may now be
-  too *long*, which is the opposite of the original worry and just as bad for an
-  idle game.
+- **Is the opening act now the right length?** Comp Points level 3 flips an
+  even-money layout positive for about $530 against a $400 start, so it is a
+  short grind rather than the single 25-chip purchase it used to be, and no
+  longer the unmeasured void it became when the rebate was withdrawn. Whether
+  $530 is the right ask has not been playtested.
 - **Straight-bet builds are only viable with Neighbour's Cut.** Straights carry
   brutal variance; without that relic they are a trap. Either that is the point,
   or straights need a second support.

@@ -573,12 +573,19 @@ export function save(state: GameState): void {
   }
 }
 
-/** Upgrades withdrawn from the shop; levels on old saves are refunded. */
-const RETIRED_UPGRADES = ["payout", "rebate"] as const;
+/**
+ * Upgrades withdrawn from the shop; levels on old saves are refunded.
+ *
+ * Comp Points is **not** on this list any more. It was withdrawn because a
+ * rebate made the red/black hedge profitable, and net settlement has since
+ * closed that structurally — a rebate now comes off a net loss and cannot carry
+ * a spin above zero. Gilded Payouts stays retired: a flat multiplier on every
+ * win is a different thing from softening a loss, and Ivory fills that role.
+ */
+const RETIRED_UPGRADES = ["payout"] as const;
 /** The original curves, kept only to price the refund. */
 const RETIRED_REFUND: Record<string, (level: number) => number> = {
   payout: (l) => sumGeometric(150, 1.16, l),
-  rebate: (l) => sumGeometric(50, 1.34, l),
 };
 function sumGeometric(base: number, growth: number, levels: number): number {
   let total = 0;
@@ -597,9 +604,11 @@ export function load(): GameState {
     if (!parsed.activeRelics && state.relics.length > 0) {
       state.activeRelics = state.relics.slice(0, relicSlots(state));
     }
-    // Gilded Payouts and Comp Points are gone. Their levels are inert once
-    // buildEdge stops reading them, but refund the spend rather than pocketing
-    // it — a save made before the change paid real money for them.
+    // Gilded Payouts is gone. Its levels are inert once buildEdge stops reading
+    // them, so refund the spend rather than pocketing it — a save made before
+    // the change paid real money for it. Saves that still carry a Comp Points
+    // level keep it: that upgrade works again, so deleting it now would take
+    // away something the player can currently buy.
     for (const id of RETIRED_UPGRADES) {
       const level = state.upgrades[id];
       if (!level) continue;

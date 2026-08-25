@@ -100,9 +100,22 @@ export function Rules({ state, onClose }: Props) {
 
         <h3>Losses can be softened, never reversed</h3>
         <p className="card-desc">
-          Rebates, En Prison and Neighbour&apos;s Cut come off a losing spin, but
-          they stop at breaking even. Nothing can turn a spin you lost into a
-          spin you won.
+          Comp Points, En Prison and Neighbour&apos;s Cut come off a losing spin.
+          {edge.rebate > 0 ? (
+            <>
+              {" "}
+              You currently get <b>{(edge.rebate * 100).toFixed(1)}%</b> of a
+              losing spin back.
+            </>
+          ) : null}{" "}
+          They stop at breaking even, though — nothing can turn a spin you lost
+          into a spin you won.
+        </p>
+        <p className="card-desc muted">
+          Which makes them worth more than they look. A rebate does not just
+          reduce a loss, it moves the line you have to clear: an even-money bet
+          needs about <b>5.3%</b> back to break even against the zero, and
+          anything past that is profit on a bet the house is supposed to win.
         </p>
 
         {extraBalls > 0 && (

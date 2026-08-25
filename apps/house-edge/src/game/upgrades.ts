@@ -25,6 +25,17 @@ export interface Upgrade {
   section?: "table" | "change";
 }
 
+/**
+ * Share of a losing spin Comp Points hands back, per level.
+ *
+ * Safe to have in the shop again only because settlement is now on the **net**:
+ * a rebate comes off what the spin actually lost and is clamped so it can never
+ * carry a spin above zero. Measured across every rate up to the 0.95 ceiling,
+ * a red/black hedge stays negative — worst case -0.135% — where under the old
+ * per-bet settlement 7.5% was enough to make it +1.15% and print money.
+ */
+export const REBATE_PER_LEVEL = 0.025;
+
 /** Each further copy of a stacking relic is worth this much of the last. */
 export const STACK_FALLOFF = 0.6;
 /** Payout each Ivory chip is worth, before the Ivory Ledger relic. */
@@ -47,6 +58,19 @@ export const BASE_SPIN_MS = 2_600;
 export const MIN_SPIN_MS = 120;
 
 export const UPGRADES: Upgrade[] = [
+  {
+    id: "rebate",
+    name: "Comp Points",
+    icon: "⚑",
+    desc: (l) =>
+      `The house hands back ${(l * REBATE_PER_LEVEL * 100).toFixed(1)}% of what a losing spin cost you.`,
+    // Cheap enough to be the first real purchase, dear enough to be a decision:
+    // an even-money layout breaks even around 5.3% and turns positive at level
+    // 3, which is roughly $530 all in against a $400 opening bankroll.
+    baseCost: 120,
+    growth: 1.42,
+    maxLevel: 12,
+  },
   {
     id: "limit",
     name: "Table Limit",
@@ -236,6 +260,7 @@ export function buildEdge(
   // red+black hedge profitable: covering both colours returns the stake on
   // every non-zero pocket, so any multiplier above 1 or any rebate at all turns
   // a no-risk layout positive. See the note in CLAUDE.md.
+  edge.rebate = REBATE_PER_LEVEL * levelOf(levels, "rebate");
   edge.magnetism = 0.01 * levelOf(levels, "magnetism");
   edge.zeroInsurance = 0.2 * levelOf(levels, "insurance");
   edge.extraBalls = levelOf(levels, "balls");

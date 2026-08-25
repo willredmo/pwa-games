@@ -40,10 +40,11 @@ playing **Loose Change** rather than being handed money.
 
 ### Upgrades — the shop
 
-Eleven upgrades in two sections. **The Table** improves the wheel itself:
+Twelve upgrades in two sections. **The Table** improves the wheel itself:
 
 | Upgrade | Effect |
 | --- | --- |
+| Comp Points | Hands back a share of what a losing spin cost you |
 | Table Limit | Unlocks bigger chip denominations |
 | En Prison | Part of your stake survives the zero |
 | Hire a Croupier | Unlocks auto-spin |
