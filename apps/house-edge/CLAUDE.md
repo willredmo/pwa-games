@@ -421,12 +421,24 @@ It also states the consequence directly — covering red and black nets zero —
 the first thing anyone tries on noticing a payout multiplier is answered before
 they spend an hour on it.
 
-Two things keep it honest. The payout column is read from `OUTSIDE_SPOTS` and
-`STRAIGHT_PAYOUT` rather than retyped, so it cannot drift from what the table
-actually pays; the tier thresholds come from `celebration.ts` for the same
-reason. And it adapts: the multiplier shown is the player's live
-`edge.payoutMult`, and the best-ball section is hidden entirely until Second
-Ball is owned, so it never explains a mechanic that is not in play.
+It also covers **Ivory and relics**, which matter more than they look: with the
+flat payout multiplier withdrawn from the shop, Ivory and relics are now the
+*only* things that move the multiplier at all, so cashing out is the progression
+rather than an optional reset. The screen says so outright.
+
+Two things keep it honest. Every number is read from the code rather than
+retyped — payouts from `OUTSIDE_SPOTS` and `STRAIGHT_PAYOUT`, tiers from
+`celebration.ts`, `IVORY_PAYOUT`, `IVORY_SCALE`, `STACK_FALLOFF`, the relic
+slot constants and `RELICS.length` — so none of it can drift from behaviour the
+way the "12 upgrades and 14 relics" line in this file did. And it adapts to the
+player: the multiplier is their live `edge.payoutMult`, the Ivory paragraph
+computes their own next threshold from `peak`, the relic line shows their own
+equipped-to-slots count, and the best-ball section is hidden entirely until
+Second Ball is owned so it never explains a mechanic that is not in play.
+
+The Ivory wording is deliberate about one thing: a cash out **adds** to the
+Ivory you hold, it does not replace it. Showing "you hold 7, this would pay 7"
+reads as a swap, so the line spells out the arithmetic.
 
 `rulesOpen` is component state, not `GameState` — which screen is open is not
 progress, and persisting it would reopen the rules on every reload. It also

@@ -1,6 +1,16 @@
 import { OUTSIDE_SPOTS, POCKET_COUNT, STRAIGHT_PAYOUT } from "../engine";
-import { levelOf } from "../game/upgrades";
-import { edgeOf, type GameState } from "../game/state";
+import { IVORY_PAYOUT, levelOf, STACK_FALLOFF } from "../game/upgrades";
+import { RELICS } from "../game/relics";
+import {
+  edgeOf,
+  IVORY_SCALE,
+  pendingIvory,
+  relicSlots,
+  RELIC_SLOTS_MAX,
+  RELIC_SLOTS_PER_CASHOUT,
+  type GameState,
+} from "../game/state";
+import { money } from "../game/format";
 import { TIER_BIG, TIER_GOOD } from "./celebration";
 
 interface Props {
@@ -26,6 +36,11 @@ const HOUSE_EDGE = (1 / POCKET_COUNT) * 100;
 export function Rules({ state, onClose }: Props) {
   const edge = edgeOf(state);
   const extraBalls = levelOf(state.upgrades, "balls");
+  const pending = pendingIvory(state);
+  const slots = relicSlots(state);
+  // What `peak` would have to reach for the next Ivory, so the ask is a number
+  // rather than a mystery.
+  const nextIvoryAt = Math.pow(pending + 1, 2) * IVORY_SCALE;
   const payouts = [
     { label: "Single number", pays: STRAIGHT_PAYOUT },
     // Dedupe by payout: three dozens and three columns all pay the same, and a
@@ -101,6 +116,49 @@ export function Rules({ state, onClose }: Props) {
             </p>
           </>
         )}
+
+        <h3>Ivory is the payout multiplier</h3>
+        <p className="card-desc">
+          Cashing out banks your bankroll as <b>Ivory</b>, and each one is worth{" "}
+          <b>+{(IVORY_PAYOUT * 100).toFixed(0)}%</b> payout forever. Nothing in
+          the shop raises the multiplier — Ivory and relics are the only things
+          that do, which is why cashing out is progress rather than a reset.
+        </p>
+        <p className="card-desc">
+          You are paid on your <b>peak</b> bankroll this cycle, not on what you
+          finish with, so a bad run after a good one costs you nothing. The
+          amount is the square root of that peak over {money(IVORY_SCALE)}, which
+          means each further Ivory needs a bigger peak than the last.
+        </p>
+        <p className="card-desc muted">
+          You hold {state.ivory} Ivory. Cashing out now would add {pending} more,
+          taking you to {state.ivory + pending} — the payout is added to what you
+          already have, never swapped for it. The next Ivory needs a peak of{" "}
+          {money(nextIvoryAt)}.
+        </p>
+
+        <h3>Relics are permanent, but only if equipped</h3>
+        <p className="card-desc">
+          Every cash out drafts <b>one relic from three</b>, out of{" "}
+          {RELICS.length}. They survive every future cash out — but only the ones
+          you have <b>equipped</b> do anything, and you have{" "}
+          <b>
+            {state.activeRelics.length}/{slots}
+          </b>{" "}
+          slots. A slot opens every {RELIC_SLOTS_PER_CASHOUT} cash outs, up to{" "}
+          {RELIC_SLOTS_MAX}.
+        </p>
+        <p className="card-desc">
+          Duplicates stack, each copy worth{" "}
+          {(STACK_FALLOFF * 100).toFixed(0)}% of the one before, so a second copy
+          is a real choice rather than an automatic one.
+        </p>
+        <p className="card-desc muted">
+          Relics change what your layout is worth rather than adding a flat
+          bonus: some pay only on red, or only on the zero, or only on the
+          numbers either side of a straight. They reward committing to a plan,
+          and everything they grant lands on your net like any other bonus.
+        </p>
 
         <h3>Why some wins celebrate louder</h3>
         <p className="card-desc">
