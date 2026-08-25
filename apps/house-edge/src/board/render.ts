@@ -47,6 +47,8 @@ export interface Spark {
   life: number;
   /** Relative scale; a hard knock throws bigger specks. */
   size: number;
+  /** Coins thrown by a win, rather than dust off a collision. */
+  gold?: boolean;
 }
 
 /** Everything the renderer needs. It knows nothing about game state. */
@@ -68,6 +70,12 @@ export interface WheelView {
   settledMs: number | null;
   /** Live collision specks. */
   sparks: readonly Spark[];
+  /**
+   * How hard to mark the win: 1 is an ordinary result, higher is a bigger one
+   * relative to the stake. A magnitude, not an instruction — the renderer still
+   * decides what to do with it.
+   */
+  celebration: number;
 }
 
 /** How long the winning pocket glows after the balls stop, in playback ms. */
@@ -501,7 +509,9 @@ export function drawWheel(
   // `settledMs` drives a bloom that fades out and leaves the outline behind, so
   // the marker is still there once the flourish has finished.
   const flare =
-    view.settledMs === null ? 0 : Math.max(0, 1 - view.settledMs / FLARE_MS);
+    view.settledMs === null
+      ? 0
+      : Math.max(0, 1 - view.settledMs / (FLARE_MS * Math.max(1, view.celebration)));
   for (const highlight of view.highlights) {
     const mid = view.wheelAngle + angleOfPocket(highlight);
     ctx.beginPath();
@@ -512,10 +522,11 @@ export function drawWheel(
       // Eased so it blooms fast and lingers rather than fading linearly, which
       // reads as a dimmer switch instead of a flash.
       const glow = flare * flare;
-      ctx.fillStyle = `rgba(201, 162, 39, ${0.5 * glow})`;
+      const lift = Math.min(2.2, view.celebration);
+      ctx.fillStyle = `rgba(201, 162, 39, ${Math.min(0.85, 0.5 * glow * lift)})`;
       ctx.fill();
       ctx.strokeStyle = `rgba(240, 214, 130, ${0.35 + 0.65 * glow})`;
-      ctx.lineWidth = 2 + 3 * glow;
+      ctx.lineWidth = 2 + 3 * glow * lift;
     } else {
       ctx.strokeStyle = FELT;
       ctx.lineWidth = 2;
@@ -578,6 +589,18 @@ export function drawWheel(
     const py = yAt(BALL_H_TRACK * p.height) + Math.sin(pa) * pr * TILT;
     const size = R * 0.008 * p.size * (0.4 + p.life) * (1 + Math.sin(pa) * DEPTH);
     ctx.beginPath();
+    if (p.gold) {
+      // Struck coins, not sparks: wider than they are tall, and they tumble,
+      // so the eye reads them as money rather than more collision dust.
+      const spin = Math.abs(Math.cos(p.life * 9));
+      ctx.ellipse(px, py, Math.max(0.7, size * spin), size, 0, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(226, 184, 62, ${Math.min(1, 1.2 * p.life)})`;
+      ctx.fill();
+      ctx.strokeStyle = `rgba(120, 92, 20, ${0.8 * p.life})`;
+      ctx.lineWidth = Math.max(0.5, size * 0.2);
+      ctx.stroke();
+      continue;
+    }
     ctx.ellipse(px, py, size, size, 0, 0, Math.PI * 2);
     // Warm at birth, cooling to the bowl's own tone as it dies.
     ctx.fillStyle = `rgba(255, ${Math.round(210 + 40 * p.life)}, ${Math.round(150 + 60 * p.life)}, ${0.75 * p.life})`;

@@ -366,6 +366,50 @@ across its range: p10 0.06, p50 0.36, p90 0.83.
 The lift it scales is decorative — it feeds `height`, not the separation solver
 — so the landing and overlap figures are unaffected, and were re-verified.
 
+### Win celebrations are tiered by multiple, never by amount
+`ui/celebration.ts`. How loudly a win is celebrated is judged against the
+**stake**, not the figure. Bankrolls here grow without limit, so a
+million-dollar win means nothing at a billion-dollar table and any absolute
+threshold is obsolete within an hour of play.
+
+The boundaries sit in the gaps between what the layout can actually pay,
+measured over 300k spins per layout:
+
+| multiple | what pays it | hit rate |
+| --- | --- | --- |
+| 1x | even-money bets | 48.5% |
+| 2x | a dozen or column | 32.4% |
+| 5x | a straight inside a six-straight spread | 16.2% |
+| 9x | a straight alongside outside bets | 19.0% |
+| 35x | a straight on its own | 2.8% |
+
+So **3x** separates "the table paid" from "you hit something" and **12x**
+separates that from "you hit a straight". Nothing falls between a tier and its
+boundary, which is what stops the same event celebrating differently on
+different spins.
+
+Tier 1 is deliberately identical to an ordinary spin. Roughly half of all spins
+win something, and a game that throws a party every other spin has nothing left
+to say when the rare one lands. Tier 2 brightens and lengthens the flare; tier 3
+adds a coin eruption from the winning pocket and turns the figure gold.
+
+### The celebration tier comes from `pending`, not `result`
+A subtle ordering trap, and it silently suppressed the entire coin eruption
+until a pixel probe caught it. The wheel's celebration fires the instant the
+ball stops — which is *before* `onSettled` has set `result`. Reading the tier
+from `result` there decorated each win with the **previous** spin's tier, one
+spin permanently behind, so a straight hit celebrated on the following spin
+instead.
+
+`pending` is the spin currently in the air and already knows what it paid, so
+the wheel reads that. The readout is the opposite case: while a spin is in
+flight it shows "No more bets…", so it must drop the tier rather than keep
+glowing gold over the next throw. Hence two separate tiers in `App.tsx`.
+
+Verified by counting coin-gold pixels on the canvas across a settle: 28,407
+baseline against 30,415 at peak on a 35x win. Before the fix the two were
+identical, which is what exposed it.
+
 ### Cadence is the constraint that sizes everything
 At max Croupier's Haste plus a haste relic, a spin lands every **120–200ms**.
 So celebrations are short, and a new throw **cancels the previous one outright**

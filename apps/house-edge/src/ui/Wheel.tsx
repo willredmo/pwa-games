@@ -8,6 +8,7 @@ import {
   type SpinPlan,
 } from "../board/physics";
 import { prefersReducedMotion } from "./motion";
+import { celebrationOf, type WinTier } from "./celebration";
 
 /** Below this there is no time for physics to read — the ball just appears. */
 const SNAP_MS = 260;
@@ -26,11 +27,13 @@ const TRAIL_MIN_SWEEP = 0.07;
  * second, and this runs on phones — the ceiling matters more than the exact
  * count per hit.
  */
-const MAX_SPARKS = 24;
+const MAX_SPARKS = 60;
 /** Specks per knock, before strength scaling. */
 const SPARKS_PER_HIT = 5;
 /** Playback seconds a speck lives for. */
 const SPARK_LIFE = 0.26;
+/** Coins from a win hang around longer than collision dust. */
+const COIN_LIFE = 1.15;
 /** Below this closing strength a ball-on-ball touch is a brush, not a knock. */
 const BALL_SPARK_MIN = 0.5;
 
@@ -50,7 +53,13 @@ type Flight = {
 };
 
 /** A speck with the velocity the renderer does not need to know about. */
-type LiveSpark = Spark & { vRel: number; vRadius: number; vHeight: number };
+type LiveSpark = Spark & {
+  vRel: number;
+  vRadius: number;
+  vHeight: number;
+  /** Playback seconds this one lives for. */
+  span: number;
+};
 
 interface Props {
   /**
@@ -60,6 +69,8 @@ interface Props {
   pockets: readonly number[] | null;
   /** Index into `pockets` of the ball that was paid, marked once they land. */
   winner?: number;
+  /** How big the win was relative to the stake. 0 is a loss. */
+  tier?: WinTier;
   spinKey: number;
   durationMs: number;
   /** Playback rate. 1 is normal; below 1 slows the whole wheel down. */
@@ -67,7 +78,15 @@ interface Props {
   onSettled: () => void;
 }
 
-export function Wheel({ pockets, winner = 0, spinKey, durationMs, speed = 1, onSettled }: Props) {
+export function Wheel({
+  pockets,
+  winner = 0,
+  tier = 0,
+  spinKey,
+  durationMs,
+  speed = 1,
+  onSettled,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const settledRef = useRef(onSettled);
   settledRef.current = onSettled;
@@ -78,6 +97,8 @@ export function Wheel({ pockets, winner = 0, spinKey, durationMs, speed = 1, onS
   speedRef.current = speed;
   const winnerRef = useRef(winner);
   winnerRef.current = winner;
+  const tierRef = useRef(tier);
+  tierRef.current = tier;
 
   const anim = useRef({
     wheelAngle: 0,
@@ -184,6 +205,7 @@ export function Wheel({ pockets, winner = 0, spinKey, durationMs, speed = 1, onS
           vRel: (Math.random() - 0.5) * 0.9 * spread,
           vRadius: (Math.random() - 0.35) * 0.5 * spread,
           vHeight: Math.random() * 1.5 * spread,
+          span: SPARK_LIFE,
         });
       }
     };
@@ -269,6 +291,27 @@ export function Wheel({ pockets, winner = 0, spinKey, durationMs, speed = 1, onS
         if (!anyLeft) {
           a.landed = a.flights.map((f) => f.pocket);
           a.settledMs = 0;
+          // Coins erupt from the pocket that actually paid, so the eye is sent
+          // to the number rather than to the middle of the wheel.
+          const won = a.flights[winnerRef.current] ?? a.flights[0];
+          const { coins } = celebrationOf(tierRef.current);
+          if (won && coins > 0 && !prefersReducedMotion()) {
+            for (let i = 0; i < coins && a.sparks.length < MAX_SPARKS; i++) {
+              a.sparks.push({
+                rel: won.rel,
+                radius: won.radius,
+                height: 0,
+                life: 1,
+                size: 2.6 + Math.random() * 1.6,
+                gold: true,
+                vRel: (Math.random() - 0.5) * 1.5,
+                vRadius: (Math.random() - 0.15) * 0.75,
+                // Thrown up hard; gravity in the ageing step brings them back.
+                vHeight: 2.4 + Math.random() * 3.4,
+                span: COIN_LIFE * (0.7 + Math.random() * 0.6),
+              });
+            }
+          }
           settledRef.current();
         }
       } else {
@@ -280,7 +323,7 @@ export function Wheel({ pockets, winner = 0, spinKey, durationMs, speed = 1, onS
       // Age the specks. They drift, fall back toward the surface and fade.
       for (let i = a.sparks.length - 1; i >= 0; i--) {
         const p = a.sparks[i];
-        p.life -= beat / SPARK_LIFE;
+        p.life -= beat / p.span;
         if (p.life <= 0) {
           a.sparks.splice(i, 1);
           continue;
@@ -310,6 +353,7 @@ export function Wheel({ pockets, winner = 0, spinKey, durationMs, speed = 1, onS
           highlights: flying ? [] : a.landed.slice(winnerRef.current, winnerRef.current + 1),
           settledMs: flying ? null : a.settledMs,
           sparks: a.sparks,
+          celebration: flying ? 1 : celebrationOf(tierRef.current).flare,
         });
       }
       frame = requestAnimationFrame(loop);

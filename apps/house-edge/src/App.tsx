@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCountUp } from "./ui/useCountUp";
+import { winTier } from "./ui/celebration";
 import type { SpinResult } from "./engine";
 import { colorOf } from "./engine";
 import { Wheel } from "./ui/Wheel";
@@ -256,6 +257,23 @@ export default function App() {
   // more. Display only — `state.chips` is already correct underneath.
   const rollMs = auto ? Math.min(450, interval * 0.5) : 450;
   const shownChips = useCountUp(state.chips, rollMs);
+  // Judged against the stake, not the amount — see ui/celebration.ts.
+  //
+  // Two tiers, because they are wanted at two different moments. The wheel's
+  // celebration fires the instant the ball stops, which is *before* `result`
+  // has been set — reading it there decorated every win with the previous
+  // spin's tier, one spin permanently behind. `pending` is the spin in the air
+  // and already knows what it paid.
+  //
+  // The readout is the opposite case: while a spin is in flight it shows "No
+  // more bets…", so it has to drop the old tier rather than keep glowing gold
+  // over the next throw.
+  const wheelTier = pending
+    ? winTier(pending.net, pending.stake)
+    : result
+      ? winTier(result.net, result.stake)
+      : 0;
+  const readoutTier = !pending && result ? winTier(result.net, result.stake) : 0;
 
   return (
     <div className="app">
@@ -306,6 +324,7 @@ export default function App() {
             <Wheel
               pockets={pending?.balls ?? result?.balls ?? null}
               winner={pending?.winner ?? result?.winner ?? 0}
+              tier={wheelTier}
               spinKey={spinKey}
               durationMs={
                 (auto ? Math.min(MAX_AUTO_SPIN_MS, interval * 0.62) : MANUAL_SPIN_MS) / speed
@@ -357,7 +376,7 @@ export default function App() {
             </button>
           </div>
 
-          <div className="readout" key={spinKey}>
+          <div className={`readout tier-${readoutTier}`} key={spinKey}>
             {pending ? (
               <span className="muted">No more bets…</span>
             ) : result ? (
