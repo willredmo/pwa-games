@@ -11,8 +11,10 @@ interface Props {
   disabled: boolean;
   /** Pocket from the last settled spin, for win highlighting. */
   last: number | null;
-  /** Per-pocket run of luck so far, indexed by number. Straights only. */
+  /** Per-pocket run of luck so far, indexed by number. */
   heat: readonly Heat[];
+  /** The same for the outside bets, keyed by spot id. */
+  outHeat: Record<string, Heat>;
   /**
    * Bumped once per spin. Used only as part of the React key on winning cells,
    * so their flash animation restarts each result — a CSS animation on an
@@ -41,6 +43,7 @@ export function BetLayout({
   disabled,
   last,
   heat,
+  outHeat,
   spinKey,
   mode,
   onPlace,
@@ -119,19 +122,27 @@ export function BetLayout({
         {[3, 2, 1].map((value, r) => {
           const spot = spotById(`column:${value}`);
           if (!spot) return null;
-          return cell(`column:${value}`, spot.label, "outside-cell outside-bet col-bet", {
-            gridColumn: COLUMN_BET_COL,
-            gridRow: r + 1,
-          });
+          const run = outHeat[spot.id] ?? null;
+          return cell(
+            `column:${value}`,
+            spot.label,
+            `outside-cell outside-bet col-bet${run ? ` ${run}` : ""}`,
+            { gridColumn: COLUMN_BET_COL, gridRow: r + 1 },
+            run,
+          );
         })}
 
         {[1, 2, 3].map((d) => {
           const spot = spotById(`dozen:${d}`);
           if (!spot) return null;
-          return cell(`dozen:${d}`, spot.label, "outside-cell outside-bet", {
-            gridColumn: `${FIRST_NUMBER_COL + (d - 1) * 4} / span 4`,
-            gridRow: 4,
-          });
+          const run = outHeat[spot.id] ?? null;
+          return cell(
+            `dozen:${d}`,
+            spot.label,
+            `outside-cell outside-bet${run ? ` ${run}` : ""}`,
+            { gridColumn: `${FIRST_NUMBER_COL + (d - 1) * 4} / span 4`, gridRow: 4 },
+            run,
+          );
         })}
 
         {EVEN_MONEY.map((id, i) => {
@@ -140,10 +151,14 @@ export function BetLayout({
           // Red/Black reuse the number colours, so they need a separate marker
           // for sizing — otherwise the rule would catch all 36 numbers too.
           const tone = id === "red" ? "red" : id === "black" ? "black" : "outside-cell";
-          return cell(id, spot.label, `${tone} outside-bet`, {
-            gridColumn: `${FIRST_NUMBER_COL + i * 2} / span 2`,
-            gridRow: 5,
-          });
+          const run = outHeat[spot.id] ?? null;
+          return cell(
+            id,
+            spot.label,
+            `${tone} outside-bet${run ? ` ${run}` : ""}`,
+            { gridColumn: `${FIRST_NUMBER_COL + i * 2} / span 2`, gridRow: 5 },
+            run,
+          );
         })}
       </div>
       <p className="table-hint">

@@ -444,6 +444,19 @@ out of 37** however long it runs: enough to be interesting, never enough to
 paint the board. A pocket hit three times its share over 370 spins is correctly
 picked out.
 
+The outside bets get the same reading through `outsideHeat`, but each is judged
+against **its own share of the wheel** — `covers()` counts the pockets, and the
+spread comes from that. Red covers 18 pockets so its share is 48.6% against a
+straight's 2.7%, and a deviation that is remarkable for one number is nothing at
+all for red. Using the per-pocket figures for both would have marked the outside
+bets constantly. Measured on a fair wheel: about **1.7 of the 12 outside bets**
+lit at any time, steady from 111 spins to 111,000.
+
+Red against black, odd against even and low against high are near-complements,
+so one hot usually means the other cold. That is the same fact from both sides,
+not duplication — hiding one would make the table look like it favoured whatever
+was kept.
+
 It needs a floor of `POCKET_COUNT * 3` spins, because the normal approximation
 is poor when the expected count is below one. Without it, ten spins was enough
 to call a pocket hot for coming up **twice** — which is not remarkable in the

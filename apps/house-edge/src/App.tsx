@@ -19,6 +19,7 @@ import {
   canSpin,
   cashOut,
   catchUp,
+  outsideHeat,
   pocketHeat,
   clearSave,
   edgeOf,
@@ -282,6 +283,7 @@ export default function App() {
   // Recomputed only when the tally actually changes, not on every render — it
   // walks all 37 pockets and the table re-renders on every chip placed.
   const heat = useMemo(() => pocketHeat(state.pocketCounts), [state.pocketCounts]);
+  const outHeat = useMemo(() => outsideHeat(state.pocketCounts), [state.pocketCounts]);
 
   return (
     <div className="app">
@@ -521,6 +523,7 @@ export default function App() {
             disabled={betsLocked}
             last={result?.pocket ?? null}
             heat={heat}
+            outHeat={outHeat}
             spinKey={spinKey}
             mode={mode}
             onPlace={place}

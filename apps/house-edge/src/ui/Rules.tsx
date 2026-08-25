@@ -173,12 +173,18 @@ export function Rules({ state, onClose }: Props) {
           and everything they grant lands on your net like any other bonus.
         </p>
 
-        <h3>The dots on the numbers</h3>
+        <h3>The dots on the table</h3>
         <p className="card-desc">
-          Once the table has seen a few hundred spins, numbers that have come up
+          Once the table has seen a few hundred spins, bets that have come up
           well above their share get an <b className="heat-hot">orange</b> dot
           and ones well below get a <b className="heat-cold">blue</b> one. Only
           genuine outliers are marked, so a handful show at most.
+        </p>
+        <p className="card-desc">
+          Every bet is judged against its own odds. Red covers 18 pockets and a
+          single number covers one, so a run that is remarkable for a number is
+          nothing at all for red — which is why the outside bets light up far
+          more rarely, and why Red running hot usually shows Black running cold.
         </p>
         <p className="card-desc muted">
           It is a record of what has happened, not a forecast. The wheel has no

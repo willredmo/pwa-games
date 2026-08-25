@@ -1,4 +1,13 @@
-import { colorOf, POCKET_COUNT, resolveSpin, totalStake, type Layout, type SpinResult } from "../engine";
+import {
+  colorOf,
+  covers,
+  OUTSIDE_SPOTS,
+  POCKET_COUNT,
+  resolveSpin,
+  totalStake,
+  type Layout,
+  type SpinResult,
+} from "../engine";
 import { offerRelics, uniqueRelicsOf } from "./relics";
 import {
   buildEdge,
@@ -233,19 +242,55 @@ export type Heat = "hot" | "cold" | null;
  * outcomes, so at high levels these marks stop being noise and start being the
  * upgrade working.
  */
+function heatOf(observed: number, spins: number, share: number): Heat {
+  const expected = spins * share;
+  // Binomial spread. Note this depends on the *share of the wheel* the bet
+  // covers, which is why a single number and an even-money bet cannot use the
+  // same figures: red comes up about 18 times more often than any one pocket,
+  // so a deviation that is remarkable for a straight is nothing for red.
+  const band = HEAT_SIGMAS * Math.sqrt(spins * share * (1 - share));
+  if (observed >= expected + band) return "hot";
+  if (observed <= expected - band) return "cold";
+  return null;
+}
+
 export function pocketHeat(counts: number[] | undefined): Heat[] {
   const c = counts && counts.length === POCKET_COUNT ? counts : emptyCounts();
   const spins = c.reduce((a, b) => a + b, 0);
   if (spins < HEAT_MIN_SPINS) return new Array(POCKET_COUNT).fill(null);
-  const p = 1 / POCKET_COUNT;
-  const expected = spins * p;
-  const sigma = Math.sqrt(spins * p * (1 - p));
-  const band = HEAT_SIGMAS * sigma;
-  return c.map((n) => {
-    if (n >= expected + band) return "hot";
-    if (n <= expected - band) return "cold";
-    return null;
-  });
+  return c.map((n) => heatOf(n, spins, 1 / POCKET_COUNT));
+}
+
+/**
+ * The same reading for the outside bets, keyed by spot id.
+ *
+ * These settle down far faster than a single number: red covers 18 pockets, so
+ * its share is 48.6% rather than 2.7% and the law of large numbers bites much
+ * sooner. Expect these to light up rarely and briefly, which is correct — a
+ * long run of red really is the rarer event.
+ *
+ * Red against black, odd against even and low against high are near-complements,
+ * so one running hot usually shows the other running cold. That is not
+ * duplication; it is the same fact seen from both sides, and hiding one would
+ * make the table look like it favoured whichever we happened to keep.
+ */
+export function outsideHeat(counts: number[] | undefined): Record<string, Heat> {
+  const c = counts && counts.length === POCKET_COUNT ? counts : emptyCounts();
+  const spins = c.reduce((a, b) => a + b, 0);
+  const out: Record<string, Heat> = {};
+  if (spins < HEAT_MIN_SPINS) return out;
+  for (const spot of OUTSIDE_SPOTS) {
+    let covered = 0;
+    let observed = 0;
+    for (let pocket = 0; pocket < POCKET_COUNT; pocket++) {
+      if (!covers(spot, pocket)) continue;
+      covered++;
+      observed += c[pocket];
+    }
+    if (covered === 0) continue;
+    out[spot.id] = heatOf(observed, spins, covered / POCKET_COUNT);
+  }
+  return out;
 }
 
 export function wheelStats(counts: number[] | undefined): WheelStats {
