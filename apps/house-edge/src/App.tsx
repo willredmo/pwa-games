@@ -19,6 +19,7 @@ import {
   canSpin,
   cashOut,
   catchUp,
+  pocketHeat,
   clearSave,
   edgeOf,
   equipRelic,
@@ -278,6 +279,9 @@ export default function App() {
       ? winTier(result.net, result.stake)
       : 0;
   const readoutTier = !pending && result ? winTier(result.net, result.stake) : 0;
+  // Recomputed only when the tally actually changes, not on every render — it
+  // walks all 37 pockets and the table re-renders on every chip placed.
+  const heat = useMemo(() => pocketHeat(state.pocketCounts), [state.pocketCounts]);
 
   return (
     <div className="app">
@@ -516,6 +520,7 @@ export default function App() {
             denom={denom}
             disabled={betsLocked}
             last={result?.pocket ?? null}
+            heat={heat}
             spinKey={spinKey}
             mode={mode}
             onPlace={place}

@@ -431,6 +431,33 @@ One trap worth remembering: Red and Black reuse the *number* colour classes, so
 any CSS keyed on `.cell.red` catches all 36 numbers too. The outside bets carry
 an explicit `outside-bet` marker for sizing.
 
+### Hot and cold marks are outliers, not a top five
+`pocketHeat` in `game/state.ts` puts a corner pip on numbers running above or
+below their share. It deliberately does **not** reuse the top-five/bottom-five
+slice the Cash Out panel shows: a fixed slice always finds five of each, so on a
+fresh table it dresses pure noise up as a pattern and on a long fair run it
+implies outliers that are not there.
+
+Measuring against the spread instead — 1.5 sigma from the expected count —
+self-calibrates. On a fair wheel it settles at roughly **2-3 hot and 2-3 cold
+out of 37** however long it runs: enough to be interesting, never enough to
+paint the board. A pocket hit three times its share over 370 spins is correctly
+picked out.
+
+It needs a floor of `POCKET_COUNT * 3` spins, because the normal approximation
+is poor when the expected count is below one. Without it, ten spins was enough
+to call a pocket hot for coming up **twice** — which is not remarkable in the
+slightest. Below the floor the table shows nothing at all.
+
+The marks are a **corner pip rather than a tint**: the cells already use red,
+black and green to mean something, and recolouring them for a run of luck would
+collide with the one thing on the table that must never be ambiguous. The pip
+sits top-left because the staked chip badge owns the bottom-right.
+
+The rules screen says outright that this is a record and not a forecast. It is
+worth showing anyway because Weighted Wheel genuinely does bias outcomes, so at
+high levels the marks stop being noise and start being the upgrade working.
+
 ### The rules screen explains what cannot be observed
 `ui/Rules.tsx`, behind the **?** button in the tab row. It exists for two rules
 that are genuinely invisible during play and that nobody works out by watching:

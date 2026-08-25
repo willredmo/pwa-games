@@ -203,6 +203,51 @@ export interface WheelStats {
   ranked: { pocket: number; count: number }[];
 }
 
+/** How far from its expected share a pocket must sit to be called out. */
+const HEAT_SIGMAS = 1.5;
+/**
+ * Spins before any of this is worth showing — three times round the wheel.
+ *
+ * Without it the spread test is far too eager early on, because the normal
+ * approximation is poor when the expected count is under one: at ten spins a
+ * pocket qualified as hot for coming up *twice*, which is not remarkable in the
+ * slightest. Below this the table simply shows nothing.
+ */
+const HEAT_MIN_SPINS = POCKET_COUNT * 3;
+
+export type Heat = "hot" | "cold" | null;
+
+/**
+ * Which pockets have genuinely run hot or cold, per pocket index.
+ *
+ * Deliberately *not* the top and bottom five the Cash Out panel shows. A fixed
+ * slice always finds five of each, so on a fresh table it dresses pure noise up
+ * as a pattern, and on a long fair run it implies outliers that are not there.
+ * Measuring against the spread instead makes it self-calibrating, and it settles
+ * at roughly 2-3 hot and 2-3 pockets cold out of 37 on a fair wheel however long
+ * it runs — enough to be interesting, never enough to paint the board.
+ *
+ * This describes what the wheel *has done*. It says nothing about what it will
+ * do — a fair wheel has no memory, and the game says so on the Cash Out tab.
+ * It is worth showing anyway because Weighted Wheel genuinely does bias
+ * outcomes, so at high levels these marks stop being noise and start being the
+ * upgrade working.
+ */
+export function pocketHeat(counts: number[] | undefined): Heat[] {
+  const c = counts && counts.length === POCKET_COUNT ? counts : emptyCounts();
+  const spins = c.reduce((a, b) => a + b, 0);
+  if (spins < HEAT_MIN_SPINS) return new Array(POCKET_COUNT).fill(null);
+  const p = 1 / POCKET_COUNT;
+  const expected = spins * p;
+  const sigma = Math.sqrt(spins * p * (1 - p));
+  const band = HEAT_SIGMAS * sigma;
+  return c.map((n) => {
+    if (n >= expected + band) return "hot";
+    if (n <= expected - band) return "cold";
+    return null;
+  });
+}
+
 export function wheelStats(counts: number[] | undefined): WheelStats {
   const c = counts && counts.length === POCKET_COUNT ? counts : emptyCounts();
   const out: WheelStats = {

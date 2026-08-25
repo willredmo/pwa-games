@@ -1,6 +1,7 @@
 import { colorOf, covers, spotById } from "../engine";
 import type { Layout } from "../engine";
 import { money } from "../game/format";
+import type { Heat } from "../game/state";
 
 interface Props {
   layout: Layout;
@@ -10,6 +11,8 @@ interface Props {
   disabled: boolean;
   /** Pocket from the last settled spin, for win highlighting. */
   last: number | null;
+  /** Per-pocket run of luck so far, indexed by number. Straights only. */
+  heat: readonly Heat[];
   /**
    * Bumped once per spin. Used only as part of the React key on winning cells,
    * so their flash animation restarts each result — a CSS animation on an
@@ -37,6 +40,7 @@ export function BetLayout({
   denom,
   disabled,
   last,
+  heat,
   spinKey,
   mode,
   onPlace,
@@ -47,6 +51,7 @@ export function BetLayout({
     label: string,
     className: string,
     style?: React.CSSProperties,
+    run?: Heat,
   ) => {
     const staked = layout[id] ?? 0;
     const spot = spotById(id);
@@ -63,7 +68,16 @@ export function BetLayout({
           e.preventDefault();
           onRemove(id);
         }}
-        aria-label={`${label}${staked > 0 ? `, ${money(staked)}` : ""}`}
+        aria-label={`${label}${staked > 0 ? `, ${money(staked)}` : ""}${
+          run ? `, running ${run}` : ""
+        }`}
+        title={
+          run === "hot"
+            ? "Has come up more than its share so far"
+            : run === "cold"
+              ? "Has come up less than its share so far"
+              : undefined
+        }
       >
         <span className="cell-label">{label}</span>
         {staked > 0 && <span className="chip-badge">{money(staked)}</span>}
@@ -91,10 +105,14 @@ export function BetLayout({
         {Array.from({ length: 3 }, (_, r) =>
           Array.from({ length: NUMBER_COLS }, (_, c) => {
             const n = c * 3 + (3 - r);
-            return cell(`straight:${n}`, String(n), colorOf(n), {
-              gridColumn: FIRST_NUMBER_COL + c,
-              gridRow: r + 1,
-            });
+            const run = heat[n] ?? null;
+            return cell(
+              `straight:${n}`,
+              String(n),
+              `${colorOf(n)}${run ? ` ${run}` : ""}`,
+              { gridColumn: FIRST_NUMBER_COL + c, gridRow: r + 1 },
+              run,
+            );
           }),
         )}
 

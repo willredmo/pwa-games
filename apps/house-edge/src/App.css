@@ -1016,3 +1016,31 @@
   color: var(--gold);
   font-variant-numeric: tabular-nums;
 }
+
+/* ---- hot and cold numbers ------------------------------------------------ */
+/* A corner pip rather than a tint: the cells already carry red, black and green
+   to mean something, and recolouring them to show a run of luck would collide
+   with the one piece of information on the table that must never be ambiguous.
+   Top-left, because the staked chip badge owns the bottom-right. */
+.cell.hot::before,
+.cell.cold::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+}
+
+.cell.hot::before {
+  background: #ff9d3c;
+}
+
+.cell.cold::before {
+  background: #6fc6e8;
+}
+
+.heat-hot { color: #ff9d3c; }
+.heat-cold { color: #6fc6e8; }

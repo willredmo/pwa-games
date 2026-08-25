@@ -173,6 +173,22 @@ export function Rules({ state, onClose }: Props) {
           and everything they grant lands on your net like any other bonus.
         </p>
 
+        <h3>The dots on the numbers</h3>
+        <p className="card-desc">
+          Once the table has seen a few hundred spins, numbers that have come up
+          well above their share get an <b className="heat-hot">orange</b> dot
+          and ones well below get a <b className="heat-cold">blue</b> one. Only
+          genuine outliers are marked, so a handful show at most.
+        </p>
+        <p className="card-desc muted">
+          It is a record of what has happened, not a forecast. The wheel has no
+          memory: a number being &quot;due&quot; is the oldest mistake in
+          gambling, and every pocket is 1 in {POCKET_COUNT} on the next spin
+          regardless of the dots. The exception is Weighted Wheel — that one
+          genuinely bends where the ball lands, so at high levels these marks
+          start showing you the upgrade working.
+        </p>
+
         <h3>Why some wins celebrate louder</h3>
         <p className="card-desc">
           Measured against your stake, not the amount — a big number means
