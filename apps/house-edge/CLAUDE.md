@@ -410,6 +410,29 @@ Verified by counting coin-gold pixels on the canvas across a settle: 28,407
 baseline against 30,415 at peak on a 35x win. Before the fix the two were
 identical, which is what exposed it.
 
+### The betting layout is one grid, not a stack of rows
+`ui/BetLayout.tsx`. The numbers, the zero, the 2:1 column bets, the dozens and
+the even-money row all share the same tracks:
+`26px repeat(12, 1fr) minmax(30px, 46px)`.
+
+It was previously the number grid plus three separate rows of equal-width
+buttons underneath, which could not line up *by construction*: three equal
+columns across the full width do not fall on the same boundaries as twelve, and
+none of the rows accounted for the zero's track at the far left. So a dozen sat
+across arbitrary fractions of the numbers it covers.
+
+Now it reads like a real table. The **column bets sit at the end of the row
+they pay on** — `column:3` covers multiples of three, which is the top row —
+and each dozen spans exactly the four number columns it covers. Verified by
+measuring the rendered boxes rather than by eye: every dozen's left and right
+edges match its first and last number, every column bet's top and bottom match
+its row, and the even-money row starts and ends with the numbers, at both 537px
+and 375px wide.
+
+One trap worth remembering: Red and Black reuse the *number* colour classes, so
+any CSS keyed on `.cell.red` catches all 36 numbers too. The outside bets carry
+an explicit `outside-bet` marker for sizing.
+
 ### The rules screen explains what cannot be observed
 `ui/Rules.tsx`, behind the **?** button in the tab row. It exists for two rules
 that are genuinely invisible during play and that nobody works out by watching:

@@ -223,17 +223,17 @@
   margin-top: 14px;
 }
 
+/* Zero, twelve number columns, then the 2:1 column bets. Everything on the
+   table shares these tracks, which is what lets a dozen span exactly the four
+   numbers it covers and a column bet sit level with its own row. */
 .table-main {
   display: grid;
-  grid-template-columns: 26px 1fr;
+  grid-template-columns: 26px repeat(12, 1fr) minmax(30px, 46px);
   gap: 3px;
 }
 
-.numbers {
-  display: grid;
-  grid-template-columns: repeat(12, 1fr);
-  grid-template-rows: repeat(3, 1fr);
-  gap: 3px;
+.cell.zero {
+  grid-row: 1 / 4;
 }
 
 .cell {
@@ -280,17 +280,17 @@
   font-weight: 700;
 }
 
-.outside {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  gap: 3px;
-  margin-top: 3px;
-}
-
-.outside .cell {
+/* Marked explicitly rather than by colour: Red and Black reuse the number
+   tones, so keying off `.cell.red` would resize all 36 numbers as well. */
+.table-main .outside-bet {
   min-height: 34px;
   font-size: 0.75rem;
+}
+
+/* "Col 3" in a 46px box needs to be smaller than the rest. */
+.col-bet {
+  font-size: 0.6rem;
+  letter-spacing: -0.01em;
 }
 
 .table-hint {
