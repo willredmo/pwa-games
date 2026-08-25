@@ -212,103 +212,102 @@ export interface WheelStats {
   ranked: { pocket: number; count: number }[];
 }
 
+/** Numbers marked at each end of the ranking. */
+const HEAT_TOP_NUMBERS = 3;
 /**
- * How far from its expected share a bet must sit to be called out, in standard
- * deviations — set **per group**, not globally.
+ * Spins before any of this is worth showing — one full pass of the wheel.
  *
- * This is the multiple-comparisons problem, and getting it wrong is what made
- * the first version too busy. At 1.5 sigma each individual test fires about 13%
- * of the time, which is a reasonable per-test threshold — but run it across 37
- * numbers and you get ~5 marks on a perfectly fair wheel. The board looked
- * covered in signal that was pure noise.
- *
- * So the thresholds are chosen by the *expected number of marks in the group*
- * rather than by per-test rate. Both are tuned to fewer than one on a fair
- * wheel, measured over hundreds of runs at 370, 1,110 and 11,100 spins:
- * numbers land at 0.7-1.2 of 37, outside bets at 0.8-0.9 of 12. A mark means
- * roughly the same thing wherever it appears, which it would not if both used
- * one number for wildly different group sizes.
- *
- * Sensitivity is not the casualty: at 2.25 sigma a pocket running at three
- * times its share over 370 spins is still flagged 100% of the time.
+ * The marks are a *ranking*, so they always find something to point at; below
+ * this most pockets are still tied on zero and "the coldest three" would just
+ * be whichever three the sort happened to put last.
  */
-const HEAT_SIGMAS_NUMBER = 2.25;
-const HEAT_SIGMAS_OUTSIDE = 1.85;
-/**
- * Spins before any of this is worth showing — three times round the wheel.
- *
- * Without it the spread test is far too eager early on, because the normal
- * approximation is poor when the expected count is under one: at ten spins a
- * pocket qualified as hot for coming up *twice*, which is not remarkable in the
- * slightest. Below this the table simply shows nothing.
- */
-const HEAT_MIN_SPINS = POCKET_COUNT * 3;
+const HEAT_MIN_SPINS = POCKET_COUNT;
 
 export type Heat = "hot" | "cold" | null;
 
 /**
- * Which pockets have genuinely run hot or cold, per pocket index.
+ * The three numbers that have come up most, and the three least.
  *
- * Deliberately *not* the top and bottom five the Cash Out panel shows. A fixed
- * slice always finds five of each, so on a fresh table it dresses pure noise up
- * as a pattern, and on a long fair run it implies outliers that are not there.
- * Measuring against the spread instead makes it self-calibrating, and the
- * threshold is set so a fair wheel shows about *one* marked number at a time
- * however long it runs — see HEAT_SIGMAS_NUMBER.
+ * A ranking rather than a significance test. An earlier version marked only
+ * genuine statistical outliers, which was defensible but meant the table often
+ * showed nothing at all — on a fair wheel there frequently *are* no outliers,
+ * and a display that is usually empty is not much of a display. Ranking always
+ * answers the question the player is actually asking, which is "what has been
+ * running hot lately", not "is this wheel provably biased".
  *
- * This describes what the wheel *has done*. It says nothing about what it will
- * do — a fair wheel has no memory, and the game says so on the Cash Out tab.
- * It is worth showing anyway because Weighted Wheel genuinely does bias
- * outcomes, so at high levels these marks stop being noise and start being the
- * upgrade working.
+ * The cost is worth stating plainly: on a fair wheel the top three are noise.
+ * Three numbers will always be at the top of the list whether or not anything
+ * is happening. The rules screen says so.
+ *
+ * Ties break toward the lower pocket, so the marks never flicker between two
+ * equal numbers from one render to the next.
  */
-function heatOf(observed: number, spins: number, share: number, sigmas: number): Heat {
-  const expected = spins * share;
-  // Binomial spread. Note this depends on the *share of the wheel* the bet
-  // covers, which is why a single number and an even-money bet cannot use the
-  // same figures: red comes up about 18 times more often than any one pocket,
-  // so a deviation that is remarkable for a straight is nothing for red.
-  const band = sigmas * Math.sqrt(spins * share * (1 - share));
-  if (observed >= expected + band) return "hot";
-  if (observed <= expected - band) return "cold";
-  return null;
-}
-
 export function pocketHeat(counts: number[] | undefined): Heat[] {
   const c = counts && counts.length === POCKET_COUNT ? counts : emptyCounts();
   const spins = c.reduce((a, b) => a + b, 0);
-  if (spins < HEAT_MIN_SPINS) return new Array(POCKET_COUNT).fill(null);
-  return c.map((n) => heatOf(n, spins, 1 / POCKET_COUNT, HEAT_SIGMAS_NUMBER));
+  const heat: Heat[] = new Array(POCKET_COUNT).fill(null);
+  if (spins < HEAT_MIN_SPINS) return heat;
+
+  const ranked = c
+    .map((count, pocket) => ({ count, pocket }))
+    .sort((a, b) => b.count - a.count || a.pocket - b.pocket);
+
+  for (let i = 0; i < HEAT_TOP_NUMBERS && i < ranked.length; i++) {
+    heat[ranked[i].pocket] = "hot";
+  }
+  for (let i = 0; i < HEAT_TOP_NUMBERS && i < ranked.length; i++) {
+    const entry = ranked[ranked.length - 1 - i];
+    // A number cannot be both, which matters on a nearly empty tally.
+    if (heat[entry.pocket] === null) heat[entry.pocket] = "cold";
+  }
+  return heat;
 }
 
 /**
- * The same reading for the outside bets, keyed by spot id.
+ * Groups of outside bets that compete with each other. One mark each — the
+ * member that has come up most — because these are the questions a player asks
+ * as a comparison: which dozen is running, is it red's turn or black's.
  *
- * These settle down far faster than a single number: red covers 18 pockets, so
- * its share is 48.6% rather than 2.7% and the law of large numbers bites much
- * sooner. Expect these to light up rarely and briefly, which is correct — a
- * long run of red really is the rarer event.
- *
- * Red against black, odd against even and low against high are near-complements,
- * so one running hot usually shows the other running cold. That is not
- * duplication; it is the same fact seen from both sides, and hiding one would
- * make the table look like it favoured whichever we happened to keep.
+ * Marking the cold side too would say nothing extra: with two-way groups the
+ * loser is simply the one without the mark.
  */
+const HEAT_GROUPS: readonly (readonly string[])[] = [
+  ["dozen:1", "dozen:2", "dozen:3"],
+  ["column:1", "column:2", "column:3"],
+  ["red", "black"],
+  ["odd", "even"],
+  ["low", "high"],
+];
+
 export function outsideHeat(counts: number[] | undefined): Record<string, Heat> {
   const c = counts && counts.length === POCKET_COUNT ? counts : emptyCounts();
   const spins = c.reduce((a, b) => a + b, 0);
   const out: Record<string, Heat> = {};
   if (spins < HEAT_MIN_SPINS) return out;
-  for (const spot of OUTSIDE_SPOTS) {
-    let covered = 0;
-    let observed = 0;
+
+  const hits = (id: string): number => {
+    const spot = OUTSIDE_SPOTS.find((sp) => sp.id === id);
+    if (!spot) return -1;
+    let total = 0;
     for (let pocket = 0; pocket < POCKET_COUNT; pocket++) {
-      if (!covers(spot, pocket)) continue;
-      covered++;
-      observed += c[pocket];
+      if (covers(spot, pocket)) total += c[pocket];
     }
-    if (covered === 0) continue;
-    out[spot.id] = heatOf(observed, spins, covered / POCKET_COUNT, HEAT_SIGMAS_OUTSIDE);
+    return total;
+  };
+
+  for (const group of HEAT_GROUPS) {
+    let best = group[0];
+    let bestHits = hits(best);
+    for (const id of group.slice(1)) {
+      const n = hits(id);
+      // Strictly greater, so a tie leaves the first in the group marked rather
+      // than swapping about as equal counts trade places.
+      if (n > bestHits) {
+        best = id;
+        bestHits = n;
+      }
+    }
+    out[best] = "hot";
   }
   return out;
 }

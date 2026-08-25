@@ -431,54 +431,44 @@ One trap worth remembering: Red and Black reuse the *number* colour classes, so
 any CSS keyed on `.cell.red` catches all 36 numbers too. The outside bets carry
 an explicit `outside-bet` marker for sizing.
 
-### Hot and cold marks are outliers, not a top five
-`pocketHeat` in `game/state.ts` puts a corner pip on numbers running above or
-below their share. It deliberately does **not** reuse the top-five/bottom-five
-slice the Cash Out panel shows: a fixed slice always finds five of each, so on a
-fresh table it dresses pure noise up as a pattern and on a long fair run it
-implies outliers that are not there.
+### Hot and cold marks are a ranking, not a significance test
+`pocketHeat` and `outsideHeat` in `game/state.ts`. The **three most-drawn
+numbers** get an orange corner pip and the **three least-drawn** a blue one, and
+each group of competing outside bets marks its leader: hottest dozen, hottest
+column, and whichever of Red/Black, Odd/Even and 1-18/19-36 is ahead. Five
+outside marks, always exactly one per group.
 
-Measuring against the spread self-calibrates, but the threshold has to be set
-**per group**, and getting that wrong is what made the first version far too
-busy. At 1.5 sigma each individual test fires about 13% of the time — a sane
-per-test rate — but run across 37 numbers that is ~5 marks on a perfectly fair
-wheel. The board looked covered in signal that was pure noise.
+This replaced a significance test — marks only for pockets more than N sigma
+from their expected count. That version was statistically honest but wrong for
+the job twice over. First it was tuned badly: at 1.5 sigma each test fires ~13%
+of the time, which across 37 numbers is ~5 marks on a *perfectly fair wheel* —
+the multiple-comparisons problem, and the board looked covered in signal that
+was pure noise. Then, corrected to under one mark per group, it was usually
+empty, because on a fair wheel there frequently *are* no outliers.
 
-So the thresholds are chosen by the *expected number of marks in the group*:
-**2.25 sigma for the 37 numbers, 1.85 for the 12 outside bets**, both landing
-under one mark on a fair wheel however long it runs. A mark then means roughly
-the same thing wherever it appears, which it could not if one number served two
-group sizes. Verified on a fair 600-spin table: two marks on the whole layout.
+A ranking answers the question players actually ask — "what has been running
+hot" — rather than "is this wheel provably biased". The cost is worth stating
+plainly, and the rules screen states it: **on a fair wheel the top three are
+noise.** Three numbers sit at the top whether or not anything is happening.
 
-Sensitivity is not the casualty. At 2.25 sigma a pocket running at three times
-its share over 370 spins is still flagged **100%** of the time.
+Details that matter:
 
-The outside bets get the same reading through `outsideHeat`, but each is judged
-against **its own share of the wheel** — `covers()` counts the pockets, and the
-spread comes from that. Red covers 18 pockets so its share is 48.6% against a
-straight's 2.7%, and a deviation that is remarkable for one number is nothing at
-all for red. Using the per-pocket figures for both would have marked the outside
-bets constantly. Measured on a fair wheel: about **1.7 of the 12 outside bets**
-lit at any time, steady from 111 spins to 111,000.
+- Ties break toward the lower pocket and, in a group, toward the first member,
+  so marks never flicker between equal counts from one render to the next.
+- A number cannot be both hot and cold, which is reachable on a sparse tally.
+- The floor is one full pass of the wheel (37 spins). Below that most pockets
+  are tied on zero and "the coldest three" is just whichever three the sort left
+  last. Verified: nothing marked at 36 spins, and nothing on an empty table.
+- Cold is deliberately not shown for the outside groups. In a two-way group the
+  loser is the one without a mark, so a second colour would add nothing.
 
-Red against black, odd against even and low against high are near-complements,
-so one hot usually means the other cold. That is the same fact from both sides,
-not duplication — hiding one would make the table look like it favoured whatever
-was kept.
-
-It needs a floor of `POCKET_COUNT * 3` spins, because the normal approximation
-is poor when the expected count is below one. Without it, ten spins was enough
-to call a pocket hot for coming up **twice** — which is not remarkable in the
-slightest. Below the floor the table shows nothing at all.
+Verified over 500 random tallies: exactly 3 hot and 3 cold numbers, and exactly
+one mark per outside group, every time.
 
 The marks are a **corner pip rather than a tint**: the cells already use red,
 black and green to mean something, and recolouring them for a run of luck would
 collide with the one thing on the table that must never be ambiguous. The pip
 sits top-left because the staked chip badge owns the bottom-right.
-
-The rules screen says outright that this is a record and not a forecast. It is
-worth showing anyway because Weighted Wheel genuinely does bias outcomes, so at
-high levels the marks stop being noise and start being the upgrade working.
 
 ### The rules screen explains what cannot be observed
 `ui/Rules.tsx`, behind the **?** button in the tab row. It exists for two rules

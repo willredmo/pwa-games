@@ -175,24 +175,20 @@ export function Rules({ state, onClose }: Props) {
 
         <h3>The dots on the table</h3>
         <p className="card-desc">
-          Once the table has seen a few hundred spins, bets that have come up
-          well above their share get an <b className="heat-hot">orange</b> dot
-          and ones well below get a <b className="heat-cold">blue</b> one. Only
-          genuine outliers are marked, so a handful show at most.
-        </p>
-        <p className="card-desc">
-          Every bet is judged against its own odds. Red covers 18 pockets and a
-          single number covers one, so a run that is remarkable for a number is
-          nothing at all for red — which is why the outside bets light up far
-          more rarely, and why Red running hot usually shows Black running cold.
+          The three numbers that have come up <b className="heat-hot">most</b>{" "}
+          carry an orange dot and the three that have come up{" "}
+          <b className="heat-cold">least</b> carry a blue one. Each group of
+          outside bets marks its leader: the hottest dozen, the hottest column,
+          and whichever of Red/Black, Odd/Even and 1-18/19-36 is ahead.
         </p>
         <p className="card-desc muted">
-          It is a record of what has happened, not a forecast. The wheel has no
-          memory: a number being &quot;due&quot; is the oldest mistake in
-          gambling, and every pocket is 1 in {POCKET_COUNT} on the next spin
-          regardless of the dots. The exception is Weighted Wheel — that one
-          genuinely bends where the ball lands, so at high levels these marks
-          start showing you the upgrade working.
+          These are a scoreboard, not a tip. They are a straight ranking, so
+          three numbers sit at the top whether or not anything unusual is going
+          on — on a fair wheel that is exactly what you would expect, and the
+          leaders will change as you keep playing. A number is never
+          &quot;due&quot;: every pocket is 1 in {POCKET_COUNT} on the next spin
+          no matter what the dots say. The one real exception is Weighted Wheel,
+          which genuinely bends where the ball lands.
         </p>
 
         <h3>Why some wins celebrate louder</h3>
