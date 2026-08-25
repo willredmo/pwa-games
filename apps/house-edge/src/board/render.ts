@@ -30,6 +30,25 @@ export interface BallView {
   trail?: ReadonlyArray<{ rel: number; radius: number; height: number; alpha: number }>;
 }
 
+/**
+ * A speck thrown off a collision. Positions are in the same wheel-local terms
+ * as a ball — angle relative to the rotor, radius, height — so a spark sits in
+ * the scene rather than floating on top of it.
+ *
+ * These are *owned by the caller*, not by the renderer. The renderer paints
+ * what it is handed and keeps no state between frames, the same reason it works
+ * out deflector strikes from the ball's position instead of being told.
+ */
+export interface Spark {
+  rel: number;
+  radius: number;
+  height: number;
+  /** 1 at birth, 0 when it should be gone. */
+  life: number;
+  /** Relative scale; a hard knock throws bigger specks. */
+  size: number;
+}
+
 /** Everything the renderer needs. It knows nothing about game state. */
 export interface WheelView {
   /** Rotation of the rotor, radians. */
@@ -38,7 +57,21 @@ export interface WheelView {
   balls: readonly BallView[];
   /** Pockets to ring once the balls have settled. */
   highlights: readonly number[];
+  /**
+   * How long the balls have been at rest, in milliseconds of *playback* time —
+   * scaled by the speed control, so the flourish stays in step with a spin
+   * played at a tenth speed. Null while anything is still in the air.
+   *
+   * A fact rather than a verdict: the flare works out its own progress from
+   * this, so nothing has to tell the renderer "celebrate now".
+   */
+  settledMs: number | null;
+  /** Live collision specks. */
+  sparks: readonly Spark[];
 }
+
+/** How long the winning pocket glows after the balls stop, in playback ms. */
+const FLARE_MS = 620;
 
 /**
  * The wheel is drawn as a bowl seen at an angle. Radii are squashed vertically
@@ -463,14 +496,30 @@ export function drawWheel(
     }
   }
 
+  // The winning pocket. A flat outline is all this used to get, which is very
+  // little punctuation for the moment the whole spin has been building to.
+  // `settledMs` drives a bloom that fades out and leaves the outline behind, so
+  // the marker is still there once the flourish has finished.
+  const flare =
+    view.settledMs === null ? 0 : Math.max(0, 1 - view.settledMs / FLARE_MS);
   for (const highlight of view.highlights) {
     const mid = view.wheelAngle + angleOfPocket(highlight);
     ctx.beginPath();
     ellipse(NUMBERS_IN, H_ROTOR, screen(mid - SLICE / 2), screen(mid + SLICE / 2));
     ellipse(POCKET_IN, H_ROTOR, screen(mid + SLICE / 2), screen(mid - SLICE / 2), true);
     ctx.closePath();
-    ctx.strokeStyle = FELT;
-    ctx.lineWidth = 2;
+    if (flare > 0) {
+      // Eased so it blooms fast and lingers rather than fading linearly, which
+      // reads as a dimmer switch instead of a flash.
+      const glow = flare * flare;
+      ctx.fillStyle = `rgba(201, 162, 39, ${0.5 * glow})`;
+      ctx.fill();
+      ctx.strokeStyle = `rgba(240, 214, 130, ${0.35 + 0.65 * glow})`;
+      ctx.lineWidth = 2 + 3 * glow;
+    } else {
+      ctx.strokeStyle = FELT;
+      ctx.lineWidth = 2;
+    }
     ctx.stroke();
   }
 
@@ -517,4 +566,21 @@ export function drawWheel(
   // A ball still out beyond the diamond ring is nearer to the viewer than the
   // near-side diamonds are, so it belongs in front of them.
   drawBucket(3);
+
+  // ---- collision specks --------------------------------------------------
+  // Painted last: they are small, bright and short-lived, and sorting each one
+  // through the bowl would cost more than it could possibly show.
+  for (const p of view.sparks) {
+    if (p.life <= 0) continue;
+    const pa = screen(view.wheelAngle + p.rel);
+    const pr = R * ballOrbit(p.radius);
+    const px = cx + Math.cos(pa) * pr;
+    const py = yAt(BALL_H_TRACK * p.height) + Math.sin(pa) * pr * TILT;
+    const size = R * 0.008 * p.size * (0.4 + p.life) * (1 + Math.sin(pa) * DEPTH);
+    ctx.beginPath();
+    ctx.ellipse(px, py, size, size, 0, 0, Math.PI * 2);
+    // Warm at birth, cooling to the bowl's own tone as it dies.
+    ctx.fillStyle = `rgba(255, ${Math.round(210 + 40 * p.life)}, ${Math.round(150 + 60 * p.life)}, ${0.75 * p.life})`;
+    ctx.fill();
+  }
 }

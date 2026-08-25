@@ -7,6 +7,7 @@ import {
   CHANGE_DROPS,
   type ChangeMods,
 } from "../game/upgrades";
+import { prefersReducedMotion } from "./motion";
 
 /** Logical play-area size. The canvas is scaled to this, so speeds are stable. */
 const W = 320;
@@ -45,7 +46,18 @@ const SPAWN_DOUBLE = 0.45;
  * everything below it is silver brightening with value, so worth is legible at
  * a glance even before the number is readable.
  */
-function drawCoin(ctx: CanvasRenderingContext2D, x: number, y: number, cents: number): void {
+function drawCoin(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  cents: number,
+  spin = 0,
+): void {
+  // A disc turning about its vertical axis is just a circle whose width
+  // narrows to nothing and back. Cheaper than any sprite and it reads
+  // correctly, including the moment it goes edge-on.
+  const face = Math.cos(spin);
+  const squash = Math.abs(face);
   let fill: string;
   let rim: string;
   if (cents >= 100) {
@@ -57,17 +69,24 @@ function drawCoin(ctx: CanvasRenderingContext2D, x: number, y: number, cents: nu
     rim = `rgb(${l - 46},${l - 47},${l - 52})`;
   }
   ctx.beginPath();
-  ctx.ellipse(x, y, COIN_R, COIN_R, 0, 0, Math.PI * 2);
+  ctx.ellipse(x, y, Math.max(0.6, COIN_R * squash), COIN_R, 0, 0, Math.PI * 2);
   ctx.fillStyle = fill;
   ctx.fill();
   ctx.strokeStyle = rim;
   ctx.lineWidth = 2;
   ctx.stroke();
+  // Edge-on there is no face to print a number on.
+  if (squash < 0.45) return;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(squash, 1);
+  ctx.translate(-x, -y);
   ctx.fillStyle = "#2a2313";
   ctx.font = "bold 9px system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(cents >= 100 ? "$1" : String(cents), x, y);
+  ctx.restore();
 }
 
 /** A folded note. Shaped and coloured so it never reads as a big coin. */
@@ -103,17 +122,35 @@ function drawBill(ctx: CanvasRenderingContext2D, x: number, y: number, cents: nu
  * are landing *in* something. The mouth ellipse is also the collision surface,
  * so what is drawn and what catches are the same width by construction.
  */
-function drawCup(ctx: CanvasRenderingContext2D, x: number, cupW: number): void {
+/**
+ * `lean` tips the cup a few degrees into its travel. It is applied **here and
+ * nowhere else** — the catch test in the loop keeps using the upright mouth
+ * position. A tilt that moved the hitbox would quietly change how hard the
+ * game is, and difficulty is not a thing to alter while adding polish.
+ */
+function drawCup(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  cupW: number,
+  lean = 0,
+): void {
   const rx = cupW / 2;
   const footRx = rx * 0.74;
   const bottom = CUP_Y + CUP_BODY_H;
   const lip = rx * 1.04;
 
   // Contact shadow, so it sits on the floor rather than floating over it.
+  // Drawn before the tilt: the shadow stays on the ground while the cup leans.
   ctx.beginPath();
   ctx.ellipse(x, bottom, footRx * 1.15, 4, 0, 0, Math.PI * 2);
   ctx.fillStyle = "rgba(0,0,0,0.35)";
   ctx.fill();
+
+  // Everything from here leans. Pivoting at the base keeps the cup planted.
+  ctx.save();
+  ctx.translate(x, bottom);
+  ctx.rotate(lean);
+  ctx.translate(-x, -bottom);
 
   // Tapered body.
   const body = ctx.createLinearGradient(x - rx, 0, x + rx, 0);
@@ -254,6 +291,8 @@ function drawCup(ctx: CanvasRenderingContext2D, x: number, cupW: number): void {
   ctx.strokeStyle = "rgba(96,58,28,0.6)";
   ctx.lineWidth = 3;
   ctx.stroke();
+
+  ctx.restore();
 }
 
 /** Cents as dollars. Every amount in this game is a whole multiple of 5c. */
@@ -265,6 +304,19 @@ interface Coin {
   /** Value in cents. */
   v: number;
   vy: number;
+  /** Rotation phase. Purely cosmetic — nothing tests against it. */
+  spin: number;
+  /** Radians per second. */
+  spinRate: number;
+}
+
+/** A sparkle thrown when something lands in the cup. */
+interface Fleck {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
 }
 
 interface Props {
@@ -306,6 +358,9 @@ export function LooseChange({ chips, mods, onSettle }: Props) {
     keyLeft: false,
     keyRight: false,
     pointer: null as number | null,
+    flecks: [] as Fleck[],
+    /** Smoothed cup velocity, in px/s, for the draw-only lean. */
+    lean: 0,
     // Coins are already in the air on frame one. The rules are two lines and
     // the cup starts centred, so a "move to start" gate only ever read as the
     // game being broken for the first second.
@@ -404,7 +459,12 @@ export function LooseChange({ chips, mods, onSettle }: Props) {
           w.cup += Math.sign(gap) * step;
         }
       }
+      const moved = w.cup;
       w.cup = Math.max(m.cupW / 2, Math.min(W - m.cupW / 2, w.cup));
+      // Smoothed so the cup does not snap upright the instant a key is
+      // released. Cosmetic only — see drawCup.
+      const velocity = dt > 0 ? (w.cup - moved) / dt : 0;
+      w.lean += (velocity / CUP_SPEED - w.lean) * Math.min(1, dt * 9);
 
       // The tin only holds so much: once it is full the spill stops, which
       // is what ends the round for a player who is not watching the total.
@@ -418,6 +478,8 @@ export function LooseChange({ chips, mods, onSettle }: Props) {
             y: -COIN_R,
             v: rollCoin(m.weights),
             vy: FALL_SPEED + Math.random() * FALL_JITTER,
+            spin: Math.random() * Math.PI * 2,
+            spinRate: (Math.random() < 0.5 ? -1 : 1) * (2.2 + Math.random() * 3.4),
           });
         drop();
         // Pairs land at once rather than being metered out one at a time, so
@@ -428,6 +490,7 @@ export function LooseChange({ chips, mods, onSettle }: Props) {
       for (let i = w.coins.length - 1; i >= 0; i--) {
         const c = w.coins[i];
         c.y += c.vy * dt;
+        c.spin += c.spinRate * dt;
         const bill = c.v >= CHANGE_BILL_FROM;
         const hw = bill ? BILL_HW : COIN_R;
         const hh = bill ? BILL_HH : COIN_R;
@@ -442,6 +505,19 @@ export function LooseChange({ chips, mods, onSettle }: Props) {
           totalRef.current = Math.min(m.capCents, totalRef.current + c.v);
           setTotal(totalRef.current);
           setCaught((n) => n + 1);
+          // A little sparkle at the mouth, so a catch registers even when you
+          // are watching the next drop rather than the total.
+          if (!prefersReducedMotion()) {
+            for (let n = 0; n < 6; n++) {
+              w.flecks.push({
+                x: c.x,
+                y: CUP_Y,
+                vx: (Math.random() - 0.5) * 90,
+                vy: -40 - Math.random() * 90,
+                life: 1,
+              });
+            }
+          }
         } else if (c.y - hh > H) {
           // Missing costs nothing. There is no fail state here at all.
           w.coins.splice(i, 1);

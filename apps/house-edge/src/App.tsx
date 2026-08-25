@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCountUp } from "./ui/useCountUp";
 import type { SpinResult } from "./engine";
 import { colorOf } from "./engine";
 import { Wheel } from "./ui/Wheel";
@@ -249,13 +250,19 @@ export default function App() {
 
   const edge = edgeOf(state);
   const netClass = result ? (result.net > 0 ? "win" : result.net < 0 ? "loss" : "") : "";
+  // The roll-up has to finish inside one spin, or at high Croupier's Haste the
+  // figure would be permanently chasing a bankroll it never catches. Auto-spin
+  // at max haste lands every ~200ms, so the roll-up gets most of that and no
+  // more. Display only — `state.chips` is already correct underneath.
+  const rollMs = auto ? Math.min(450, interval * 0.5) : 450;
+  const shownChips = useCountUp(state.chips, rollMs);
 
   return (
     <div className="app">
       <header className="hud">
         <div className="stat">
           <span className="stat-label">Cash</span>
-          <b>{money(state.chips)}</b>
+          <b>{money(shownChips)}</b>
         </div>
         <div className="stat">
           <span className="stat-label">Stake</span>
@@ -350,7 +357,7 @@ export default function App() {
             </button>
           </div>
 
-          <div className="readout">
+          <div className="readout" key={spinKey}>
             {pending ? (
               <span className="muted">No more bets…</span>
             ) : result ? (
@@ -378,7 +385,9 @@ export default function App() {
                     ))}
                   </span>
                 )}
-                {state.streak > 1 && <span className="tag">{state.streak}× streak</span>}
+                {state.streak > 1 && (
+                  <span className="tag streak">{state.streak}× streak</span>
+                )}
               </>
             ) : (
               <span className="muted">Place a bet and spin.</span>
@@ -475,6 +484,7 @@ export default function App() {
             denom={denom}
             disabled={betsLocked}
             last={result?.pocket ?? null}
+            spinKey={spinKey}
             mode={mode}
             onPlace={place}
             onRemove={remove}

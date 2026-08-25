@@ -810,3 +810,108 @@
   border-color: var(--gold);
   font-weight: 700;
 }
+
+/* ---- motion -------------------------------------------------------------- */
+/* The app had no animation of any kind before this block, so this is the whole
+   vocabulary rather than an extension of one. Everything is short: at max
+   Croupier's Haste a spin lands every ~200ms, so anything longer would still be
+   running when the next result replaces it. */
+
+@keyframes pop {
+  from { transform: scale(1.22); }
+  to   { transform: scale(1); }
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes flash {
+  0%   { box-shadow: 0 0 0 0 rgba(201, 162, 39, 0.85); }
+  100% { box-shadow: 0 0 0 7px rgba(201, 162, 39, 0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.55; transform: scale(1.35); }
+}
+
+/* ---- the payoff moment --------------------------------------------------- */
+.readout .pocket {
+  animation: rise 220ms ease-out both;
+}
+
+.readout b {
+  display: inline-block;
+  animation: pop 260ms cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+
+.readout .tag,
+.readout .balls {
+  animation: rise 260ms ease-out both;
+  animation-delay: 60ms;
+}
+
+/* Winning cells. `.cell.hit` was already a static style; the flash is keyed to
+   the spin in BetLayout so it re-fires each time rather than sitting on. */
+.cell.hit {
+  animation: flash 620ms ease-out;
+}
+
+/* A streak is worth noticing, so let it grow with itself. Capped in App.tsx —
+   past a point a brighter tag stops meaning anything. */
+.tag.streak {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+/* ---- chrome -------------------------------------------------------------- */
+.pip {
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+.card.bought {
+  animation: flash 520ms ease-out;
+}
+
+.card.bought .card-level {
+  display: inline-block;
+  animation: pop 300ms cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+.panel,
+.table-view {
+  animation: rise 180ms ease-out;
+}
+
+.tabs button,
+.controls button,
+.buy {
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+/* ---- reduced motion ------------------------------------------------------ */
+/* Decorative motion only. The wheel keeps turning and the ball keeps flying —
+   that is the game, not an embellishment, and stopping it would leave nothing
+   to play. The canvas reads the same preference through ui/motion.ts. */
+@media (prefers-reduced-motion: reduce) {
+  .readout .pocket,
+  .readout b,
+  .readout .tag,
+  .readout .balls,
+  .cell.hit,
+  .pip,
+  .card.bought,
+  .card.bought .card-level,
+  .panel,
+  .table-view {
+    animation: none;
+  }
+
+  .tabs button,
+  .controls button,
+  .buy {
+    transition: none;
+  }
+}

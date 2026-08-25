@@ -10,6 +10,13 @@ interface Props {
   disabled: boolean;
   /** Pocket from the last settled spin, for win highlighting. */
   last: number | null;
+  /**
+   * Bumped once per spin. Used only as part of the React key on winning cells,
+   * so their flash animation restarts each result — a CSS animation on an
+   * element that merely keeps a class does not re-fire, and two spins landing
+   * on the same pocket would otherwise flash once and then sit lit.
+   */
+  spinKey: number;
   /** Whether a plain tap adds or takes back a stake. */
   mode: "add" | "remove";
   onPlace: (spotId: string) => void;
@@ -22,14 +29,23 @@ const OUTSIDE_ROWS: string[][] = [
   ["low", "even", "red", "black", "odd", "high"],
 ];
 
-export function BetLayout({ layout, denom, disabled, last, mode, onPlace, onRemove }: Props) {
+export function BetLayout({
+  layout,
+  denom,
+  disabled,
+  last,
+  spinKey,
+  mode,
+  onPlace,
+  onRemove,
+}: Props) {
   const cell = (id: string, label: string, className: string) => {
     const staked = layout[id] ?? 0;
     const spot = spotById(id);
     const hit = last !== null && spot !== undefined && covers(spot, last);
     return (
       <button
-        key={id}
+        key={hit ? `${id}:${spinKey}` : id}
         type="button"
         className={`cell ${className}${staked > 0 ? " staked" : ""}${hit ? " hit" : ""}`}
         disabled={disabled}

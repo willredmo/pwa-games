@@ -319,6 +319,70 @@ Spin button from firing its own click on top of the handler. Auto-repeat is
 dropped so a held key cannot queue a spin per repeat, and `doSpin` already
 refuses while a ball is in the air.
 
+## The animation layer
+
+Before this there was no animation anywhere outside the wheel — no keyframes,
+no transitions, no reduced-motion handling. Everything snapped.
+
+Three rules hold it together.
+
+**Presentation never reaches into physics.** The pocket is decided before
+anything is drawn, and every perturbation in `planSpin` is exactly zero at
+touchdown. Nothing in this layer adds to that: it is DOM/CSS, or additive paint
+on a `WheelView` that already existed. The invariant harnesses are re-run after
+any change here.
+
+**The renderer stays a painter.** `WheelView` gained `settledMs` (elapsed since
+the balls stopped) and `sparks` — a *fact* and a list of *positions*, never a
+verdict. Particle state lives in `Wheel.tsx`, which owns the rAF loop. The flare
+works out its own progress from `settledMs` rather than being told to celebrate.
+
+**Effects are measured in playback time, not wall time.** Everything ages by
+`dt * speed`, so a spin watched at 0.1x keeps its sparks in step with the ball
+instead of having them flick past while it crawls.
+
+### Contacts come from the solver, not from a second guess
+`SpinPlan.contacts` exposes what `planSpin` and `coupleBalls` already worked
+out: when each diamond is clipped and when balls meet. Re-deriving that in the
+renderer would be a second source of truth for the same event — the exact
+mistake the deflector-highlight code already warns about.
+
+Ball contacts are far more common than diamond strikes — **13.4 a spin against
+2.5** — so sparking every one is a constant shower that communicates nothing.
+Only knocks above `BALL_SPARK_MIN` are marked.
+
+### `TOUCH_FULL_SPEED` was wrong by two orders of magnitude
+Exposing `strength` revealed the bug. It was 1.2, and **every** ball contact
+clamped to exactly 1 — so the value carried no information, and the hop meant to
+scale with impact was applied at full force to balls barely drifting together,
+the opposite of what the surrounding comments claimed.
+
+Calibrating it needed the right distribution. Only *first* contact is recorded,
+and that is systematically the fastest moment of an encounter, so it runs far
+quicker than a sample across all overlapping frames (median 42 rad per unit
+flight against 4.5). At **120** fewer than 5% saturate and strength spreads
+across its range: p10 0.06, p50 0.36, p90 0.83.
+
+The lift it scales is decorative — it feeds `height`, not the separation solver
+— so the landing and overlap figures are unaffected, and were re-verified.
+
+### Cadence is the constraint that sizes everything
+At max Croupier's Haste plus a haste relic, a spin lands every **120–200ms**.
+So celebrations are short, and a new throw **cancels the previous one outright**
+by clearing sparks and the flare. The HUD roll-up shortens itself to the cadence
+in play (`interval * 0.5`), or the figure would permanently chase a bankroll it
+never catches. Measured under that load with four balls: **0 long frames, 0 JS
+errors** across 14 spins.
+
+### Things that must stay draw-only
+The Loose Change cup leans into its travel, applied inside `drawCup` and nowhere
+else. The catch test keeps using the upright mouth. A tilt that moved the hitbox
+would quietly change how hard the game is, and difficulty is not something to
+alter while adding polish.
+
+Balls also now launch spread around the track rather than all from angle 0,
+which previously stacked them on top of each other at the start of a cold spin.
+
 ## DEV scaffolding — remove before shipping
 
 Two testing controls live in the row under the wheel in `App.tsx`, and neither

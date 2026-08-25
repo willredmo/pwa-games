@@ -220,6 +220,15 @@ const HOP_PEAK = [0, 1, 2, 3].map((b) => {
   return m;
 });
 
+/** A moment the ball is hit by something, for the renderer to punctuate. */
+export interface Contact {
+  /** When, as a fraction of the whole flight. */
+  u: number;
+  kind: "deflector" | "ball";
+  /** 0..1-ish. How square the hit was. */
+  strength: number;
+}
+
 export interface SpinPlan {
   durationMs: number;
   /**
@@ -227,6 +236,14 @@ export interface SpinPlan {
    * it, or each would imply a different rotor angle for the same instant.
    */
   rotor: number;
+  /**
+   * Every knock this ball takes, in flight order. The solver already works all
+   * of this out — which diamonds the fall crosses, and where balls meet — and
+   * it was previously kept private, so anything wanting to mark the moment on
+   * screen would have had to re-derive the geometry and become a second source
+   * of truth for the same event. Purely informational: nothing reads it back.
+   */
+  contacts: readonly Contact[];
   sample(elapsedMs: number): SpinSample;
 }
 
@@ -483,9 +500,18 @@ export function planSpin(opts: {
     );
   }
 
+  // Strike positions are stored in fall-phase units; the renderer wants them
+  // against the whole flight.
+  const contacts: Contact[] = strikes.map((k) => ({
+    u: uRelease + k.s * (uLand - uRelease),
+    kind: "deflector" as const,
+    strength: Math.min(1, k.hard / 1.7),
+  }));
+
   return {
     durationMs,
     rotor,
+    contacts,
     sample(elapsedMs: number): SpinSample {
       const u = Math.max(0, Math.min(1, elapsedMs / durationMs));
       return {
@@ -512,8 +538,22 @@ const TOUCH_LIFT = 0.22;
  * stayed common (p90 penetration 79.9%) however hard the sideways push ran.
  */
 const TOUCH_CLIMB = 0.75;
-/** Closing speed, in radians per unit of flight, that counts as a full hit. */
-const TOUCH_FULL_SPEED = 1.2;
+/**
+ * Closing speed, in radians per unit of flight, that counts as a full hit.
+ *
+ * Was 1.2, which was wrong by two orders of magnitude and made `strength` carry
+ * no information: **every contact clamped to exactly 1**, so the hop meant to
+ * scale with how hard the balls met was applied at full force to a pair barely
+ * drifting together — the opposite of what the code around it describes.
+ *
+ * Calibrated against the distribution that actually matters. Only *first*
+ * contact is recorded, and that is systematically the fastest moment of an
+ * encounter, so it runs far quicker than a sample taken across all overlapping
+ * frames: p25 21, median 42, p95 119 rad per unit flight. At 120 fewer than 5%
+ * saturate, which leaves the value spread across its range with only genuinely
+ * hard knocks at the top.
+ */
+const TOUCH_FULL_SPEED = 120;
 /** Trajectory samples the contact solver works on. */
 const TOUCH_SAMPLES = 480;
 /** Relaxation passes. Pushing one pair apart can push it into a third ball. */
@@ -574,6 +614,8 @@ export function coupleBalls(plans: SpinPlan[]): SpinPlan[] {
   const lift: Float64Array[] = plans.map(() => new Float64Array(S + 1));
   /** Height added purely to clear another ball. */
   const climb: Float64Array[] = plans.map(() => new Float64Array(S + 1));
+  /** When each ball is struck by another, for the renderer to mark. */
+  const knocks: Contact[][] = plans.map(() => []);
 
   const touching = new Set<string>();
 
@@ -632,6 +674,8 @@ export function coupleBalls(plans: SpinPlan[]): SpinPlan[] {
                     wrapPi(prev.wheelAngle + prev.rel - (prevB.wheelAngle + prevB.rel)),
                 ) * S;
               const strength = Math.min(1, closing / TOUCH_FULL_SPEED);
+              knocks[i].push({ u: k / S, kind: "ball", strength });
+              knocks[j].push({ u: k / S, kind: "ball", strength });
               // A short hop for each of them, from the moment they meet.
               for (let m = k; m <= S; m++) {
                 const x = (m - k) / Math.max(1, S - k);
@@ -670,10 +714,12 @@ export function coupleBalls(plans: SpinPlan[]): SpinPlan[] {
     for (let k = 0; k <= S; k++) {
       if (dRel[k] !== 0 || dH[k] !== 0 || dC[k] !== 0) { moved = true; break; }
     }
-    if (!moved) return plan;
+    if (!moved && knocks[i].length === 0) return plan;
+    const contacts = [...plan.contacts, ...knocks[i]].sort((x, y) => x.u - y.u);
     return {
       durationMs: plan.durationMs,
       rotor: plan.rotor,
+      contacts,
       sample(elapsedMs: number): SpinSample {
         const s = plan.sample(elapsedMs);
         const u = Math.max(0, Math.min(1, elapsedMs / plan.durationMs));
