@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCountUp } from "./ui/useCountUp";
 import { winTier } from "./ui/celebration";
+import { Rules } from "./ui/Rules";
 import type { SpinResult } from "./engine";
 import { colorOf } from "./engine";
 import { Wheel } from "./ui/Wheel";
@@ -69,6 +70,9 @@ export default function App() {
   const [spinKey, setSpinKey] = useState(0);
   const [report, setReport] = useState<CatchUpReport | null>(null);
   const [speed, setSpeed] = useState<number>(1);
+  // Deliberately not part of GameState: which screen is open is not progress,
+  // and persisting it would reopen the rules on every reload.
+  const [rulesOpen, setRulesOpen] = useState(false);
 
   const resetEverything = useCallback(() => {
     if (!confirm("Wipe everything — cash, ivory and relics?")) return;
@@ -185,7 +189,7 @@ export default function App() {
    * handler.
    */
   useEffect(() => {
-    if (tab !== "table" || state.miniGame || state.offer) return;
+    if (tab !== "table" || state.miniGame || state.offer || rulesOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== "Space" && e.key !== " ") return;
       // A held key would otherwise queue a spin per repeat.
@@ -195,7 +199,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [tab, state.miniGame, state.offer]);
+  }, [tab, state.miniGame, state.offer, rulesOpen]);
 
   // --- betting ------------------------------------------------------------
   /**
@@ -316,6 +320,15 @@ export default function App() {
           onClick={() => setState((s) => ({ ...s, miniGame: true }))}
         >
           <span aria-hidden="true">☕</span>
+        </button>
+        <button
+          type="button"
+          className="tab-action"
+          title="How winnings work"
+          aria-label="How winnings work"
+          onClick={() => setRulesOpen(true)}
+        >
+          <span aria-hidden="true">?</span>
         </button>
       </nav>
 
@@ -541,6 +554,8 @@ export default function App() {
       {state.miniGame && (
         <LooseChange chips={state.chips} mods={changeMods(state.upgrades)} onSettle={(collected) => setState((s) => settleChange(s, collected))} />
       )}
+
+      {rulesOpen && <Rules state={state} onClose={() => setRulesOpen(false)} />}
 
       {state.offer && (
         <RelicOffer

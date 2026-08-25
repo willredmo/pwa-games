@@ -410,6 +410,29 @@ Verified by counting coin-gold pixels on the canvas across a settle: 28,407
 baseline against 30,415 at peak on a 35x win. Before the fix the two were
 identical, which is what exposed it.
 
+### The rules screen explains what cannot be observed
+`ui/Rules.tsx`, behind the **?** button in the tab row. It exists for two rules
+that are genuinely invisible during play and that nobody works out by watching:
+bonuses apply to a spin's **net** rather than to each bet, and a multi-ball spin
+pays only its **best** ball. The payout table people deduce on their own; those
+two they cannot.
+
+It also states the consequence directly — covering red and black nets zero — so
+the first thing anyone tries on noticing a payout multiplier is answered before
+they spend an hour on it.
+
+Two things keep it honest. The payout column is read from `OUTSIDE_SPOTS` and
+`STRAIGHT_PAYOUT` rather than retyped, so it cannot drift from what the table
+actually pays; the tier thresholds come from `celebration.ts` for the same
+reason. And it adapts: the multiplier shown is the player's live
+`edge.payoutMult`, and the best-ball section is hidden entirely until Second
+Ball is owned, so it never explains a mechanic that is not in play.
+
+`rulesOpen` is component state, not `GameState` — which screen is open is not
+progress, and persisting it would reopen the rules on every reload. It also
+joins the list of overlays that suppress the spacebar, so space cannot spin a
+wheel hidden behind it.
+
 ### Cadence is the constraint that sizes everything
 At max Croupier's Haste plus a haste relic, a spin lands every **120–200ms**.
 So celebrations are short, and a new throw **cancels the previous one outright**

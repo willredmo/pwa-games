@@ -958,3 +958,61 @@
     animation: none;
   }
 }
+
+/* ---- rules screen -------------------------------------------------------- */
+/* Left-aligned and scrollable, unlike the short centred overlays: this one is
+   read rather than glanced at, and centred prose is hard work at this length. */
+.overlay-inner.rules {
+  max-width: 520px;
+  max-height: min(82vh, 760px);
+  overflow-y: auto;
+  text-align: left;
+}
+
+.overlay-inner.rules h2 {
+  text-align: center;
+}
+
+.overlay-inner.rules h3 {
+  margin: 18px 0 6px;
+  font-size: 0.82rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.overlay-inner.rules h3:first-of-type {
+  margin-top: 12px;
+}
+
+.overlay-inner.rules .card-desc {
+  margin: 0 0 8px;
+}
+
+.overlay-inner.rules .buy {
+  margin-top: 18px;
+}
+
+.rule-list {
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.rule-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  border-bottom: 1px solid #232c26;
+  font-size: 0.88rem;
+}
+
+.rule-list li:last-child {
+  border-bottom: none;
+}
+
+.rule-list b {
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
