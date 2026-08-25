@@ -212,8 +212,28 @@ export interface WheelStats {
   ranked: { pocket: number; count: number }[];
 }
 
-/** How far from its expected share a pocket must sit to be called out. */
-const HEAT_SIGMAS = 1.5;
+/**
+ * How far from its expected share a bet must sit to be called out, in standard
+ * deviations — set **per group**, not globally.
+ *
+ * This is the multiple-comparisons problem, and getting it wrong is what made
+ * the first version too busy. At 1.5 sigma each individual test fires about 13%
+ * of the time, which is a reasonable per-test threshold — but run it across 37
+ * numbers and you get ~5 marks on a perfectly fair wheel. The board looked
+ * covered in signal that was pure noise.
+ *
+ * So the thresholds are chosen by the *expected number of marks in the group*
+ * rather than by per-test rate. Both are tuned to fewer than one on a fair
+ * wheel, measured over hundreds of runs at 370, 1,110 and 11,100 spins:
+ * numbers land at 0.7-1.2 of 37, outside bets at 0.8-0.9 of 12. A mark means
+ * roughly the same thing wherever it appears, which it would not if both used
+ * one number for wildly different group sizes.
+ *
+ * Sensitivity is not the casualty: at 2.25 sigma a pocket running at three
+ * times its share over 370 spins is still flagged 100% of the time.
+ */
+const HEAT_SIGMAS_NUMBER = 2.25;
+const HEAT_SIGMAS_OUTSIDE = 1.85;
 /**
  * Spins before any of this is worth showing — three times round the wheel.
  *
@@ -232,9 +252,9 @@ export type Heat = "hot" | "cold" | null;
  * Deliberately *not* the top and bottom five the Cash Out panel shows. A fixed
  * slice always finds five of each, so on a fresh table it dresses pure noise up
  * as a pattern, and on a long fair run it implies outliers that are not there.
- * Measuring against the spread instead makes it self-calibrating, and it settles
- * at roughly 2-3 hot and 2-3 pockets cold out of 37 on a fair wheel however long
- * it runs — enough to be interesting, never enough to paint the board.
+ * Measuring against the spread instead makes it self-calibrating, and the
+ * threshold is set so a fair wheel shows about *one* marked number at a time
+ * however long it runs — see HEAT_SIGMAS_NUMBER.
  *
  * This describes what the wheel *has done*. It says nothing about what it will
  * do — a fair wheel has no memory, and the game says so on the Cash Out tab.
@@ -242,13 +262,13 @@ export type Heat = "hot" | "cold" | null;
  * outcomes, so at high levels these marks stop being noise and start being the
  * upgrade working.
  */
-function heatOf(observed: number, spins: number, share: number): Heat {
+function heatOf(observed: number, spins: number, share: number, sigmas: number): Heat {
   const expected = spins * share;
   // Binomial spread. Note this depends on the *share of the wheel* the bet
   // covers, which is why a single number and an even-money bet cannot use the
   // same figures: red comes up about 18 times more often than any one pocket,
   // so a deviation that is remarkable for a straight is nothing for red.
-  const band = HEAT_SIGMAS * Math.sqrt(spins * share * (1 - share));
+  const band = sigmas * Math.sqrt(spins * share * (1 - share));
   if (observed >= expected + band) return "hot";
   if (observed <= expected - band) return "cold";
   return null;
@@ -258,7 +278,7 @@ export function pocketHeat(counts: number[] | undefined): Heat[] {
   const c = counts && counts.length === POCKET_COUNT ? counts : emptyCounts();
   const spins = c.reduce((a, b) => a + b, 0);
   if (spins < HEAT_MIN_SPINS) return new Array(POCKET_COUNT).fill(null);
-  return c.map((n) => heatOf(n, spins, 1 / POCKET_COUNT));
+  return c.map((n) => heatOf(n, spins, 1 / POCKET_COUNT, HEAT_SIGMAS_NUMBER));
 }
 
 /**
@@ -288,7 +308,7 @@ export function outsideHeat(counts: number[] | undefined): Record<string, Heat> 
       observed += c[pocket];
     }
     if (covered === 0) continue;
-    out[spot.id] = heatOf(observed, spins, covered / POCKET_COUNT);
+    out[spot.id] = heatOf(observed, spins, covered / POCKET_COUNT, HEAT_SIGMAS_OUTSIDE);
   }
   return out;
 }

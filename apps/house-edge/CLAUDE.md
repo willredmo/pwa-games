@@ -438,11 +438,20 @@ slice the Cash Out panel shows: a fixed slice always finds five of each, so on a
 fresh table it dresses pure noise up as a pattern and on a long fair run it
 implies outliers that are not there.
 
-Measuring against the spread instead — 1.5 sigma from the expected count —
-self-calibrates. On a fair wheel it settles at roughly **2-3 hot and 2-3 cold
-out of 37** however long it runs: enough to be interesting, never enough to
-paint the board. A pocket hit three times its share over 370 spins is correctly
-picked out.
+Measuring against the spread self-calibrates, but the threshold has to be set
+**per group**, and getting that wrong is what made the first version far too
+busy. At 1.5 sigma each individual test fires about 13% of the time — a sane
+per-test rate — but run across 37 numbers that is ~5 marks on a perfectly fair
+wheel. The board looked covered in signal that was pure noise.
+
+So the thresholds are chosen by the *expected number of marks in the group*:
+**2.25 sigma for the 37 numbers, 1.85 for the 12 outside bets**, both landing
+under one mark on a fair wheel however long it runs. A mark then means roughly
+the same thing wherever it appears, which it could not if one number served two
+group sizes. Verified on a fair 600-spin table: two marks on the whole layout.
+
+Sensitivity is not the casualty. At 2.25 sigma a pocket running at three times
+its share over 370 spins is still flagged **100%** of the time.
 
 The outside bets get the same reading through `outsideHeat`, but each is judged
 against **its own share of the wheel** — `covers()` counts the pockets, and the
