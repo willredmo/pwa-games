@@ -1,0 +1,438 @@
+.app {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.app__header {
+  text-align: center;
+}
+.app__header h1 {
+  margin: 0;
+  font-size: 1.4rem;
+  letter-spacing: 0.02em;
+}
+.app__subtitle {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.app__log {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #c8c2e2;
+}
+.app__hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #f0b429;
+}
+
+/* --- HP pools --- */
+.hpbar {
+  width: min(94vw, 30rem);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.hpbar__label {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.hpbar__track {
+  height: 0.7rem;
+  background: #14121f;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.hpbar__fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+.hpbar__fill--enemy {
+  background: #d1483a;
+}
+.hpbar__fill--player {
+  background: #3a86d6;
+}
+.hpbar__hp {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  min-width: 2.2rem;
+  text-align: right;
+}
+
+/* --- Board --- */
+.app__stage {
+  position: relative;
+  width: min(96vw, 30rem);
+}
+.app__board {
+  width: 100%;
+  height: 56dvh;
+  display: block;
+  /* `none` so a touch-drag on the board doesn't scroll the page instead. */
+  touch-action: none;
+}
+.app__board--dragging {
+  cursor: grabbing;
+}
+
+/* --- HUD --- */
+.hud {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.primary-btn {
+  font: inherit;
+  font-weight: 700;
+  padding: 0.55rem 1.3rem;
+  border: none;
+  border-radius: 9px;
+  background: #3a86d6;
+  color: #06203a;
+  cursor: pointer;
+}
+.ghost-btn {
+  font: inherit;
+  padding: 0.5rem 0.95rem;
+  border: 1px solid #3a3454;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+/* --- Unit offer --- */
+.hand {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.45rem;
+  width: min(94vw, 34rem);
+  min-height: 3.6rem;
+}
+.hand__empty {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  width: 5.2rem;
+  padding: 0.45rem 0.3rem;
+  border: 1px solid #3a3454;
+  border-radius: 9px;
+  background: #272338;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+.card {
+  cursor: grab;
+  touch-action: none;
+}
+.card--selected {
+  border-color: #f0b429;
+  box-shadow: 0 0 0 2px rgba(240, 180, 41, 0.4);
+}
+.card--dragging {
+  opacity: 0.35;
+  cursor: grabbing;
+}
+/* Out of picks: the remaining offers are inert, so they must read as inert. */
+.card:disabled {
+  opacity: 0.4;
+  cursor: default;
+  filter: saturate(0.4);
+}
+
+/* An offer already taken this round — visibly spent, not just dimmed. */
+.card--taken {
+  opacity: 0.45;
+  border-style: dashed;
+  background: #211d31;
+}
+.card--taken .card__name {
+  text-decoration: line-through;
+}
+
+/* Drag ghost — follows the pointer, never intercepts events. */
+.ghost {
+  position: fixed;
+  z-index: 50;
+  transform: translate(-50%, -50%) rotate(-2deg);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 9px;
+  background: #3a86d6;
+  color: #f4f2fb;
+  border: 1px solid #9ecbf5;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5);
+}
+.ghost__name {
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+.ghost__stats {
+  font-size: 0.76rem;
+  opacity: 0.9;
+}
+.card__name {
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+.card__stats {
+  display: flex;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.stat {
+  font-weight: 800;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+.stat--atk {
+  color: #ffc94d;
+}
+.stat--hp {
+  color: #5fe08f;
+}
+
+/* --- Overlays --- */
+.overlay {
+  position: absolute;
+  inset: 0;
+  /* Above anything drawn in the stage, so a modal is never partly covered. */
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6rem;
+  background: rgba(10, 8, 18, 0.78);
+  border-radius: 10px;
+  backdrop-filter: blur(2px);
+}
+.panel {
+  background: #272338;
+  border: 1px solid #3a3454;
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+  max-width: 100%;
+}
+.panel--wide {
+  width: 100%;
+}
+.panel--center {
+  text-align: center;
+}
+.panel--scroll {
+  max-height: 100%;
+  overflow-y: auto;
+}
+.panel h2 {
+  margin: 0 0 0.2rem;
+  font-size: 1.15rem;
+}
+.panel h3 {
+  margin: 1rem 0 0.4rem;
+  font-size: 0.95rem;
+}
+.panel__hint {
+  margin: 0 0 0.8rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+.panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.2rem;
+}
+.panel__head h2 {
+  margin: 0;
+}
+
+/* Keeps the title and its close button reachable in a scrolling panel —
+   otherwise Close scrolls out of view and the only way out is the backdrop. */
+/* The scrolling panel drops its own top padding: a sticky header with a
+   negative top margin still leaves a gap (sticky positions the *margin* box),
+   which content then scrolls through. The header supplies that padding instead. */
+.panel--scroll {
+  padding-top: 0;
+}
+.panel__head--sticky {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #272338;
+  margin: 0 -1.1rem 0.5rem;
+  padding: 0.9rem 1.1rem 0.6rem;
+  border-bottom: 1px solid #3a3454;
+  border-radius: 12px 12px 0 0;
+}
+
+.close-btn {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  display: grid;
+  place-items: center;
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  border: 1px solid #3a3454;
+  border-radius: 8px;
+  background: #322c4b;
+  color: var(--fg);
+  cursor: pointer;
+}
+.close-btn:hover {
+  border-color: #6a6390;
+}
+
+/* A ghost button acting as an on/off toggle (battle speed). */
+.ghost-btn--on {
+  border-color: #f0b429;
+  color: #f0b429;
+  background: rgba(240, 180, 41, 0.12);
+}
+
+.ghost-btn--sm {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+/* Tabs for switching between your upgrades and the opponent's. */
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+}
+.tab {
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid #3a3454;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.tab--on {
+  background: #3a86d6;
+  border-color: #3a86d6;
+  color: #06203a;
+}
+
+/* Shown while peeking at the board mid-augment-choice. Deliberately in normal
+   flow (not overlaying the board) so it can't cover the last unit slot. */
+.peek-back {
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.9rem;
+  padding: 0.55rem 1.2rem;
+  border: 1px solid #f0b429;
+  border-radius: 9px;
+  background: rgba(32, 29, 48, 0.95);
+  color: #f0b429;
+  cursor: pointer;
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.card-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  text-align: left;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #3d3760;
+  border-radius: 9px;
+  background: #2f2a47;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.card-row--static {
+  cursor: default;
+}
+.card-row:not(.card-row--static):hover {
+  border-color: #f0b429;
+}
+.card-row__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.card-row__name {
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+/* Matches the badge drawn on the unit — this listing is the legend for it. */
+.aura-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+.card-row__stats {
+  color: #f0b429;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+.card-row__desc {
+  color: #bdb7d6;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.12rem 0.4rem;
+  border-radius: 999px;
+}
+.tag--class {
+  background: #2f5d8a;
+  color: #d6ebff;
+}
+.tag--global {
+  background: #6b4b1f;
+  color: #ffe6b8;
+}
+.tag--synergy {
+  background: #4c3070;
+  color: #e8d6ff;
+}
+
+.rules {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: #bdb7d6;
+  font-size: 0.83rem;
+  line-height: 1.5;
+}
+.rules li {
+  margin-bottom: 0.3rem;
+}

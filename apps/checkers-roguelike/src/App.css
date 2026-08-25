@@ -1,0 +1,203 @@
+.app {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem 1rem calc(1.5rem + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.app__header {
+  text-align: center;
+}
+
+.app__header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  letter-spacing: 0.02em;
+}
+
+.app__subtitle {
+  margin: 0.25rem 0 0;
+  color: #9a9ab0;
+  font-size: 0.9rem;
+}
+
+.app__status {
+  min-height: 1.5rem;
+  font-size: 1.05rem;
+}
+
+.dot {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  vertical-align: middle;
+  margin-right: 0.15rem;
+}
+.dot--red {
+  background: #c0392b;
+}
+.dot--black {
+  background: #2c2c3a;
+  outline: 1px solid #6a6a80;
+}
+
+.app__stage {
+  position: relative;
+  width: min(92vw, 70dvh);
+}
+
+.app__board {
+  touch-action: manipulation;
+  border-radius: 8px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  display: block;
+}
+
+/* --- Overlays --- */
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem;
+  background: rgba(10, 10, 20, 0.72);
+  border-radius: 8px;
+  backdrop-filter: blur(2px);
+}
+
+.panel {
+  width: 100%;
+  max-width: 26rem;
+  background: #23233a;
+  border: 1px solid #37375a;
+  border-radius: 12px;
+  padding: 1.1rem;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.panel h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.2rem;
+}
+.panel--center {
+  text-align: center;
+}
+.panel__hint {
+  margin: 0.25rem 0 0.9rem;
+  color: #b9b9d0;
+  font-size: 0.92rem;
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  text-align: left;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid #3d3d63;
+  border-radius: 9px;
+  background: #2c2c47;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.card:hover {
+  border-color: #2ecc71;
+  background: #313152;
+}
+.card__name {
+  font-weight: 700;
+}
+.card__desc {
+  font-size: 0.85rem;
+  color: #b9b9d0;
+}
+
+.pieces {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+.piece-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  text-align: left;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid #3d3d63;
+  border-radius: 9px;
+  background: #2c2c47;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.piece-chip:hover:not(:disabled) {
+  border-color: #2ecc71;
+}
+.piece-chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.piece-chip__title {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.piece-chip__upgrades {
+  font-size: 0.78rem;
+  color: #a8a8c4;
+}
+
+.link-btn {
+  margin-top: 0.9rem;
+  background: none;
+  border: none;
+  color: #9ab7ff;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+.primary-btn {
+  margin-top: 0.6rem;
+  font: inherit;
+  font-weight: 700;
+  padding: 0.6rem 1.3rem;
+  border: none;
+  border-radius: 9px;
+  background: #2ecc71;
+  color: #10241a;
+  cursor: pointer;
+}
+
+.app__controls {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.app__controls button {
+  font: inherit;
+  padding: 0.6rem 1.2rem;
+  border: none;
+  border-radius: 8px;
+  background: #2ecc71;
+  color: #10241a;
+  font-weight: 600;
+  cursor: pointer;
+}
+.app__controls button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.app__controls button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

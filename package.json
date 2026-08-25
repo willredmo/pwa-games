@@ -1,0 +1,12 @@
+{
+  "name": "roguelike-games",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "dev:checkers": "pnpm --filter checkers-roguelike dev",
+    "dev:duel-deck": "pnpm --filter duel-deck dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "dev:house-edge": "pnpm --filter house-edge dev"
+  }
+}
