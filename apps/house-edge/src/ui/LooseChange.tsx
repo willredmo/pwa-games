@@ -36,7 +36,7 @@ const BILL_HH = 9;
  */
 const FALL_SPEED = 138;
 const FALL_JITTER = 26;
-const SPAWN_GAP = 250;
+/** Base gap between drops. Rush Hour shortens it — see `mods.spawnGap`. */
 /** Chance a spill drops two at once, so the floor is not a single file. */
 const SPAWN_DOUBLE = 0.45;
 
@@ -468,7 +468,7 @@ export function LooseChange({ chips, mods, onSettle }: Props) {
 
       w.nextSpawn -= dt * 1000;
       if (w.nextSpawn <= 0) {
-        w.nextSpawn = SPAWN_GAP * (0.7 + Math.random() * 0.6);
+        w.nextSpawn = m.spawnGap * (0.7 + Math.random() * 0.6);
         const drop = () =>
           w.coins.push({
             x: BILL_HW + Math.random() * (W - BILL_HW * 2),
@@ -499,18 +499,25 @@ export function LooseChange({ chips, mods, onSettle }: Props) {
           Math.abs(c.x - w.cup) <= m.cupW / 2 + hw * 0.5;
         if (inCup) {
           w.coins.splice(i, 1);
-          totalRef.current += c.v;
+          // Rolled per catch rather than applied to the take at the end, so the
+          // running total is always exactly what is in the cup.
+          const doubled = m.doubleChance > 0 && Math.random() < m.doubleChance;
+          totalRef.current += doubled ? c.v * 2 : c.v;
           setTotal(totalRef.current);
           setCaught((n) => n + 1);
           // A little sparkle at the mouth, so a catch registers even when you
           // are watching the next drop rather than the total.
           if (!prefersReducedMotion()) {
-            for (let n = 0; n < 6; n++) {
+            // A doubled catch throws a bigger, faster burst — the only way to
+            // tell one happened, since the total moves too fast to read.
+            const n = doubled ? 14 : 6;
+            const kick = doubled ? 1.8 : 1;
+            for (let k = 0; k < n; k++) {
               w.flecks.push({
                 x: c.x,
                 y: CUP_Y,
-                vx: (Math.random() - 0.5) * 90,
-                vy: -40 - Math.random() * 90,
+                vx: (Math.random() - 0.5) * 90 * kick,
+                vy: (-40 - Math.random() * 90) * kick,
                 life: 1,
               });
             }

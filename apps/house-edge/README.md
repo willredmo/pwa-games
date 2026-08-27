@@ -40,7 +40,7 @@ playing **Loose Change** rather than being handed money.
 
 ### Upgrades — the shop
 
-Eleven upgrades in two sections. **The Table** improves the wheel itself:
+Thirteen upgrades in two sections. **The Table** improves the wheel itself:
 
 | Upgrade | Effect |
 | --- | --- |
@@ -53,7 +53,8 @@ Eleven upgrades in two sections. **The Table** improves the wheel itself:
 | Long Shot | Extra payout on bets of 8:1 or better |
 | Second Ball | Extra balls per spin — the best single ball takes the spin |
 
-**Loose Change** upgrades the mini game: Wider Cup, Lucky Spill (better
+**Loose Change** upgrades the mini game: Wider Cup, Rush Hour (change falls
+faster), Double Take (a chance a catch counts twice), Lucky Spill (better
 denominations fall), Steady Hands (the cup drifts toward drops on its own, never
 faster than you can move it).
 

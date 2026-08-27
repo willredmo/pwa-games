@@ -26,7 +26,7 @@ layout needs roughly 5.3% back to break even against the zero, and level 3 gives
 - **Bets** — straights (35:1), dozens and columns (2:1), red/black, odd/even,
   high/low (1:1). `engine/bets.ts`. The zero loses every outside bet; that is
   the edge being modelled.
-- **11 upgrades** (`game/upgrades.ts`) and **15 relics** (`game/relics.ts`).
+- **13 upgrades** (`game/upgrades.ts`) and **15 relics** (`game/relics.ts`).
   Upgrades carry a `section` — `"table"` or `"change"` — and the shop groups by
   it, so the Loose Change upgrades do not bury the wheel's own.
 - **Loose Change** (`ui/LooseChange.tsx`) — the coin-catching mini game that
@@ -290,6 +290,39 @@ nickel exactly as common, which is not what the upgrade claims.
 Bills ($5/$10/$20) sit on the same curve with a boost, because on the raw curve
 they land at 0.5% between them — rare enough that most runs never show one,
 which makes them a mechanic nobody discovers.
+
+### Rush Hour and Double Take replaced the cap
+The Loose Change section lost its only capacity upgrade when the cap went, so it
+gained two that change the game instead of its ceiling:
+
+- **Rush Hour** shortens the gap between drops, 250ms down to 122ms at level 10.
+  Each level closes 16% of the *remaining* gap to a 95ms floor, which the curve
+  deliberately never reaches — below roughly 90ms the play area is a solid
+  curtain of coins and catching stops being a choice about which one to go for.
+- **Double Take** gives a 4-percentage-point chance per level, to 40%, that a
+  catch counts twice.
+
+Both are priced **linearly**, and for the same reason Tip Jar had to be. Rush
+Hour's benefit per level is flat and then declining (0.64 more drops a second at
+level 1, 0.48 by level 10) because of the floor, and Double Take's is a flat +4
+points. On the 1.6x curve Rush Hour first had, the last level cost $17,180 for
+about $5/min and the upgrade was dead well before its maximum. Flat benefit,
+flat price, so every level repays in roughly the same time.
+
+Double Take rolls **per catch**, not on the take at the end. That distinction is
+the reason it is not the flat payout multiplier that was deliberately removed
+earlier: a multiplier applied at the end makes the running total a lie while you
+are playing, where this keeps the number on screen exactly what is in the cup.
+
+Measured live over matched 30-second runs with Steady Hands driving the cup, so
+catching is consistent: catches went 207 to 320 (**1.55x**, Rush Hour) and value
+per catch 0.350 to 0.477 (**1.36x** against a predicted 1.40, Double Take), for
+$72.40 to $152.70 in total.
+
+Note the 1.55x against a 2.05x drop rate. More change falling means a cup that
+cannot reach all of it, so the catch *rate* falls as the spill thickens — the
+upgrade is self-limiting, which is worth knowing before anyone tries to fix the
+apparent shortfall.
 
 ### Tip Jar is retired
 It bought one thing — a higher collection ceiling — so removing the ceiling left

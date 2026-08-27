@@ -47,6 +47,38 @@ export const CHANGE_CUP_SPEED = 300;
 const CUP_WIDTH_STEP = 7;
 
 /**
+ * Milliseconds between drops in Loose Change before Rush Hour, and the floor it
+ * works toward. The floor is the point of the whole curve: below roughly 90ms
+ * the play area is a solid curtain of coins, and catching stops being a choice
+ * about which drop to go for. Each level closes a share of the *remaining* gap
+ * rather than a flat amount, so the upgrade can never overshoot into that.
+ */
+export const CHANGE_SPAWN_BASE = 250;
+export const CHANGE_SPAWN_FLOOR = 95;
+const SPAWN_STEP = 0.16;
+
+/**
+ * Chance a caught drop counts twice, per level of Double Take.
+ *
+ * Note this is *not* the flat payout multiplier the mini game used to have and
+ * which was deliberately taken out. That one scaled the whole take at the end,
+ * which made the number on screen a lie while you were playing. This resolves
+ * per catch, so the total shown is always exactly what you are holding.
+ */
+const DOUBLE_PER_LEVEL = 0.04;
+
+export function doubleChanceAt(level: number): number {
+  return Math.min(0.6, DOUBLE_PER_LEVEL * level);
+}
+
+export function spawnGapAt(level: number): number {
+  return (
+    CHANGE_SPAWN_FLOOR +
+    (CHANGE_SPAWN_BASE - CHANGE_SPAWN_FLOOR) * Math.pow(1 - SPAWN_STEP, level)
+  );
+}
+
+/**
  * Auto-spin interval before Haste and the Marathon relic. Deliberately slow:
  * at 900ms the ball had no time to ride the track, so auto-spin read as a
  * number generator rather than a wheel. Haste still buys back ~8x from here.
@@ -146,6 +178,37 @@ export const UPGRADES: Upgrade[] = [
     baseCost: 60,
     growth: 1.55,
     maxLevel: 8,
+    section: "change",
+  },
+  {
+    id: "cupRate",
+    name: "Rush Hour",
+    icon: "⋮⋮",
+    desc: (l) =>
+      `Change spills ${(CHANGE_SPAWN_BASE / spawnGapAt(l)).toFixed(2)}x as fast, ` +
+      `a drop every ${Math.round(spawnGapAt(l))}ms.`,
+    baseCost: 250,
+    // Linear, for the same reason Tip Jar had to be: each level closes a share
+    // of the *remaining* gap to the floor, so the drop rate it buys is flat and
+    // then declining — 0.64 more drops a second at level 1, 0.48 by level 10.
+    // On a 1.6x curve the last level cost $17,180 for about $5/min, and the
+    // upgrade was dead well before its maximum. Flat benefit, flat price, so
+    // every level pays for itself in roughly the same time.
+    growth: 1,
+    costStep: 250,
+    maxLevel: 10,
+    section: "change",
+  },
+  {
+    id: "cupDouble",
+    name: "Double Take",
+    icon: "❊",
+    desc: (l) => `${(doubleChanceAt(l) * 100).toFixed(0)}% chance a catch counts twice.`,
+    baseCost: 300,
+    // Each level is a flat +4 percentage points, so the price is flat too.
+    growth: 1,
+    costStep: 300,
+    maxLevel: 10,
     section: "change",
   },
   {
@@ -343,6 +406,10 @@ export interface ChangeMods {
   autoSpeed: number;
   /** Drop weights, already biased by Lucky Spill. */
   weights: number[];
+  /** Milliseconds between drops. */
+  spawnGap: number;
+  /** Chance a catch counts twice, 0..0.6. */
+  doubleChance: number;
 }
 
 export function changeMods(levels: UpgradeLevels): ChangeMods {
@@ -350,5 +417,7 @@ export function changeMods(levels: UpgradeLevels): ChangeMods {
     cupW: CHANGE_CUP_W + levelOf(levels, "cupWidth") * CUP_WIDTH_STEP,
     autoSpeed: autoSpeedAt(levelOf(levels, "cupAuto")),
     weights: changeWeights(levelOf(levels, "cupLuck")),
+    spawnGap: spawnGapAt(levelOf(levels, "cupRate")),
+    doubleChance: doubleChanceAt(levelOf(levels, "cupDouble")),
   };
 }
