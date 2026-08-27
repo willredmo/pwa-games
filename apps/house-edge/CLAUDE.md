@@ -291,6 +291,25 @@ Bills ($5/$10/$20) sit on the same curve with a boost, because on the raw curve
 they land at 0.5% between them — rare enough that most runs never show one,
 which makes them a mechanic nobody discovers.
 
+### A doubled catch is shown, not just banked
+Double Take resolves per catch and the running total moves far too fast to spot
+a coin counting twice, so a bigger sparkle alone said nothing about *why* it was
+bigger. A doubled catch now throws a gold burst and floats a **×2** above the
+cup.
+
+The label goes up regardless of `prefers-reduced-motion` — it reports what you
+were paid rather than decorating the moment, so the setting takes away the
+travel, not the information.
+
+**A caution for anyone editing `LooseChange.tsx`.** Coin tumble, catch sparkles
+and cup lean were all written once and silently never rendered: the paint block
+sits inside `if (ctx) {` at eight spaces, and the patch that added them was
+written against six. Everything compiled and every piece of *state* ran each
+frame — spins advanced, flecks were pushed, lean was integrated — with nothing
+drawn, and `flecks` grew without bound because the only code that removes them
+was in the block that never landed. A canvas effect that does not appear is not
+evidence the maths is wrong; check it is being painted at all first.
+
 ### Rush Hour and Double Take replaced the cap
 The Loose Change section lost its only capacity upgrade when the cap went, so it
 gained two that change the game instead of its ceiling:

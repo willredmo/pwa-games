@@ -317,6 +317,19 @@ interface Fleck {
   vx: number;
   vy: number;
   life: number;
+  /** Thrown by a doubled catch, so it reads as money rather than dust. */
+  gold?: boolean;
+}
+
+/**
+ * A floating label over the cup. Only Double Take uses it: the running total
+ * moves far too fast to notice a catch counting twice, and a bigger sparkle
+ * alone was not legible as *why* it was bigger.
+ */
+interface Pop {
+  x: number;
+  y: number;
+  life: number;
 }
 
 interface Props {
@@ -359,6 +372,7 @@ export function LooseChange({ chips, mods, onSettle }: Props) {
     keyRight: false,
     pointer: null as number | null,
     flecks: [] as Fleck[],
+    pops: [] as Pop[],
     /** Smoothed cup velocity, in px/s, for the draw-only lean. */
     lean: 0,
     // Coins are already in the air on frame one. The rules are two lines and
@@ -510,7 +524,7 @@ export function LooseChange({ chips, mods, onSettle }: Props) {
           if (!prefersReducedMotion()) {
             // A doubled catch throws a bigger, faster burst — the only way to
             // tell one happened, since the total moves too fast to read.
-            const n = doubled ? 14 : 6;
+            const n = doubled ? 16 : 6;
             const kick = doubled ? 1.8 : 1;
             for (let k = 0; k < n; k++) {
               w.flecks.push({
@@ -519,9 +533,14 @@ export function LooseChange({ chips, mods, onSettle }: Props) {
                 vx: (Math.random() - 0.5) * 90 * kick,
                 vy: (-40 - Math.random() * 90) * kick,
                 life: 1,
+                gold: doubled,
               });
             }
           }
+          // The label goes up whatever the motion preference: it is telling you
+          // what you were paid, not decorating the moment. Reduced motion takes
+          // away the travel, not the information.
+          if (doubled) w.pops.push({ x: c.x, y: CUP_Y - 8, life: 1 });
         } else if (c.y - hh > H) {
           // Missing costs nothing. There is no fail state here at all.
           w.coins.splice(i, 1);
@@ -545,10 +564,58 @@ export function LooseChange({ chips, mods, onSettle }: Props) {
 
         for (const c of w.coins) {
           if (c.v >= CHANGE_BILL_FROM) drawBill(ctx, c.x, c.y, c.v);
-          else drawCoin(ctx, c.x, c.y, c.v);
+          else drawCoin(ctx, c.x, c.y, c.v, c.spin);
         }
 
-        drawCup(ctx, w.cup, m.cupW);
+        for (let i = w.flecks.length - 1; i >= 0; i--) {
+          const f = w.flecks[i];
+          f.life -= dt * 2.4;
+          if (f.life <= 0) {
+            w.flecks.splice(i, 1);
+            continue;
+          }
+          f.x += f.vx * dt;
+          f.y += f.vy * dt;
+          f.vy += 260 * dt;
+          ctx.beginPath();
+          ctx.ellipse(f.x, f.y, 1.6 + f.life, 1.6 + f.life, 0, 0, Math.PI * 2);
+          ctx.fillStyle = f.gold
+            ? `rgba(240, 198, 78, ${0.95 * f.life})`
+            : `rgba(240, 226, 170, ${0.8 * f.life})`;
+          ctx.fill();
+        }
+
+        // Lean is capped well short of tipping: the cup is being carried, not
+        // thrown. Drawn tilted, tested upright — see drawCup.
+        drawCup(ctx, w.cup, m.cupW, prefersReducedMotion() ? 0 : w.lean * 0.16);
+
+        // Above the cup, so a doubled catch is never hidden behind it.
+        for (let i = w.pops.length - 1; i >= 0; i--) {
+          const q = w.pops[i];
+          q.life -= dt * 1.3;
+          if (q.life <= 0) {
+            w.pops.splice(i, 1);
+            continue;
+          }
+          const age = 1 - q.life;
+          const rise = prefersReducedMotion() ? 0 : age * 30;
+          // A quick overshoot on the way in, settling to full size.
+          const scale = 1 + Math.max(0, 0.45 - age * 2.2);
+          ctx.save();
+          ctx.globalAlpha = Math.min(1, q.life * 1.8);
+          ctx.translate(q.x, q.y - rise);
+          ctx.scale(scale, scale);
+          ctx.font = "bold 15px system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          // Outlined: it passes over both the dark floor and the pale cup.
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = "rgba(0,0,0,0.65)";
+          ctx.strokeText("\u00d72", 0, 0);
+          ctx.fillStyle = "#f5d36b";
+          ctx.fillText("\u00d72", 0, 0);
+          ctx.restore();
+        }
       }
 
       frame = requestAnimationFrame(loop);
