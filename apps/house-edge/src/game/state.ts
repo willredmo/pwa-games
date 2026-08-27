@@ -690,11 +690,21 @@ export function save(state: GameState): void {
  * closed that structurally — a rebate now comes off a net loss and cannot carry
  * a spin above zero. Gilded Payouts stays retired: a flat multiplier on every
  * win is a different thing from softening a loss, and Ivory fills that role.
+ *
+ * Tip Jar went when Loose Change lost its collection cap. It bought nothing
+ * else — its entire effect was raising that ceiling — so with no ceiling it is
+ * an upgrade that does literally nothing, which is worse than an absent one.
  */
-const RETIRED_UPGRADES = ["payout"] as const;
+const RETIRED_UPGRADES = ["payout", "cupCap"] as const;
 /** The original curves, kept only to price the refund. */
 const RETIRED_REFUND: Record<string, (level: number) => number> = {
   payout: (l) => sumGeometric(150, 1.16, l),
+  // Tip Jar was linear: 120 + 120 * level.
+  cupCap: (l) => {
+    let total = 0;
+    for (let i = 0; i < l; i++) total += 120 + 120 * i;
+    return total;
+  },
 };
 function sumGeometric(base: number, growth: number, levels: number): number {
   let total = 0;

@@ -26,7 +26,7 @@ layout needs roughly 5.3% back to break even against the zero, and level 3 gives
 - **Bets** — straights (35:1), dozens and columns (2:1), red/black, odd/even,
   high/low (1:1). `engine/bets.ts`. The zero loses every outside bet; that is
   the edge being modelled.
-- **12 upgrades** (`game/upgrades.ts`) and **15 relics** (`game/relics.ts`).
+- **11 upgrades** (`game/upgrades.ts`) and **15 relics** (`game/relics.ts`).
   Upgrades carry a `section` — `"table"` or `"change"` — and the shop groups by
   it, so the Loose Change upgrades do not bury the wheel's own.
 - **Loose Change** (`ui/LooseChange.tsx`) — the coin-catching mini game that
@@ -245,11 +245,22 @@ Rules, all of which are the result of deliberate removals:
   ($20, tied to `HOUSE_STAKE` so the line and the floor are the same event).
   Measuring the two together matters: someone arriving with $15 already has most
   of a stake and should not have to earn the whole thing again.
-- **What bounds it is the tin, not difficulty.** With no lives, no clock and no
-  forced ending, nothing else stops a patient player scrambling all night. The
-  spill stops dead at `capCents` (Tip Jar, $20 at level 0). The drop speed is
-  deliberately **constant** — a difficulty ramp on an untimed game only punishes
-  a long run.
+- **Nothing bounds it at all any more.** There are no lives, no clock, no
+  forced ending and, since the collection cap was removed, no ceiling either —
+  a patient player can scramble all night. The drop speed is deliberately
+  **constant**, because a difficulty ramp on an untimed game only punishes a
+  long run.
+
+  Measured: 5.8 drops a second at a mean of 37.8c, so **$131/min if you caught
+  every single one**, and $33-79/min at a realistic 25-60% catch rate. Lucky
+  Spill at max raises the ceiling to $367/min. That is a lot against a $400
+  start and it removes any obligation to gamble early, though it stays
+  irrelevant once the table scales, and the first Ivory needs a $1M peak —
+  about 127 hours of scrambling — so prestige is not reachable this way.
+
+  If it ever needs curbing, the levers are a cooldown on opening it, excluding
+  its winnings from `peak`, or bringing back a ceiling. The cap was the old
+  answer and it is gone deliberately.
 
 ### The floor is on the resulting bankroll, not on the payout
 `changePayout(chips, cents)` returns `max(HOUSE_STAKE, chips + value) - chips`.
@@ -279,6 +290,12 @@ nickel exactly as common, which is not what the upgrade claims.
 Bills ($5/$10/$20) sit on the same curve with a boost, because on the raw curve
 they land at 0.5% between them — rare enough that most runs never show one,
 which makes them a mechanic nobody discovers.
+
+### Tip Jar is retired
+It bought one thing — a higher collection ceiling — so removing the ceiling left
+an upgrade that did literally nothing, which is worse than an absent one. It is
+in `RETIRED_UPGRADES` and old saves get the spend back at its original linear
+`120 + 120 * level` curve.
 
 ### Steady Hands never outruns the player
 `autoSpeedAt` is capped at `CHANGE_CUP_SPEED` by construction, and the drift

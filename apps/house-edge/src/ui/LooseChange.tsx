@@ -466,11 +466,8 @@ export function LooseChange({ chips, mods, onSettle }: Props) {
       const velocity = dt > 0 ? (w.cup - moved) / dt : 0;
       w.lean += (velocity / CUP_SPEED - w.lean) * Math.min(1, dt * 9);
 
-      // The tin only holds so much: once it is full the spill stops, which
-      // is what ends the round for a player who is not watching the total.
-      const full = totalRef.current >= m.capCents;
       w.nextSpawn -= dt * 1000;
-      if (!full && w.nextSpawn <= 0) {
+      if (w.nextSpawn <= 0) {
         w.nextSpawn = SPAWN_GAP * (0.7 + Math.random() * 0.6);
         const drop = () =>
           w.coins.push({
@@ -502,7 +499,7 @@ export function LooseChange({ chips, mods, onSettle }: Props) {
           Math.abs(c.x - w.cup) <= m.cupW / 2 + hw * 0.5;
         if (inCup) {
           w.coins.splice(i, 1);
-          totalRef.current = Math.min(m.capCents, totalRef.current + c.v);
+          totalRef.current += c.v;
           setTotal(totalRef.current);
           setCaught((n) => n + 1);
           // A little sparkle at the mouth, so a catch registers even when you
@@ -588,12 +585,8 @@ export function LooseChange({ chips, mods, onSettle }: Props) {
           <span>
             Caught <b>{caught}</b>
           </span>
-          <span className={total >= mods.capCents ? "win" : armed ? "win" : "muted"}>
-            {total >= mods.capCents
-              ? "Tin full"
-              : armed
-                ? `Yours to take · ${dollars(mods.capCents)} max`
-                : `${dollars(toGo)} to go`}
+          <span className={armed ? "win" : "muted"}>
+            {armed ? "Yours to take · stop whenever" : `${dollars(toGo)} to go`}
           </span>
           <span className="change-total">
             <b>{dollars(total)}</b>

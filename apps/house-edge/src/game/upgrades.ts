@@ -45,9 +45,6 @@ export const CHANGE_CUP_W = 54;
 /** The cup's speed. Auto-move is measured against this and never exceeds it. */
 export const CHANGE_CUP_SPEED = 300;
 const CUP_WIDTH_STEP = 7;
-/** Cents of change you can hold in one scramble, and what a level adds. */
-export const CHANGE_CAP_BASE = 2_000;
-export const CHANGE_CAP_STEP = 2_000;
 
 /**
  * Auto-spin interval before Haste and the Marathon relic. Deliberately slow:
@@ -149,20 +146,6 @@ export const UPGRADES: Upgrade[] = [
     baseCost: 60,
     growth: 1.55,
     maxLevel: 8,
-    section: "change",
-  },
-  {
-    id: "cupCap",
-    name: "Tip Jar",
-    icon: "▤",
-    desc: (l) => `Hold up to $${(CHANGE_CAP_BASE + l * CHANGE_CAP_STEP) / 100} of change in one go.`,
-    baseCost: 120,
-    // Linear, to match a cap that grows by a flat $20 a level. On the old 1.7x
-    // curve a level cost 40M by the top while still buying the same $15, so the
-    // upgrade was dead from about level six.
-    growth: 1,
-    costStep: 120,
-    maxLevel: 25,
     section: "change",
   },
   {
@@ -360,8 +343,6 @@ export interface ChangeMods {
   autoSpeed: number;
   /** Drop weights, already biased by Lucky Spill. */
   weights: number[];
-  /** Most change one scramble can hold, in cents. */
-  capCents: number;
 }
 
 export function changeMods(levels: UpgradeLevels): ChangeMods {
@@ -369,6 +350,5 @@ export function changeMods(levels: UpgradeLevels): ChangeMods {
     cupW: CHANGE_CUP_W + levelOf(levels, "cupWidth") * CUP_WIDTH_STEP,
     autoSpeed: autoSpeedAt(levelOf(levels, "cupAuto")),
     weights: changeWeights(levelOf(levels, "cupLuck")),
-    capCents: CHANGE_CAP_BASE + levelOf(levels, "cupCap") * CHANGE_CAP_STEP,
   };
 }

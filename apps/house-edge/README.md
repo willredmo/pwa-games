@@ -40,7 +40,7 @@ playing **Loose Change** rather than being handed money.
 
 ### Upgrades — the shop
 
-Twelve upgrades in two sections. **The Table** improves the wheel itself:
+Eleven upgrades in two sections. **The Table** improves the wheel itself:
 
 | Upgrade | Effect |
 | --- | --- |
@@ -53,9 +53,9 @@ Twelve upgrades in two sections. **The Table** improves the wheel itself:
 | Long Shot | Extra payout on bets of 8:1 or better |
 | Second Ball | Extra balls per spin — the best single ball takes the spin |
 
-**Loose Change** upgrades the mini game: Wider Cup, Tip Jar (how much you can
-hold), Lucky Spill (better denominations fall), Steady Hands (the cup drifts
-toward drops on its own, never faster than you can move it).
+**Loose Change** upgrades the mini game: Wider Cup, Lucky Spill (better
+denominations fall), Steady Hands (the cup drifts toward drops on its own, never
+faster than you can move it).
 
 > Note: buying **Hire a Croupier** produces no visible change in the shop. It
 > unlocks an **Auto** button in the bet controls on the Table tab, and it starts
@@ -91,10 +91,10 @@ granted** — open Loose Change from the ☕ button and catch the spill.
 
 - Move with **A/D** or the **arrow keys**; dragging works too.
 - **No fail state and no clock.** Missing a drop costs nothing.
-- You can stop once bankroll plus change in hand reaches **$20**.
-- What bounds it is the tin, not difficulty: the spill stops at your Tip Jar
-  cap. Drop speed is constant on purpose — a difficulty ramp on an untimed game
-  only punishes a long run.
+- You can stop once bankroll plus change in hand reaches **$20**, and there is
+  no upper limit — keep going as long as you like.
+- Drop speed is constant on purpose: a difficulty ramp on an untimed game only
+  punishes a long run.
 
 ---
 
