@@ -291,6 +291,26 @@ Bills ($5/$10/$20) sit on the same curve with a boost, because on the raw curve
 they land at 0.5% between them — rare enough that most runs never show one,
 which makes them a mechanic nobody discovers.
 
+### Dollars sparkle; nothing tumbles
+The $1 coin and the notes carry a breathing halo and three star glints; the cent
+coins are drawn plain. That is the whole hierarchy — 2.6% of drops are worth a
+dollar or more at Lucky Spill 0, rising to 9.5% at max, so the sparkle stays
+rare enough to mean "go for that one" rather than becoming the background.
+
+The glints are a pure function of the clock and a per-coin `phase`, so they need
+no per-frame state and no update pass — only `Coin.phase`, drawn from the same
+random spawn that used to seed the rotation.
+
+Two things learned tuning it. The stars are **floored at 0.45** rather than
+riding a bare sine: unfloored, each spent half its cycle at zero and a dollar
+looked plain most of the time. And they are drawn **outside** the note's
+rotation, so they stay square to the screen instead of tilting with it.
+
+Coins no longer tumble. The spin was cheap and correct — a disc turning about
+its vertical axis is just a circle whose width narrows to nothing — but it
+competed with the sparkle for the same job of drawing the eye, and the sparkle
+carries information the spin did not.
+
 ### A doubled catch is shown, not just banked
 Double Take resolves per catch and the running total moves far too fast to spot
 a coin counting twice, so a bigger sparkle alone said nothing about *why* it was

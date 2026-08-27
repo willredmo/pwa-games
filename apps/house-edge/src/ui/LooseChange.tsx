@@ -46,21 +46,45 @@ const SPAWN_DOUBLE = 0.45;
  * everything below it is silver brightening with value, so worth is legible at
  * a glance even before the number is readable.
  */
+/**
+ * A four-point star. Long thin spikes rather than a blurred dot, because a
+ * soft blob at this size reads as the coin being out of focus.
+ */
+function glint(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  alpha: number,
+): void {
+  if (alpha <= 0.01) return;
+  ctx.beginPath();
+  ctx.moveTo(x, y - r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.quadraticCurveTo(x, y, x, y + r);
+  ctx.quadraticCurveTo(x, y, x - r, y);
+  ctx.quadraticCurveTo(x, y, x, y - r);
+  ctx.fillStyle = `rgba(255,250,225,${alpha})`;
+  ctx.fill();
+}
+
+/**
+ * `t` is seconds since the round began and `phase` is the coin's own offset.
+ * Together they drive the twinkle, which is why the sparkle needs neither
+ * per-frame state nor an update pass — it is a pure function of the clock.
+ */
 function drawCoin(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
   cents: number,
-  spin = 0,
+  t = 0,
+  phase = 0,
 ): void {
-  // A disc turning about its vertical axis is just a circle whose width
-  // narrows to nothing and back. Cheaper than any sprite and it reads
-  // correctly, including the moment it goes edge-on.
-  const face = Math.cos(spin);
-  const squash = Math.abs(face);
   let fill: string;
   let rim: string;
-  if (cents >= 100) {
+  const rich = cents >= SPARKLE_FROM;
+  if (rich) {
     fill = "#d9b64a";
     rim = "#8c7420";
   } else {
@@ -68,29 +92,70 @@ function drawCoin(
     fill = `rgb(${l},${l - 3},${l - 10})`;
     rim = `rgb(${l - 46},${l - 47},${l - 52})`;
   }
+
+  if (rich) {
+    // A warm halo, so a dollar is findable in a crowded field before you can
+    // read the face on it.
+    // It breathes rather than sitting still, which is what makes it catch the
+    // eye among two dozen static discs.
+    const pulse = prefersReducedMotion() ? 0.5 : 0.5 + 0.5 * Math.sin(t * 3.4 + phase);
+    const hr = COIN_R * (2.1 + 0.5 * pulse);
+    const halo = ctx.createRadialGradient(x, y, COIN_R * 0.55, x, y, hr);
+    halo.addColorStop(0, `rgba(255, 220, 120, ${0.4 + 0.22 * pulse})`);
+    halo.addColorStop(1, "rgba(255, 214, 110, 0)");
+    ctx.beginPath();
+    ctx.ellipse(x, y, hr, hr, 0, 0, Math.PI * 2);
+    ctx.fillStyle = halo;
+    ctx.fill();
+  }
+
   ctx.beginPath();
-  ctx.ellipse(x, y, Math.max(0.6, COIN_R * squash), COIN_R, 0, 0, Math.PI * 2);
+  ctx.ellipse(x, y, COIN_R, COIN_R, 0, 0, Math.PI * 2);
   ctx.fillStyle = fill;
   ctx.fill();
   ctx.strokeStyle = rim;
   ctx.lineWidth = 2;
   ctx.stroke();
-  // Edge-on there is no face to print a number on.
-  if (squash < 0.45) return;
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(squash, 1);
-  ctx.translate(-x, -y);
+
   ctx.fillStyle = "#2a2313";
   ctx.font = "bold 9px system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(cents >= 100 ? "$1" : String(cents), x, y);
-  ctx.restore();
+
+  if (!rich) return;
+  // Two stars on opposite beats, so there is almost always one lit without
+  // both firing together and reading as a flash.
+  // Three stars on staggered beats, floored at 0.45 so a dollar sparkles
+  // continuously. An unfloored sine spent half its cycle invisible, which left
+  // the coin looking plain most of the time.
+  const still = prefersReducedMotion();
+  const beat = (k: number) =>
+    still ? 0.8 : 0.45 + 0.55 * Math.max(0, Math.sin(t * 3.4 + phase + k * 2.1));
+  glint(ctx, x - COIN_R * 0.6, y - COIN_R * 0.62, COIN_R * 1.5, beat(0));
+  glint(ctx, x + COIN_R * 0.66, y + COIN_R * 0.52, COIN_R * 1.1, beat(1) * 0.85);
+  glint(ctx, x + COIN_R * 0.5, y - COIN_R * 0.72, COIN_R * 0.8, beat(2) * 0.7);
 }
 
 /** A folded note. Shaped and coloured so it never reads as a big coin. */
-function drawBill(ctx: CanvasRenderingContext2D, x: number, y: number, cents: number): void {
+function drawBill(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  cents: number,
+  t = 0,
+  phase = 0,
+): void {
+  // Notes get the same halo as a dollar coin. They are the rarest thing that
+  // falls, and without it a $20 is quieter on screen than a $1.
+  const halo = ctx.createRadialGradient(x, y, BILL_HW * 0.5, x, y, BILL_HW * 1.9);
+  halo.addColorStop(0, "rgba(180, 255, 200, 0.28)");
+  halo.addColorStop(1, "rgba(180, 255, 200, 0)");
+  ctx.beginPath();
+  ctx.ellipse(x, y, BILL_HW * 1.9, BILL_HW * 1.9, 0, 0, Math.PI * 2);
+  ctx.fillStyle = halo;
+  ctx.fill();
+
   ctx.save();
   ctx.translate(x, y);
   // A slight tilt keyed to position, so a drift of notes is not a stack of
@@ -114,6 +179,15 @@ function drawBill(ctx: CanvasRenderingContext2D, x: number, y: number, cents: nu
   ctx.textBaseline = "middle";
   ctx.fillText(`$${cents / 100}`, 0, 0);
   ctx.restore();
+
+  // Outside the rotation, so the stars stay square to the screen rather than
+  // tilting with the note.
+  const still = prefersReducedMotion();
+  const beat = (k: number) =>
+    still ? 0.8 : 0.45 + 0.55 * Math.max(0, Math.sin(t * 3.1 + phase + k * 2.1));
+  glint(ctx, x - BILL_HW * 0.72, y - BILL_HH * 0.85, BILL_HW * 1.1, beat(0));
+  glint(ctx, x + BILL_HW * 0.78, y + BILL_HH * 0.75, BILL_HW * 0.8, beat(1) * 0.85);
+  glint(ctx, x, y - BILL_HH * 1.15, BILL_HW * 0.6, beat(2) * 0.7);
 }
 
 /**
@@ -304,11 +378,15 @@ interface Coin {
   /** Value in cents. */
   v: number;
   vy: number;
-  /** Rotation phase. Purely cosmetic — nothing tests against it. */
-  spin: number;
-  /** Radians per second. */
-  spinRate: number;
+  /**
+   * Twinkle offset, so the dollars do not all glint on the same beat. Purely
+   * cosmetic — nothing tests against it.
+   */
+  phase: number;
 }
+
+/** At or above this, a drop is a "dollar" and gets the sparkle treatment. */
+const SPARKLE_FROM = 100;
 
 /** A sparkle thrown when something lands in the cup. */
 interface Fleck {
@@ -489,8 +567,7 @@ export function LooseChange({ chips, mods, onSettle }: Props) {
             y: -COIN_R,
             v: rollCoin(m.weights),
             vy: FALL_SPEED + Math.random() * FALL_JITTER,
-            spin: Math.random() * Math.PI * 2,
-            spinRate: (Math.random() < 0.5 ? -1 : 1) * (2.2 + Math.random() * 3.4),
+            phase: Math.random() * Math.PI * 2,
           });
         drop();
         // Pairs land at once rather than being metered out one at a time, so
@@ -501,7 +578,6 @@ export function LooseChange({ chips, mods, onSettle }: Props) {
       for (let i = w.coins.length - 1; i >= 0; i--) {
         const c = w.coins[i];
         c.y += c.vy * dt;
-        c.spin += c.spinRate * dt;
         const bill = c.v >= CHANGE_BILL_FROM;
         const hw = bill ? BILL_HW : COIN_R;
         const hh = bill ? BILL_HH : COIN_R;
@@ -548,6 +624,7 @@ export function LooseChange({ chips, mods, onSettle }: Props) {
       }
 
       // --- paint ---
+      const clock = now / 1000;
       const dpr = Math.min(window.devicePixelRatio || 1, 3);
       if (canvas.width !== W * dpr) {
         canvas.width = W * dpr;
@@ -563,8 +640,8 @@ export function LooseChange({ chips, mods, onSettle }: Props) {
         ctx.fillRect(0, 0, W, H);
 
         for (const c of w.coins) {
-          if (c.v >= CHANGE_BILL_FROM) drawBill(ctx, c.x, c.y, c.v);
-          else drawCoin(ctx, c.x, c.y, c.v, c.spin);
+          if (c.v >= CHANGE_BILL_FROM) drawBill(ctx, c.x, c.y, c.v, clock, c.phase);
+          else drawCoin(ctx, c.x, c.y, c.v, clock, c.phase);
         }
 
         for (let i = w.flecks.length - 1; i >= 0; i--) {
