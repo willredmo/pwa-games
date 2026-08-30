@@ -26,7 +26,7 @@ layout needs roughly 5.3% back to break even against the zero, and level 3 gives
 - **Bets** — straights (35:1), dozens and columns (2:1), red/black, odd/even,
   high/low (1:1). `engine/bets.ts`. The zero loses every outside bet; that is
   the edge being modelled.
-- **13 upgrades** (`game/upgrades.ts`) and **15 relics** (`game/relics.ts`).
+- **12 upgrades** (`game/upgrades.ts`) and **15 relics** (`game/relics.ts`).
   Upgrades carry a `section` — `"table"` or `"change"` — and the shop groups by
   it, so the Loose Change upgrades do not bury the wheel's own.
 - **Loose Change** (`ui/LooseChange.tsx`) — the coin-catching mini game that
@@ -362,6 +362,16 @@ Note the 1.55x against a 2.05x drop rate. More change falling means a cup that
 cannot reach all of it, so the catch *rate* falls as the spill thickens — the
 upgrade is self-limiting, which is worth knowing before anyone tries to fix the
 apparent shortfall.
+
+### The bet row wraps on phones
+`.denoms` is a horizontal scroller, which was fine at seven buttons. Adding x5
+and x10 took its content to 564px against a 351px phone column, which put **Max
+off-screen behind a sideways swipe** — the most-used control on the row. Under
+560px it wraps to two lines instead.
+
+Worth knowing while looking at this: the page itself does scroll sideways on a
+phone, but that is `.speed-row`, the dev scaffolding, running to 447px with no
+scroller of its own. It is destined for removal, so it has not been fixed.
 
 ### Tip Jar is retired
 It bought one thing — a higher collection ceiling — so removing the ceiling left
@@ -860,11 +870,15 @@ pays **+$12** (`10 net x 1.2`), where the old engine paid +$14
 
 - First cash-out in **20–40 minutes**. Measured by bet sizing: 39m conservative
   (5% of bankroll), 29m moderate (10%), 23m aggressive (20%).
-- **Table Limit's cost growth must not exceed the denomination ladder's ~3.16×
-  step.** This is the single most important number in the economy: if limits get
-  relatively more expensive each level, the affordable stake falls further behind
-  the bankroll every level and growth strangles no matter how high the payout
-  multiplier climbs. That bug alone cost 20 hours to first prestige.
+- **Table Limit is gone, and the claim that used to sit here was wrong.** It
+  read: its cost growth must never exceed the denomination ladder's ~3.16x step,
+  or the affordable stake falls behind the bankroll and growth strangles. That
+  reasoning assumed the chip size limits the stake. It does not — `maxLayout`
+  scales by `floor(chips / stake)` and `scaleLayout` snaps to `MIN_CHIP`, not to
+  the selected chip, so **Max reaches 100% of the bankroll at every scale**,
+  verified from $400 up to $1 trillion. The ladder bought saved taps, not a
+  bigger stake. All four chips ($10/$50/$100/$1k) are now always available and
+  x5/x10 cover hand-built scaling.
 - Relics land between roughly +2.5% and +29% of EV gain on the layout they are
   for. The top of that band (Neighbour's Cut, High Roller, Crimson/Obsidian) is
   conditional — each demands you commit your layout or your bankroll.

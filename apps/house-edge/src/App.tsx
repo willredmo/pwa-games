@@ -219,6 +219,8 @@ export default function App() {
       [
         ["\u00bd", (s: GameState) => scaleLayout(s, 0.5)],
         ["\u00d72", (s: GameState) => scaleLayout(s, 2)],
+        ["\u00d75", (s: GameState) => scaleLayout(s, 5)],
+        ["\u00d710", (s: GameState) => scaleLayout(s, 10)],
         ["Max", (s: GameState) => maxLayout(s)],
       ] as const
     ).map(([label, apply]) => ({ label, apply, noop: same(state.layout, apply(state).layout) }));

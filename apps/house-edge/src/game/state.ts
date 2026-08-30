@@ -694,8 +694,13 @@ export function save(state: GameState): void {
  * Tip Jar went when Loose Change lost its collection cap. It bought nothing
  * else — its entire effect was raising that ceiling — so with no ceiling it is
  * an upgrade that does literally nothing, which is worse than an absent one.
+ *
+ * Table Limit went for a related reason. It unlocked bigger chips, but `Max`
+ * scales by `floor(chips / stake)` and snaps to `MIN_CHIP`, so it already
+ * reached the whole bankroll whatever chip was selected. The ladder was buying
+ * saved taps, not a bigger stake.
  */
-const RETIRED_UPGRADES = ["payout", "cupCap"] as const;
+const RETIRED_UPGRADES = ["payout", "cupCap", "limit"] as const;
 /** The original curves, kept only to price the refund. */
 const RETIRED_REFUND: Record<string, (level: number) => number> = {
   payout: (l) => sumGeometric(150, 1.16, l),
@@ -705,6 +710,8 @@ const RETIRED_REFUND: Record<string, (level: number) => number> = {
     for (let i = 0; i < l; i++) total += 120 + 120 * i;
     return total;
   },
+  // Table Limit: 2000 at 3.17x.
+  limit: (l) => sumGeometric(2_000, 3.17, l),
 };
 function sumGeometric(base: number, growth: number, levels: number): number {
   let total = 0;

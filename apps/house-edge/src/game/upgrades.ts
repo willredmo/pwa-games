@@ -101,18 +101,6 @@ export const UPGRADES: Upgrade[] = [
     maxLevel: 12,
   },
   {
-    id: "limit",
-    name: "Table Limit",
-    icon: "▲",
-    desc: (l) => `Unlock the ${fmtDenom(denomAt(l + BASE_DENOMS - 1))} chip.`,
-    baseCost: 2_000,
-    // Must track the denomination ladder's own ~3.16x step. Anything steeper
-    // and the affordable stake falls further behind the bankroll every level,
-    // which strangles growth no matter how high the payout multiplier goes.
-    growth: 3.17,
-    maxLevel: 30,
-  },
-  {
     id: "insurance",
     name: "En Prison",
     icon: "⛨",
@@ -157,7 +145,6 @@ export const UPGRADES: Upgrade[] = [
     baseCost: 2_000,
     growth: 1.46,
     maxLevel: 20,
-    requires: "limit",
   },
   {
     id: "balls",
@@ -252,19 +239,29 @@ export function costOf(upgrade: Upgrade, level: number): number {
   return Math.ceil(upgrade.baseCost * Math.pow(upgrade.growth, level));
 }
 
-/** Denominations available before any Table Limit is bought. */
-export const BASE_DENOMS = 3;
+/**
+ * Every chip on the table, always. There is no upgrade gating these any more.
+ *
+ * Table Limit used to hand them out one at a time and was described here as the
+ * most important curve in the economy — on the theory that a chip too small for
+ * your bankroll leaves the affordable stake falling further behind every level.
+ * That stopped being true once `maxLayout` scaled by `floor(chips / stake)` and
+ * snapped to `MIN_CHIP` rather than to the selected chip: **Max already reaches
+ * the whole bankroll whatever chip is chosen**, so the ladder was buying taps
+ * saved rather than stake allowed, and an upgrade whose only effect is fewer
+ * clicks is not an upgrade.
+ *
+ * What replaces it for hand-built layouts is the x5 and x10 scale buttons.
+ */
+export const DENOMS: readonly number[] = [10, 50, 100, 1_000];
 
 /** Chip denominations ladder: 10, 50, 100, 500, 1k, 5k, ... */
 export function denomAt(index: number): number {
   return 10 * Math.pow(10, Math.floor(index / 2)) * (index % 2 === 0 ? 1 : 5);
 }
 
-export function unlockedDenoms(levels: UpgradeLevels): number[] {
-  // Three chips from the start, so bet sizing is a real choice on turn one
-  // rather than something Table Limit slowly hands you.
-  const n = levelOf(levels, "limit") + BASE_DENOMS;
-  return Array.from({ length: n }, (_, i) => denomAt(i));
+export function unlockedDenoms(_levels: UpgradeLevels): number[] {
+  return [...DENOMS];
 }
 
 export function fmtDenom(v: number): string {

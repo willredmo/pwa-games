@@ -1044,3 +1044,18 @@
 
 .heat-hot { color: #ff9d3c; }
 .heat-cold { color: #6fc6e8; }
+
+/* The bet row is a horizontal scroller, which was fine at seven buttons. With
+   the x5 and x10 scales it runs to 564px of content against a 351px phone
+   column, putting Max off-screen behind a sideways swipe — and Max is the most
+   used control on the row. Wrap instead when there is not room for one line. */
+@media (max-width: 560px) {
+  .denoms {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+
+  .denoms .denom-sep {
+    display: none;
+  }
+}

@@ -16,8 +16,8 @@ saves to `localStorage`.
 ## Playing
 
 **Place bets** by tapping the layout. Tap adds one chip, right-click takes one
-back. Chip size is chosen with the `$10 / $50 / $100` buttons, and `½ / ×2 /
-Max` scale everything on the table at once.
+back. Chip size is chosen with the `$10 / $50 / $100 / $1k` buttons, and
+`½ / ×2 / ×5 / ×10 / Max` scale everything on the table at once.
 
 **Spin** with the button or the **spacebar**.
 
@@ -40,12 +40,11 @@ playing **Loose Change** rather than being handed money.
 
 ### Upgrades — the shop
 
-Thirteen upgrades in two sections. **The Table** improves the wheel itself:
+Twelve upgrades in two sections. **The Table** improves the wheel itself:
 
 | Upgrade | Effect |
 | --- | --- |
 | Comp Points | Hands back a share of what a losing spin cost you |
-| Table Limit | Unlocks bigger chip denominations |
 | En Prison | Part of your stake survives the zero |
 | Hire a Croupier | Unlocks auto-spin |
 | Croupier's Haste | Auto-spin cadence |
