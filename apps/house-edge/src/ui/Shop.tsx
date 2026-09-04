@@ -68,7 +68,7 @@ export function Shop({ state, onBuy, onPlaceSpot }: Props) {
         <button type="button" className="buy" disabled={locked || maxed || !afford} onClick={() => onBuy(u.id)}>
           {locked ? `Needs ${needs}` : maxed ? "Maxed" : `${money(cost ?? 0)}`}
         </button>
-        {spare > 0 && kind && (
+        {kind && spare > 0 && (
           // Buying only grants the allowance; the pocket is chosen on the
           // table. Without this the card would sit at a level with nothing to
           // show for it, which is exactly how Hire a Croupier reads as a no-op.

@@ -35,6 +35,11 @@ export const SPOT_UPGRADES: Record<SpotKind, string> = {
   link: "spotLink",
 };
 
+/** Reverse of SPOT_UPGRADES: which mark a shop id grants, if any. */
+export const SPOT_KIND_BY_UPGRADE: Record<string, SpotKind> = Object.fromEntries(
+  Object.entries(SPOT_UPGRADES).map(([kind, id]) => [id, kind as SpotKind]),
+);
+
 export function emptySpots(): SpotMods {
   return { double: [], free: [], links: [] };
 }
@@ -70,6 +75,12 @@ export function linkedTo(spots: SpotMods, pocket: number): number | null {
   return null;
 }
 
+/**
+ * A pocket is available only if it is bare. Placements are **permanent** for
+ * the cycle — there is no lifting one back off — so this is the only gate, and
+ * it has to be checked in the UI as well as here: a tap the model silently
+ * refuses is indistinguishable from a broken button.
+ */
 export function canPlace(spots: SpotMods, pocket: number): boolean {
   return valid(pocket) && markOf(spots, pocket) === null;
 }
@@ -82,15 +93,6 @@ export function place(spots: SpotMods, kind: "double" | "free", pocket: number):
 export function link(spots: SpotMods, a: number, b: number): SpotMods {
   if (a === b || !canPlace(spots, a) || !canPlace(spots, b)) return spots;
   return { ...spots, links: [...spots.links, [a, b] as [number, number]] };
-}
-
-/** Strip a placement, so a misplaced mark is not permanent. */
-export function clearSpot(spots: SpotMods, pocket: number): SpotMods {
-  return {
-    double: spots.double.filter((p) => p !== pocket),
-    free: spots.free.filter((p) => p !== pocket),
-    links: spots.links.filter(([a, b]) => a !== pocket && b !== pocket),
-  };
 }
 
 /** Saves written before this feature, or hand-edited ones. */

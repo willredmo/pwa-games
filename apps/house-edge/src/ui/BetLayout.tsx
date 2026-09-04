@@ -30,9 +30,14 @@ interface Props {
   /** Marks placed on individual pockets. */
   spots: SpotMods;
   /**
-   * Set while the player is choosing where to put a mark they have bought. The
-   * whole layout switches meaning: a tap places instead of betting, and only
-   * single numbers respond, so there is no ambiguity about what a click does.
+   * Set while the player is choosing a pocket. The whole layout switches
+   * meaning: a tap places (or lifts) a mark instead of betting, and only single
+   * numbers respond, so there is no ambiguity about what a click does.
+   *
+   * A pocket holds **one** mark and placements are permanent, so an already
+   * marked pocket is *taken* and inert. It must not be possible to link a
+   * number that is already linked, and a tap that silently replaced the old
+   * mark would be worse than one that does nothing.
    */
   placing: SpotKind | null;
   /** First half of a link, waiting for its partner. */
@@ -86,7 +91,10 @@ export function BetLayout({
     const mark = pocket !== undefined ? markOf(spots, pocket) : null;
     // While placing, only the numbers are live. Outside bets cover many
     // pockets, so "which one did you mean" has no answer.
-    const marking = placing !== null && pocket !== undefined;
+    const onNumber = placing !== null && pocket !== undefined;
+    const marking = onNumber && mark === null;
+    // Already carries a mark: visible, but not a target.
+    const taken = onNumber && mark !== null;
     const pending = linkFirst !== null && linkFirst === pocket;
     return (
       <button
@@ -96,12 +104,13 @@ export function BetLayout({
           `cell ${className}${staked > 0 ? " staked" : ""}${hit ? " hit" : ""}` +
           `${mark ? ` spot-${mark}` : ""}${marking ? " markable" : ""}` +
           `${pending ? " marking" : ""}` +
+          `${taken ? " taken" : ""}` +
           `${placing !== null && pocket === undefined ? " inert" : ""}`
         }
         style={style}
-        disabled={disabled || (placing !== null && pocket === undefined)}
+        disabled={disabled || (placing !== null && !marking)}
         onClick={() => {
-          if (marking) return onMarkPocket(pocket);
+          if (marking) return onMarkPocket(pocket!);
           return mode === "add" ? onPlace(id) : onRemove(id);
         }}
         onContextMenu={(e) => {

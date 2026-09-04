@@ -179,7 +179,10 @@ export const UPGRADES: Upgrade[] = [
     icon: "⚭",
     desc: (l) =>
       `${l} extra ball${l === 1 ? "" : "s"} per spin. The best single ball takes the spin.`,
-    baseCost: 50_000,
+    // 250k, up from 50k. One extra ball takes an even-money layout from -2.6%
+    // to +47.5% — a bigger single swing than anything else in the shop — and it
+    // was the cheapest way to buy that by an order of magnitude.
+    baseCost: 250_000,
     growth: 14,
     maxLevel: 4,
     requires: "magnetism",

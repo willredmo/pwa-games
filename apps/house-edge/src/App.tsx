@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCountUp } from "./ui/useCountUp";
 import { winTier } from "./ui/celebration";
 import { Rules } from "./ui/Rules";
-import { markOf, SPOT_UPGRADES, type SpotKind } from "./game/spots";
+import {
+  markOf,
+  SPOT_KIND_BY_UPGRADE,
+  SPOT_UPGRADES,
+  type SpotKind,
+} from "./game/spots";
 import type { SpinResult } from "./engine";
 import { colorOf } from "./engine";
 import { Wheel } from "./ui/Wheel";
@@ -23,7 +28,6 @@ import {
   outsideHeat,
   markSpot,
   pocketHeat,
-  unmarkSpot,
   clearSave,
   edgeOf,
   equipRelic,
@@ -247,24 +251,23 @@ export default function App() {
   const markPocket = useCallback(
     (pocket: number) => {
       if (!placing) return;
-      const id = SPOT_UPGRADES[placing];
-      // Tapping a pocket that already carries a mark lifts it off and hands the
-      // allowance back, which is the only way to undo a misplaced one.
-      if (markOf(stateRef.current.spots, pocket) !== null) {
-        setState((s) => unmarkSpot(s, pocket));
-        setLinkFirst(null);
-        return;
-      }
-      if (placing === "link") {
+      const kind = placing;
+      const id = SPOT_UPGRADES[kind];
+      // A marked pocket is never a target. Placements are permanent, so the
+      // only safe answer to a tap on one is to do nothing.
+      if (markOf(stateRef.current.spots, pocket) !== null) return;
+      if (kind === "link") {
         if (linkFirst === null) return setLinkFirst(pocket);
         if (linkFirst === pocket) return setLinkFirst(null);
         setState((s) => markSpot(s, "link", id, linkFirst, pocket));
         setLinkFirst(null);
         setPlacing(null);
+        setTab("shop");
         return;
       }
-      setState((s) => markSpot(s, placing, id, pocket));
+      setState((s) => markSpot(s, kind, id, pocket));
       setPlacing(null);
+      setTab("shop");
     },
     [placing, linkFirst],
   );
@@ -570,11 +573,11 @@ export default function App() {
             <div className="placing-banner">
               <span>
                 {placing === "double"
-                  ? "Tap a number to gild it"
+                  ? "Tap a number to gild it \u2014 this is permanent"
                   : placing === "free"
-                    ? "Tap a number to open an account on it"
+                    ? "Tap a number to open an account on it \u2014 this is permanent"
                     : linkFirst === null
-                      ? "Tap the first number to link"
+                      ? "Tap the first number to link \u2014 marked numbers are taken"
                       : `Linking ${linkFirst} \u2014 tap its partner`}
               </span>
               <button type="button" onClick={cancelPlacing}>
@@ -610,7 +613,24 @@ export default function App() {
           </p>
           <Shop
             state={state}
-            onBuy={(id) => setState((s) => buyUpgrade(s, id))}
+            onBuy={(id) => {
+              // Buying a pocket upgrade only grants an allowance, so send the
+              // player straight to the table to spend it. Otherwise the card
+              // ticks up a level and nothing anywhere else changes — the same
+              // trap Hire a Croupier falls into.
+              const before = stateRef.current;
+              const after = buyUpgrade(before, id);
+              setState(after);
+              const kind = SPOT_KIND_BY_UPGRADE[id];
+              // Identity, not a flag: `buyUpgrade` hands the state straight back
+              // when it is unaffordable, so an unaffordable click must not open
+              // a placement for a mark that was never bought.
+              if (kind && after !== before) {
+                setPlacing(kind);
+                setLinkFirst(null);
+                setTab("table");
+              }
+            }}
             onPlaceSpot={(kind) => {
               setPlacing(kind);
               setLinkFirst(null);

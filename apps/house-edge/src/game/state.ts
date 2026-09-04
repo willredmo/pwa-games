@@ -13,7 +13,6 @@ import {
   emptySpots,
   normaliseSpots,
   placedCount,
-  clearSpot,
   link as linkSpots,
   place as placeSpot,
   type SpotKind,
@@ -457,12 +456,6 @@ export function markSpot(
   }
   const spots = placeSpot(state.spots, kind, pocket);
   return spots === state.spots ? state : { ...state, spots };
-}
-
-/** Lift a mark back off, so a misplaced one is not permanent. */
-export function unmarkSpot(state: GameState, pocket: number): GameState {
-  const spots = clearSpot(state.spots, pocket);
-  return { ...state, spots };
 }
 
 export function intervalOf(state: GameState): number {

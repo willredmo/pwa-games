@@ -1067,17 +1067,33 @@
 .spot-mark {
   position: absolute;
   left: 2px;
-  bottom: 0;
-  font-size: 0.6rem;
+  bottom: -1px;
+  font-size: 1rem;
   line-height: 1;
+  font-weight: 700;
   color: var(--gold);
-  text-shadow: 0 0 3px rgba(0, 0, 0, 0.9);
+  /* Outlined rather than merely shadowed: the glyph sits over red, black and
+     green cells, and at this size a soft shadow alone leaves it muddy on red. */
+  text-shadow:
+    0 0 2px #000,
+    0 1px 2px rgba(0, 0, 0, 0.95);
   pointer-events: none;
 }
+
+.cell.spot-free .spot-mark { color: #8fe0ab; }
+.cell.spot-link .spot-mark { color: #aebcff; }
 
 .cell.spot-double { box-shadow: inset 0 0 0 1px rgba(201, 162, 39, 0.9); }
 .cell.spot-free { box-shadow: inset 0 0 0 1px rgba(110, 201, 139, 0.9); }
 .cell.spot-link { box-shadow: inset 0 0 0 1px rgba(150, 170, 240, 0.9); }
+
+/* A pocket that already carries a mark, while another is being placed. Visibly
+   present but plainly not a target — one mark per pocket, so offering it would
+   be inviting a tap that has to be refused. */
+.cell.taken {
+  opacity: 0.4;
+  filter: grayscale(0.5);
+}
 
 /* Placing mode: the numbers are the only live thing on the table. */
 .cell.markable {
@@ -1122,6 +1138,12 @@
   margin-top: 6px;
   border-color: var(--gold);
   color: var(--gold);
+}
+
+.buy.clear {
+  margin-top: 6px;
+  border-color: #2b352e;
+  color: var(--muted);
 }
 
 /* ---- a nudged spin ------------------------------------------------------- */

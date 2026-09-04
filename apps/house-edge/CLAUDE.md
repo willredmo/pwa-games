@@ -663,9 +663,28 @@ Payouts checked exactly rather than statistically, on $10 straight on 13 with
 13-20 linked: own number +350, linked partner +122.50 (`35 * 0.35 * 10`), free
 pocket 0 instead of -10, plain miss -10, and gilded +700.
 
-A pocket carries **at most one** mark. Stacking a double onto a free-spin pocket
-would be two answers to "what happens when this lands", and which one fired
-would depend on the order settlement happened to check them.
+A pocket carries **at most one** mark, and a placement is **permanent** for the
+cycle — there is no lifting one back off. Stacking a double onto a free-spin
+pocket would be two answers to "what happens when this lands", and which one
+fired would depend on the order settlement happened to check them.
+
+That rule was always enforced in `spots.ts` — every conflicting placement is
+refused — but the UI was the problem: while placing, *all 37* numbers carried
+the `markable` class, so an already-linked pocket looked like a target and a tap
+on it silently deleted the existing link to make room. Marked pockets are now
+`taken`: dimmed, `disabled`, and inert. A model that silently refuses a tap is
+indistinguishable from a broken button, so the gate has to be visible as well as
+real.
+
+### Buying a mark drops you straight onto the table
+Buying only grants an allowance, so a purchase that just ticked a level would be
+the Hire a Croupier trap again — a card that changes while nothing else does.
+Buying opens placement on the Table tab, and completing it returns to the Shop.
+
+The buy handler compares state **identity** rather than trusting the click:
+`buyUpgrade` hands the same object back when the level is unaffordable, so an
+unaffordable purchase must not open a placement for a mark that was never
+bought.
 
 `spots` resets on cash out with the upgrades that granted it, and `load()` runs
 `normaliseSpots` over it — the engine indexes into these arrays, so a save from
@@ -828,7 +847,7 @@ won.
 | extra balls | straight:7 | red | dozen | marginal (red) | cost |
 | --- | --- | --- | --- | --- | --- |
 | 0 | -2.8% | -2.6% | -2.9% | — | — |
-| 1 | +95.1% | +47.5% | +63.2% | +50.0 | $50,000 |
+| 1 | +95.1% | +47.5% | +63.2% | +50.0 | $250,000 |
 | 2 | +186.2% | +72.9% | +107.2% | +25.5 | $700,000 |
 | 3 | +272.3% | +86.2% | +137.3% | +13.2 | $9,800,000 |
 | 4 | +359.9% | +92.9% | +157.7% | +6.7 | $137,200,000 |
@@ -839,9 +858,14 @@ rate where the old extra balls paid half, so despite being self-limiting it is
 And on outside bets it saturates toward +100% (with enough balls one of them is
 always red), while straights stay near-linear because double hits are rare.
 
-The cost curve has **not** been refitted to this and is now badly wrong in the
-opposite direction: benefit halves each level while price multiplies by 14, so
-only the first level is ever worth buying.
+The first ball now costs **$250,000**, up from $50,000: it is the single biggest
+swing in the shop and it was also the cheapest way to buy one, by an order of
+magnitude.
+
+The curve above level 1 has still **not** been refitted, and remains wrong in
+the same direction: benefit halves each level while price multiplies by 14
+($3.5M, $49M, $686M), so only the first level is ever worth buying. Raising the
+base made every level dearer without touching that shape.
 
 `pocketCounts` tallies **every** ball, not just the paid one. They are all fair
 draws of the same wheel, and counting only the winner would bias the stats
