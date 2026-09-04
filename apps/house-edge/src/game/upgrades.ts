@@ -1,6 +1,7 @@
-import type { Edge } from "../engine";
+import { ALL_SPOTS, LONG_SHOT_THRESHOLD, type Edge } from "../engine";
 import { neutralEdge } from "../engine";
 import { RELIC_BY_ID, relicCounts, type Relic } from "./relics";
+import { LINK_SHARE, type SpotMods } from "./spots";
 
 export interface Upgrade {
   id: string;
@@ -86,6 +87,30 @@ export function spawnGapAt(level: number): number {
 export const BASE_SPIN_MS = 2_600;
 export const MIN_SPIN_MS = 120;
 
+/**
+ * Which bets Long Shot actually applies to, named rather than left as an odds
+ * threshold. Right now the answer is "single numbers and nothing else" — every
+ * outside bet pays 2:1 or 1:1 — so a card reading "8:1 or better" described a
+ * category with exactly one member and sent players looking for the others.
+ *
+ * Derived from the bet table so it stays true on its own: add splits at 17:1
+ * and this starts saying "splits and single numbers" without being edited.
+ */
+const LONG_SHOT_NAMES: Record<string, string> = {
+  straight: "single numbers",
+  split: "splits",
+  street: "streets",
+  corner: "corners",
+};
+
+function longShotLabel(): string {
+  const kinds = [...new Set(ALL_SPOTS.filter((s) => s.payout >= LONG_SHOT_THRESHOLD).map((s) => s.kind))];
+  const names = kinds.map((k) => LONG_SHOT_NAMES[k] ?? k);
+  if (names.length === 0) return "nothing on the table";
+  if (names.length === 1) return names[0];
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
 export const UPGRADES: Upgrade[] = [
   {
     id: "rebate",
@@ -141,7 +166,9 @@ export const UPGRADES: Upgrade[] = [
     id: "longshot",
     name: "Long Shot",
     icon: "✦",
-    desc: (l) => `+${l}% payout on bets paying 8:1 or better.`,
+    desc: (l) =>
+      `+${l}% payout on ${longShotLabel()} — the only bet paying ` +
+      `${LONG_SHOT_THRESHOLD}:1 or better.`,
     baseCost: 2_000,
     growth: 1.46,
     maxLevel: 20,
@@ -156,6 +183,36 @@ export const UPGRADES: Upgrade[] = [
     growth: 14,
     maxLevel: 4,
     requires: "magnetism",
+  },
+  {
+    id: "spotDouble",
+    name: "Gild a Pocket",
+    icon: "◈",
+    desc: (l) => `Mark ${l} pocket${l === 1 ? "" : "s"} to pay double when it lands.`,
+    baseCost: 3_000,
+    growth: 2.4,
+    maxLevel: 6,
+  },
+  {
+    id: "spotFree",
+    name: "House Account",
+    icon: "⊘",
+    desc: (l) =>
+      `Mark ${l} pocket${l === 1 ? "" : "s"} that hands your stake back — landing there costs nothing.`,
+    baseCost: 4_000,
+    growth: 2.6,
+    maxLevel: 4,
+  },
+  {
+    id: "spotLink",
+    name: "Linked Pair",
+    icon: "⧉",
+    desc: (l) =>
+      `Wire ${l} pair${l === 1 ? "" : "s"} of numbers together: a straight on one also pays ` +
+      `${Math.round(LINK_SHARE * 100)}% on the other.`,
+    baseCost: 12_000,
+    growth: 3.2,
+    maxLevel: 4,
   },
   {
     id: "cupWidth",
@@ -291,13 +348,27 @@ export function startingChips(relics: Relic[]): number {
  * engine consumes. Recomputed from scratch whenever anything changes rather
  * than mutated in place, so there is no state to drift.
  */
+/** Edge fields that are plain magnitudes, which is everything except `spots`. */
+type NumericEdgeKey = {
+  [K in keyof Edge]: Edge[K] extends number ? K : never;
+}[keyof Edge];
+
 export function buildEdge(
   levels: UpgradeLevels,
   relicIds: string[],
   ivory: number,
   layout?: Record<string, number>,
+  spots?: SpotMods,
 ): Edge {
   const edge = neutralEdge();
+  if (spots) {
+    edge.spots = {
+      double: spots.double,
+      free: spots.free,
+      links: spots.links,
+      linkShare: LINK_SHARE,
+    };
+  }
 
   // No flat payout multiplier or loss rebate is sold any more. Both made a
   // red+black hedge profitable: covering both colours returns the stake on
@@ -320,7 +391,9 @@ export function buildEdge(
     if (relic.stacks === false) scale = 1;
 
     if (relic.edge) {
-      for (const [key, value] of Object.entries(relic.edge) as [keyof Edge, number][]) {
+      // Only the numeric dials. `spots` is a set of placements rather than a
+      // magnitude, so it has no meaning to add into and no relic touches it.
+      for (const [key, value] of Object.entries(relic.edge) as [NumericEdgeKey, number][]) {
         edge[key] += value * scale;
       }
     }

@@ -24,6 +24,7 @@ export function neutralEdge(): Edge {
     streakBonus: 0,
     highRollerBonus: 0,
     doubleChance: 0,
+    spots: { double: [], free: [], links: [], linkShare: 0 },
   };
 }
 
@@ -120,23 +121,54 @@ export function resolveSpin(input: SpinInput): SpinResult {
   const longShot = (spot: BetSpot) =>
     spot.payout >= LONG_SHOT_THRESHOLD ? 1 + edge.longShotMult : 1;
 
+  /** The other end of a marked link, if this pocket is on one. */
+  const linkedTo = (pocket_: number): number | null => {
+    for (const [a, b] of edge.spots.links) {
+      if (a === pocket_) return b;
+      if (b === pocket_) return a;
+    }
+    return null;
+  };
+
   /**
    * Settle one ball against the layout, twice over: once at **true European
    * odds** with no edge at all, and once with every win-side multiplier
    * applied. The pair is what makes net settlement possible — see `settle`.
    */
   const tally = (landed: number) => {
-    const mult = multFor(landed);
+    // A gilded pocket doubles what the spin is worth. It rides on the *bonus*
+    // side only, so it scales the net like every other multiplier and cannot
+    // pay out on a position that risked nothing.
+    const gilded = edge.spots.double.includes(landed);
+    const mult = multFor(landed) * (gilded ? 2 : 1);
     const [nLeft, nRight] = neighbours(landed);
     let baseProfit = 0; // profit at true odds
     let bonusProfit = 0; // the same profit, enhanced
     let lostStake = 0;
     let softCredit = 0; // rebate / insurance / neighbour pay — all loss-side
 
+    // A linked pair lets a straight on one pocket reach the other. This is a
+    // genuine widening of coverage rather than a payout bonus, so it has to go
+    // through `baseProfit` — booking it as a credit would make the bet look
+    // like a loss it was compensated for, and the net rule would then clamp it
+    // away on exactly the spins it is supposed to pay.
+    const partner = edge.spots.links.length > 0 ? linkedTo(landed) : null;
+
     for (const { spot, amount } of spots) {
       if (covers(spot, landed)) {
         baseProfit += amount * spot.payout;
         bonusProfit += amount * spot.payout * mult * longShot(spot);
+        continue;
+      }
+      if (
+        partner !== null &&
+        spot.kind === "straight" &&
+        spot.value === partner &&
+        edge.spots.linkShare > 0
+      ) {
+        const share = amount * spot.payout * edge.spots.linkShare;
+        baseProfit += share;
+        bonusProfit += share * mult * longShot(spot);
         continue;
       }
       lostStake += amount;
@@ -185,6 +217,10 @@ export function resolveSpin(input: SpinInput): SpinResult {
   /** What this spin is worth if `landed` is the ball that counts. */
   const netFor = (landed: number) => {
     let n = settle(tally(landed));
+    // A free-spin pocket refunds what the spin cost. Expressed as a floor at
+    // zero rather than as a payment: it can rescue a loss but never turn one
+    // into a win, which is what keeps it from being a hedge that gets paid.
+    if (n < 0 && edge.spots.free.includes(landed)) n = 0;
     if (landed === 0 && edge.zeroBounty > 0) {
       // Green Tithe pays a profit on the zero, which net settlement cannot
       // express — on a hedge the zero is the *only* losing pocket, so an

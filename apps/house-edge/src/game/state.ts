@@ -10,6 +10,16 @@ import {
 } from "../engine";
 import { offerRelics, uniqueRelicsOf } from "./relics";
 import {
+  emptySpots,
+  normaliseSpots,
+  placedCount,
+  clearSpot,
+  link as linkSpots,
+  place as placeSpot,
+  type SpotKind,
+  type SpotMods,
+} from "./spots";
+import {
   buildEdge,
   costOf,
   levelOf,
@@ -181,6 +191,11 @@ export interface GameState {
   lastSeen: number;
   /** Relic ids drafted by the last cash out, awaiting a pick. */
   offer: string[] | null;
+  /**
+   * Pockets the player has marked. Bought in the shop as an allowance and then
+   * placed by tapping a number, so the choice — not the level — is the value.
+   */
+  spots: SpotMods;
 }
 
 export function emptyCounts(): number[] {
@@ -358,6 +373,7 @@ export function initialState(): GameState {
     spins: 0,
     cashOuts: 0,
     history: [],
+    spots: emptySpots(),
     autoOn: false,
     miniGame: false,
     lastSeen: Date.now(),
@@ -408,7 +424,45 @@ export function refit(state: GameState): GameState {
 export function edgeOf(state: GameState) {
   // The layout is passed because Sector Play scales with how many separate
   // numbers are covered, so the edge is a function of the bet, not just the build.
-  return buildEdge(state.upgrades, state.activeRelics, state.ivory, state.layout);
+  return buildEdge(
+    state.upgrades,
+    state.activeRelics,
+    state.ivory,
+    state.layout,
+    state.spots,
+  );
+}
+
+/** How many marks of a kind are bought but not yet placed. */
+export function spotsSpare(state: GameState, kind: SpotKind, upgradeId: string): number {
+  return levelOf(state.upgrades, upgradeId) - placedCount(state.spots, kind);
+}
+
+/**
+ * Put a mark on a pocket, if one is going spare. `link` needs two pockets, so
+ * the caller holds the first until the second is tapped.
+ */
+export function markSpot(
+  state: GameState,
+  kind: SpotKind,
+  upgradeId: string,
+  pocket: number,
+  second?: number,
+): GameState {
+  if (spotsSpare(state, kind, upgradeId) <= 0) return state;
+  if (kind === "link") {
+    if (second === undefined) return state;
+    const spots = linkSpots(state.spots, pocket, second);
+    return spots === state.spots ? state : { ...state, spots };
+  }
+  const spots = placeSpot(state.spots, kind, pocket);
+  return spots === state.spots ? state : { ...state, spots };
+}
+
+/** Lift a mark back off, so a misplaced one is not permanent. */
+export function unmarkSpot(state: GameState, pocket: number): GameState {
+  const spots = clearSpot(state.spots, pocket);
+  return { ...state, spots };
 }
 
 export function intervalOf(state: GameState): number {
@@ -587,6 +641,7 @@ export function cashOut(state: GameState, rng: () => number): GameState {
     spins: 0,
     cashOuts: state.cashOuts + 1,
     history: [],
+    spots: emptySpots(),
     autoOn: false,
     offer: offer.length > 0 ? offer : null,
   };
@@ -725,6 +780,10 @@ export function load(): GameState {
     if (!raw) return initialState();
     const parsed = JSON.parse(raw) as Partial<GameState>;
     const state = { ...initialState(), ...parsed };
+    // Placements are player data with a shape the engine indexes into, so a
+    // save from before the feature — or a hand-edited one — is repaired rather
+    // than trusted.
+    state.spots = normaliseSpots(parsed.spots);
     // Saves predating relic slots have no loadout; equip what fits rather than
     // silently switching every relic they own off.
     if (!parsed.activeRelics && state.relics.length > 0) {

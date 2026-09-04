@@ -2,6 +2,7 @@ import { colorOf, covers, spotById } from "../engine";
 import type { Layout } from "../engine";
 import { money } from "../game/format";
 import type { Heat } from "../game/state";
+import { markOf, type SpotKind, type SpotMods } from "../game/spots";
 
 interface Props {
   layout: Layout;
@@ -26,7 +27,25 @@ interface Props {
   mode: "add" | "remove";
   onPlace: (spotId: string) => void;
   onRemove: (spotId: string) => void;
+  /** Marks placed on individual pockets. */
+  spots: SpotMods;
+  /**
+   * Set while the player is choosing where to put a mark they have bought. The
+   * whole layout switches meaning: a tap places instead of betting, and only
+   * single numbers respond, so there is no ambiguity about what a click does.
+   */
+  placing: SpotKind | null;
+  /** First half of a link, waiting for its partner. */
+  linkFirst: number | null;
+  onMarkPocket: (pocket: number) => void;
 }
+
+/** One glyph per mark, so a pocket says what it does without a legend. */
+const SPOT_GLYPH: Record<SpotKind, string> = {
+  double: "\u25c8",
+  free: "\u2298",
+  link: "\u29c9",
+};
 
 /** The even-money row, in table order: six bets across twelve number columns. */
 const EVEN_MONEY = ["low", "even", "red", "black", "odd", "high"];
@@ -48,6 +67,10 @@ export function BetLayout({
   mode,
   onPlace,
   onRemove,
+  spots,
+  placing,
+  linkFirst,
+  onMarkPocket,
 }: Props) {
   const cell = (
     id: string,
@@ -55,18 +78,32 @@ export function BetLayout({
     className: string,
     style?: React.CSSProperties,
     run?: Heat,
+    pocket?: number,
   ) => {
     const staked = layout[id] ?? 0;
     const spot = spotById(id);
     const hit = last !== null && spot !== undefined && covers(spot, last);
+    const mark = pocket !== undefined ? markOf(spots, pocket) : null;
+    // While placing, only the numbers are live. Outside bets cover many
+    // pockets, so "which one did you mean" has no answer.
+    const marking = placing !== null && pocket !== undefined;
+    const pending = linkFirst !== null && linkFirst === pocket;
     return (
       <button
         key={hit ? `${id}:${spinKey}` : id}
         type="button"
-        className={`cell ${className}${staked > 0 ? " staked" : ""}${hit ? " hit" : ""}`}
+        className={
+          `cell ${className}${staked > 0 ? " staked" : ""}${hit ? " hit" : ""}` +
+          `${mark ? ` spot-${mark}` : ""}${marking ? " markable" : ""}` +
+          `${pending ? " marking" : ""}` +
+          `${placing !== null && pocket === undefined ? " inert" : ""}`
+        }
         style={style}
-        disabled={disabled}
-        onClick={() => (mode === "add" ? onPlace(id) : onRemove(id))}
+        disabled={disabled || (placing !== null && pocket === undefined)}
+        onClick={() => {
+          if (marking) return onMarkPocket(pocket);
+          return mode === "add" ? onPlace(id) : onRemove(id);
+        }}
         onContextMenu={(e) => {
           e.preventDefault();
           onRemove(id);
@@ -83,6 +120,7 @@ export function BetLayout({
         }
       >
         <span className="cell-label">{label}</span>
+        {mark && <span className="spot-mark" aria-hidden="true">{SPOT_GLYPH[mark]}</span>}
         {staked > 0 && <span className="chip-badge">{money(staked)}</span>}
       </button>
     );
@@ -103,7 +141,7 @@ export function BetLayout({
         covers.
       */}
       <div className="table-main">
-        {cell("straight:0", "0", "zero")}
+        {cell("straight:0", "0", "zero", undefined, heat[0] ?? null, 0)}
 
         {Array.from({ length: 3 }, (_, r) =>
           Array.from({ length: NUMBER_COLS }, (_, c) => {
@@ -115,6 +153,7 @@ export function BetLayout({
               `${colorOf(n)}${run ? ` ${run}` : ""}`,
               { gridColumn: FIRST_NUMBER_COL + c, gridRow: r + 1 },
               run,
+              n,
             );
           }),
         )}

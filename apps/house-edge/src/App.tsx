@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCountUp } from "./ui/useCountUp";
 import { winTier } from "./ui/celebration";
 import { Rules } from "./ui/Rules";
+import { markOf, SPOT_UPGRADES, type SpotKind } from "./game/spots";
 import type { SpinResult } from "./engine";
 import { colorOf } from "./engine";
 import { Wheel } from "./ui/Wheel";
@@ -20,7 +21,9 @@ import {
   cashOut,
   catchUp,
   outsideHeat,
+  markSpot,
   pocketHeat,
+  unmarkSpot,
   clearSave,
   edgeOf,
   equipRelic,
@@ -75,6 +78,10 @@ export default function App() {
   // Deliberately not part of GameState: which screen is open is not progress,
   // and persisting it would reopen the rules on every reload.
   const [rulesOpen, setRulesOpen] = useState(false);
+  // Which mark is being placed, and the first half of a pending link. Not in
+  // GameState: an unfinished placement is a gesture, not progress.
+  const [placing, setPlacing] = useState<SpotKind | null>(null);
+  const [linkFirst, setLinkFirst] = useState<number | null>(null);
 
   const resetEverything = useCallback(() => {
     if (!confirm("Wipe everything — cash, ivory and relics?")) return;
@@ -232,6 +239,41 @@ export default function App() {
   const stake = stakeOf(state);
   const betsLocked = pending !== null;
 
+  /**
+   * Tapping a number while placing. A link needs two, so the first tap parks
+   * the pocket and the second completes it; tapping the same one again backs
+   * out rather than linking a number to itself.
+   */
+  const markPocket = useCallback(
+    (pocket: number) => {
+      if (!placing) return;
+      const id = SPOT_UPGRADES[placing];
+      // Tapping a pocket that already carries a mark lifts it off and hands the
+      // allowance back, which is the only way to undo a misplaced one.
+      if (markOf(stateRef.current.spots, pocket) !== null) {
+        setState((s) => unmarkSpot(s, pocket));
+        setLinkFirst(null);
+        return;
+      }
+      if (placing === "link") {
+        if (linkFirst === null) return setLinkFirst(pocket);
+        if (linkFirst === pocket) return setLinkFirst(null);
+        setState((s) => markSpot(s, "link", id, linkFirst, pocket));
+        setLinkFirst(null);
+        setPlacing(null);
+        return;
+      }
+      setState((s) => markSpot(s, placing, id, pocket));
+      setPlacing(null);
+    },
+    [placing, linkFirst],
+  );
+
+  const cancelPlacing = useCallback(() => {
+    setPlacing(null);
+    setLinkFirst(null);
+  }, []);
+
   const place = useCallback(
     (id: string) => {
       setState((s) => {
@@ -346,6 +388,7 @@ export default function App() {
               pockets={pending?.balls ?? result?.balls ?? null}
               winner={pending?.winner ?? result?.winner ?? 0}
               tier={wheelTier}
+              nudged={pending?.magnetised ?? result?.magnetised ?? false}
               spinKey={spinKey}
               durationMs={
                 (auto ? Math.min(MAX_AUTO_SPIN_MS, interval * 0.62) : MANUAL_SPIN_MS) / speed
@@ -407,7 +450,11 @@ export default function App() {
                   {result.net >= 0 ? "+" : "−"}
                   {money(Math.abs(result.net))}
                 </b>
-                {result.magnetised && <span className="tag">nudged</span>}
+                {result.magnetised && (
+                  <span className="tag nudged" title="Weighted Wheel moved the ball onto a pocket you covered">
+                    ⌁ nudged onto {result.pocket}
+                  </span>
+                )}
                 {result.doubled && <span className="tag">doubled</span>}
                 {result.balls.length > 1 && (
                   // Show every ball, with the paid one picked out. The bare
@@ -519,6 +566,23 @@ export default function App() {
           {stake === 0 && <p className="warn">Nothing on the table.</p>}
           {stake > state.chips && <p className="warn">Your stake is more than your bankroll.</p>}
 
+          {placing && (
+            <div className="placing-banner">
+              <span>
+                {placing === "double"
+                  ? "Tap a number to gild it"
+                  : placing === "free"
+                    ? "Tap a number to open an account on it"
+                    : linkFirst === null
+                      ? "Tap the first number to link"
+                      : `Linking ${linkFirst} \u2014 tap its partner`}
+              </span>
+              <button type="button" onClick={cancelPlacing}>
+                Cancel
+              </button>
+            </div>
+          )}
+
           <BetLayout
             layout={state.layout}
             denom={denom}
@@ -526,6 +590,10 @@ export default function App() {
             last={result?.pocket ?? null}
             heat={heat}
             outHeat={outHeat}
+            spots={state.spots}
+            placing={placing}
+            linkFirst={linkFirst}
+            onMarkPocket={markPocket}
             spinKey={spinKey}
             mode={mode}
             onPlace={place}
@@ -540,7 +608,15 @@ export default function App() {
             nudge {(edge.magnetism * 100).toFixed(0)}% · zero {(edge.zeroInsurance * 100).toFixed(0)}%
             {edge.extraBalls > 0 && ` · ${edge.extraBalls} extra ball`}
           </p>
-          <Shop state={state} onBuy={(id) => setState((s) => buyUpgrade(s, id))} />
+          <Shop
+            state={state}
+            onBuy={(id) => setState((s) => buyUpgrade(s, id))}
+            onPlaceSpot={(kind) => {
+              setPlacing(kind);
+              setLinkFirst(null);
+              setTab("table");
+            }}
+          />
         </main>
       )}
 

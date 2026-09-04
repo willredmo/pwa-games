@@ -26,7 +26,7 @@ layout needs roughly 5.3% back to break even against the zero, and level 3 gives
 - **Bets** — straights (35:1), dozens and columns (2:1), red/black, odd/even,
   high/low (1:1). `engine/bets.ts`. The zero loses every outside bet; that is
   the edge being modelled.
-- **12 upgrades** (`game/upgrades.ts`) and **15 relics** (`game/relics.ts`).
+- **15 upgrades** (`game/upgrades.ts`) and **15 relics** (`game/relics.ts`).
   Upgrades carry a `section` — `"table"` or `"change"` — and the shop groups by
   it, so the Loose Change upgrades do not bury the wheel's own.
 - **Loose Change** (`ui/LooseChange.tsx`) — the coin-catching mini game that
@@ -620,6 +620,66 @@ alter while adding polish.
 
 Balls also now launch spread around the track rather than all from angle 0,
 which previously stacked them on top of each other at the start of a cold spin.
+
+## Marked pockets — the only upgrades you place
+
+`game/spots.ts`. Everything else in the shop applies to the whole table. These
+do not: you buy an **allowance** and then choose which pocket it goes on, so the
+decision is the value rather than the level.
+
+- **Gild a Pocket** — that pocket pays double when it lands.
+- **House Account** — landing there hands your stake back; the spin cost you
+  nothing.
+- **Linked Pair** — a straight on one of the pair also pays `LINK_SHARE` (35%)
+  on the other.
+
+The shop entry's level *is* the allowance, so the existing cost curves and level
+caps carry these with no new purchasing machinery; only the placement lives in
+`GameState.spots`. Buying raises the allowance, tapping a number spends it, and
+tapping a marked pocket lifts the mark off and hands it back — the two change at
+different times, which is why they are stored apart.
+
+### Each mark had to enter settlement at a different place
+This is the whole design problem, and getting any one of them wrong reopens the
+hedge:
+
+- **Double** rides on the **bonus** side only (`mult * 2`), so it scales the net
+  like every other multiplier and cannot pay out on a position that risked
+  nothing.
+- **Link** goes through **`baseProfit`**, because it is a genuine widening of
+  coverage rather than a payout bonus. Booking it as a credit would make the bet
+  look like a loss that was compensated, and the net rule would then clamp it
+  away on exactly the spins it exists to pay.
+- **Free** is a **floor at zero** (`if (n < 0) n = 0`), not a payment. It can
+  rescue a loss but never turn one into a win.
+
+**Verified** across red+black, odd+even and all three dozens, with every mark
+placed and every other bonus stacked on top: worst risk-free-layout EV
+**0.000%**, never positive, `returned` never negative, neutral wheel still
+exactly **-2.7027%**. Real layouts scale hard — a straight with marks runs +92%,
+and +4857% with everything.
+
+Payouts checked exactly rather than statistically, on $10 straight on 13 with
+13-20 linked: own number +350, linked partner +122.50 (`35 * 0.35 * 10`), free
+pocket 0 instead of -10, plain miss -10, and gilded +700.
+
+A pocket carries **at most one** mark. Stacking a double onto a free-spin pocket
+would be two answers to "what happens when this lands", and which one fired
+would depend on the order settlement happened to check them.
+
+`spots` resets on cash out with the upgrades that granted it, and `load()` runs
+`normaliseSpots` over it — the engine indexes into these arrays, so a save from
+before the feature or a hand-edited one is repaired rather than trusted.
+
+### A nudged win does not look like an earned one
+Weighted Wheel moving the ball is the most consequential thing any upgrade does
+to a result, and it used to report itself in a grey tag the same size as every
+other. The readout now names the pocket it was moved to, and the winning-pocket
+flare on the wheel turns **blue** instead of gold.
+
+`nudged` is read from `pending`, not `result` — the same ordering trap that
+silently suppressed the coin eruption: the flare fires the instant the ball
+stops, which is before `onSettled` has set `result`.
 
 ## DEV scaffolding — remove before shipping
 

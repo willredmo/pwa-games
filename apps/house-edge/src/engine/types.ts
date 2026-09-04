@@ -63,6 +63,20 @@ export interface Edge {
   highRollerBonus: number;
   /** Chance a winning spin pays out twice. */
   doubleChance: number;
+  /**
+   * Pockets the player has marked, and what they do. Kept as plain data so the
+   * engine still knows nothing about upgrades — it is handed a set of pockets,
+   * exactly as it is handed a payout multiplier.
+   */
+  spots: {
+    /** These pay double when they land. */
+    double: readonly number[];
+    /** These hand the stake back when they land. */
+    free: readonly number[];
+    /** A straight on one of a pair also pays `linkShare` on the other. */
+    links: readonly (readonly [number, number])[];
+    linkShare: number;
+  };
 }
 
 export interface SpinInput {

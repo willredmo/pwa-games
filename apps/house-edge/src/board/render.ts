@@ -76,6 +76,12 @@ export interface WheelView {
    * decides what to do with it.
    */
   celebration: number;
+  /**
+   * Weighted Wheel moved the ball onto a covered pocket. Worth its own colour:
+   * it is the most consequential thing any upgrade does to a result, and a win
+   * you were *given* should not look identical to one you were dealt.
+   */
+  nudged: boolean;
 }
 
 /** How long the winning pocket glows after the balls stop, in playback ms. */
@@ -523,9 +529,12 @@ export function drawWheel(
       // reads as a dimmer switch instead of a flash.
       const glow = flare * flare;
       const lift = Math.min(2.2, view.celebration);
-      ctx.fillStyle = `rgba(201, 162, 39, ${Math.min(0.85, 0.5 * glow * lift)})`;
+      const tint = view.nudged ? "90, 116, 210" : "201, 162, 39";
+      ctx.fillStyle = `rgba(${tint}, ${Math.min(0.85, 0.5 * glow * lift)})`;
       ctx.fill();
-      ctx.strokeStyle = `rgba(240, 214, 130, ${0.35 + 0.65 * glow})`;
+      ctx.strokeStyle = view.nudged
+        ? `rgba(170, 190, 255, ${0.35 + 0.65 * glow})`
+        : `rgba(240, 214, 130, ${0.35 + 0.65 * glow})`;
       ctx.lineWidth = 2 + 3 * glow * lift;
     } else {
       ctx.strokeStyle = FELT;

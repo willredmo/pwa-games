@@ -1059,3 +1059,82 @@
     display: none;
   }
 }
+
+/* ---- marked pockets ------------------------------------------------------ */
+/* A glyph bottom-left, clear of the heat pip (top-left) and the chip badge
+   (bottom-right). Three things can already sit on a cell, so the fourth had to
+   take the one corner still free rather than recolour anything. */
+.spot-mark {
+  position: absolute;
+  left: 2px;
+  bottom: 0;
+  font-size: 0.6rem;
+  line-height: 1;
+  color: var(--gold);
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+}
+
+.cell.spot-double { box-shadow: inset 0 0 0 1px rgba(201, 162, 39, 0.9); }
+.cell.spot-free { box-shadow: inset 0 0 0 1px rgba(110, 201, 139, 0.9); }
+.cell.spot-link { box-shadow: inset 0 0 0 1px rgba(150, 170, 240, 0.9); }
+
+/* Placing mode: the numbers are the only live thing on the table. */
+.cell.markable {
+  cursor: crosshair;
+  outline: 1px dashed rgba(201, 162, 39, 0.55);
+  outline-offset: -2px;
+}
+
+.cell.marking {
+  outline: 2px solid var(--gold);
+  outline-offset: -2px;
+}
+
+.cell.inert {
+  opacity: 0.35;
+}
+
+.placing-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--gold);
+  border-radius: 9px;
+  background: #2a2416;
+  color: var(--gold);
+  font-size: 0.82rem;
+}
+
+.placing-banner button {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: 1px solid #2b352e;
+  border-radius: 999px;
+  background: var(--panel);
+  font-size: 0.75rem;
+}
+
+.buy.place {
+  margin-top: 6px;
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+/* ---- a nudged spin ------------------------------------------------------- */
+/* Weighted Wheel moving the ball is the single most consequential thing an
+   upgrade does to a result, and it was reporting itself in a grey tag the same
+   size as every other. */
+.readout .tag.nudged {
+  border-color: #8aa2f0;
+  color: #cdd8ff;
+  background: rgba(90, 116, 210, 0.22);
+  animation: pop 320ms cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .readout .tag.nudged { animation: none; }
+}

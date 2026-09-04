@@ -1,11 +1,21 @@
 import { money } from "../game/format";
 import { useRef } from "react";
 import { levelOf, UPGRADE_BY_ID, UPGRADES, type Upgrade } from "../game/upgrades";
+import { spotsSpare } from "../game/state";
 import { upgradeCost, type GameState } from "../game/state";
+
+/** Shop entries whose level is an allowance to place, not an effect on its own. */
+const PLACEABLE: Record<string, "double" | "free" | "link"> = {
+  spotDouble: "double",
+  spotFree: "free",
+  spotLink: "link",
+};
 
 interface Props {
   state: GameState;
   onBuy: (id: string) => void;
+  /** Start choosing a pocket for a mark that has been bought but not placed. */
+  onPlaceSpot: (kind: "double" | "free" | "link") => void;
 }
 
 const SECTIONS: { key: "table" | "change"; title: string; blurb: string }[] = [
@@ -13,7 +23,7 @@ const SECTIONS: { key: "table" | "change"; title: string; blurb: string }[] = [
   { key: "change", title: "Loose Change", blurb: "Scrape the floor faster, and keep more of it." },
 ];
 
-export function Shop({ state, onBuy }: Props) {
+export function Shop({ state, onBuy, onPlaceSpot }: Props) {
   // Levels as of the previous render. Without this, `level > 0` would mean
   // every upgrade you already own flashes each time the Shop tab is opened —
   // the list arriving, rather than feedback for the thing you just bought.
@@ -35,6 +45,8 @@ export function Shop({ state, onBuy }: Props) {
     const cost = upgradeCost(state, u.id);
     const afford = cost !== null && cost <= state.chips;
     const bought = justBought(u.id, level);
+    const kind = PLACEABLE[u.id];
+    const spare = kind ? spotsSpare(state, kind, u.id) : 0;
     return (
       // Keyed on the level so buying re-mounts the card and its flash fires.
       // A class alone would not: a CSS animation does not restart on an element
@@ -56,6 +68,14 @@ export function Shop({ state, onBuy }: Props) {
         <button type="button" className="buy" disabled={locked || maxed || !afford} onClick={() => onBuy(u.id)}>
           {locked ? `Needs ${needs}` : maxed ? "Maxed" : `${money(cost ?? 0)}`}
         </button>
+        {spare > 0 && kind && (
+          // Buying only grants the allowance; the pocket is chosen on the
+          // table. Without this the card would sit at a level with nothing to
+          // show for it, which is exactly how Hire a Croupier reads as a no-op.
+          <button type="button" className="buy place" onClick={() => onPlaceSpot(kind)}>
+            Place {spare} on the table
+          </button>
+        )}
       </div>
     );
   };

@@ -71,6 +71,8 @@ interface Props {
   winner?: number;
   /** How big the win was relative to the stake. 0 is a loss. */
   tier?: WinTier;
+  /** Weighted Wheel moved the ball this spin. */
+  nudged?: boolean;
   spinKey: number;
   durationMs: number;
   /** Playback rate. 1 is normal; below 1 slows the whole wheel down. */
@@ -82,6 +84,7 @@ export function Wheel({
   pockets,
   winner = 0,
   tier = 0,
+  nudged = false,
   spinKey,
   durationMs,
   speed = 1,
@@ -99,6 +102,8 @@ export function Wheel({
   winnerRef.current = winner;
   const tierRef = useRef(tier);
   tierRef.current = tier;
+  const nudgedRef = useRef(nudged);
+  nudgedRef.current = nudged;
 
   const anim = useRef({
     wheelAngle: 0,
@@ -354,6 +359,7 @@ export function Wheel({
           settledMs: flying ? null : a.settledMs,
           sparks: a.sparks,
           celebration: flying ? 1 : celebrationOf(tierRef.current).flare,
+          nudged: !flying && nudgedRef.current,
         });
       }
       frame = requestAnimationFrame(loop);
