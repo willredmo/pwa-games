@@ -709,10 +709,12 @@ is meant to survive:
   `planSpin` is handed a longer duration and solves for a slower launch, so it
   is the same throw stretched out and the landing pocket is unaffected. Not
   persisted, so it resets to 1x on reload.
-- **+$1k / +$100k** (`DEV_GRANTS`) — hands you cash to reach a part of the curve
-  without playing to it. It raises `peak` alongside `chips`, so granted money
-  inflates prestige as well; any balance measurement taken after pressing it is
-  meaningless.
+- **+$1k / +$100k** (`DEV_GRANTS`) — **hidden**, behind `SHOW_DEV_GRANTS`. They
+  hand you cash to reach a part of the curve without playing to it, and raise
+  `peak` alongside `chips`, so granted money inflates prestige and any balance
+  measurement taken after pressing one is meaningless. A flag rather than a
+  deletion, because every balance figure in this file was measured with them.
+  The speed control stays visible: it cannot change an outcome, where these can.
 
 ## Deliberate deviations from the tracker
 

@@ -40,7 +40,7 @@ playing **Loose Change** rather than being handed money.
 
 ### Upgrades — the shop
 
-Twelve upgrades in two sections. **The Table** improves the wheel itself:
+Fifteen upgrades in two sections. **The Table** improves the wheel itself:
 
 | Upgrade | Effect |
 | --- | --- |
@@ -49,8 +49,15 @@ Twelve upgrades in two sections. **The Table** improves the wheel itself:
 | Hire a Croupier | Unlocks auto-spin |
 | Croupier's Haste | Auto-spin cadence |
 | Weighted Wheel | Small chance the ball is nudged onto a covered pocket |
-| Long Shot | Extra payout on bets of 8:1 or better |
+| Long Shot | Extra payout on single numbers — the only bet paying 8:1 or better |
 | Second Ball | Extra balls per spin — the best single ball takes the spin |
+| Gild a Pocket | Mark a number to pay double when it lands |
+| House Account | Mark a number that hands your stake back |
+| Linked Pair | Wire two numbers together — a straight on one pays 35% on the other |
+
+The last three are **placed, not just bought**. Buying grants an allowance and
+drops you on the table to choose the number; a pocket holds one mark, and a
+placement is permanent until you cash out.
 
 **Loose Change** upgrades the mini game: Wider Cup, Rush Hour (change falls
 faster), Double Take (a chance a catch counts twice), Lucky Spill (better
@@ -139,9 +146,11 @@ The row under the wheel holds scaffolding meant to be stripped before release:
 - **Speed** (2× down to 0.1×) — replays a spin slowly. Safe by construction: the
   physics solves for a longer flight, so it's the same throw stretched out and
   the landing is unaffected.
-- **+$1.00k / +$100k** — jumps you up the curve. It raises `peak` alongside
-  cash, so **any balance measurement taken after pressing it is meaningless**.
 - **Reset** — wipes the save.
+- **+$1k / +$100k** — hidden. Set `SHOW_DEV_GRANTS` in `App.tsx` to bring them
+  back. They raise `peak` alongside cash, so **any balance measurement taken
+  after pressing one is meaningless** — which is why they are a flag rather than
+  a deletion, and why the speed control stays visible while these do not.
 
 ---
 

@@ -67,6 +67,15 @@ const SPEEDS = [2, 1, 0.5, 0.25, 0.1] as const;
  * buttons are not a balanced income source and are not meant to survive.
  */
 const DEV_GRANTS = [1_000, 100_000] as const;
+/**
+ * Whether the free-money buttons are shown. Off.
+ *
+ * A flag rather than a deletion: they are genuinely useful for reaching a part
+ * of the curve without playing to it, and every balance measurement in
+ * CLAUDE.md was taken with them. Flip to true to get them back. The speed
+ * control stays visible — it cannot change an outcome, where these can.
+ */
+const SHOW_DEV_GRANTS = false;
 
 type Tab = "table" | "shop" | "relics";
 
@@ -413,10 +422,11 @@ export default function App() {
                 {s === 1 ? "1\u00d7" : `${s}\u00d7`}
               </button>
             ))}
-            <span className="denom-sep" aria-hidden="true" />
+            {SHOW_DEV_GRANTS && <span className="denom-sep" aria-hidden="true" />}
             {/* Testing only. Along with the speed control above, this whole row
                 is scaffolding — see the DEV note in CLAUDE.md before shipping. */}
-            {DEV_GRANTS.map((amount) => (
+            {SHOW_DEV_GRANTS &&
+              DEV_GRANTS.map((amount) => (
               <button
                 key={amount}
                 type="button"
