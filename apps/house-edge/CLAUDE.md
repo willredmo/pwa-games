@@ -27,8 +27,10 @@ layout needs roughly 5.3% back to break even against the zero, and level 3 gives
   high/low (1:1). `engine/bets.ts`. The zero loses every outside bet; that is
   the edge being modelled.
 - **15 upgrades** (`game/upgrades.ts`) and **15 relics** (`game/relics.ts`).
-  Upgrades carry a `section` — `"table"` or `"change"` — and the shop groups by
-  it, so the Loose Change upgrades do not bury the wheel's own.
+  Upgrades carry a `section` — `"table"`, `"pocket"` or `"change"` — and the
+  shop groups by it: 7 table, 3 pocket, 5 change. The Pockets has its own
+  section because those three behave unlike anything else in the shop, and the
+  heading says so: buying is only half of it, the placement is the other half.
 - **Loose Change** (`ui/LooseChange.tsx`) — the coin-catching mini game that
   replaced the automatic bailout. See below.
 - **Manual first, auto-spin unlocked** — "Hire a Croupier" (200 chips) turns on

@@ -55,9 +55,10 @@ Fifteen upgrades in two sections. **The Table** improves the wheel itself:
 | House Account | Mark a number that hands your stake back |
 | Linked Pair | Wire two numbers together — a straight on one pays 35% on the other |
 
-The last three are **placed, not just bought**. Buying grants an allowance and
-drops you on the table to choose the number; a pocket holds one mark, and a
-placement is permanent until you cash out.
+The last three sit in their own **The Pockets** section, because they are
+**placed, not just bought**. Buying grants an allowance and drops you on the
+table to choose the number; a pocket holds one mark, and a placement is
+permanent until you cash out.
 
 **Loose Change** upgrades the mini game: Wider Cup, Rush Hour (change falls
 faster), Double Take (a chance a catch counts twice), Lucky Spill (better

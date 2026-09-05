@@ -23,7 +23,7 @@ export interface Upgrade {
   /** Hidden until this upgrade is at level 1+. */
   requires?: string;
   /** Which shop section it belongs to. Defaults to the table. */
-  section?: "table" | "change";
+  section?: "table" | "change" | "pocket";
 }
 
 /**
@@ -191,31 +191,42 @@ export const UPGRADES: Upgrade[] = [
     id: "spotDouble",
     name: "Gild a Pocket",
     icon: "◈",
-    desc: (l) => `Mark ${l} pocket${l === 1 ? "" : "s"} to pay double when it lands.`,
+    // Phrased so it survives the plural: "Mark 3 pockets to pay double when it
+    // lands" reads as a mismatch, and the count is a running total rather than
+    // what this purchase adds.
+    desc: (l) =>
+      l === 1
+        ? "Mark a pocket. It pays double when it lands."
+        : `Mark up to ${l} pockets. Each pays double when it lands.`,
     baseCost: 3_000,
     growth: 2.4,
     maxLevel: 6,
+    section: "pocket",
   },
   {
     id: "spotFree",
     name: "House Account",
     icon: "⊘",
     desc: (l) =>
-      `Mark ${l} pocket${l === 1 ? "" : "s"} that hands your stake back — landing there costs nothing.`,
+      l === 1
+        ? "Mark a pocket that hands your stake back — landing there costs nothing."
+        : `Mark up to ${l} pockets that hand your stake back — landing on one costs nothing.`,
     baseCost: 4_000,
     growth: 2.6,
     maxLevel: 4,
+    section: "pocket",
   },
   {
     id: "spotLink",
     name: "Linked Pair",
     icon: "⧉",
     desc: (l) =>
-      `Wire ${l} pair${l === 1 ? "" : "s"} of numbers together: a straight on one also pays ` +
-      `${Math.round(LINK_SHARE * 100)}% on the other.`,
+      (l === 1 ? "Wire a pair of numbers together" : `Wire up to ${l} pairs of numbers together`) +
+      `: a straight on one also pays ${Math.round(LINK_SHARE * 100)}% on the other.`,
     baseCost: 12_000,
     growth: 3.2,
     maxLevel: 4,
+    section: "pocket",
   },
   {
     id: "cupWidth",

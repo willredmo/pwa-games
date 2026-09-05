@@ -18,8 +18,16 @@ interface Props {
   onPlaceSpot: (kind: "double" | "free" | "link") => void;
 }
 
-const SECTIONS: { key: "table" | "change"; title: string; blurb: string }[] = [
+const SECTIONS: { key: "table" | "pocket" | "change"; title: string; blurb: string }[] = [
   { key: "table", title: "The Table", blurb: "Bend the wheel's edge back toward you." },
+  {
+    key: "pocket",
+    title: "The Pockets",
+    // These are the only upgrades with a decision attached, so the section says
+    // so — a player who buys one expecting a level to tick up has to know the
+    // purchase is only half of it.
+    blurb: "Bought once, then placed on a number. Permanent until you cash out.",
+  },
   { key: "change", title: "Loose Change", blurb: "Scrape the floor faster, and keep more of it." },
 ];
 
