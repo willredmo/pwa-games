@@ -1,0 +1,96 @@
+// Headless AI-vs-AI balance sim for Duel Deck, mirroring the app's round flow.
+// Usage: pnpm sim [matches=5000] [--draw=none|more-damage|both] [--cap=300] [--aug=ai|random] [--hp=N]
+//
+// --aug=random picks augments uniformly from each offer instead of by the AI's
+// score table. Use it for balance work: score-based picking means weak augments
+// are almost never taken (tiny samples) and strong ones are mostly taken next to
+// other strong ones, so their holder win rates are biased.
+import { cloneBoard, sideUnits } from "../src/engine/board";
+import { resolveRound } from "../src/engine/combat";
+import type { Side } from "../src/engine/types";
+import { newBoard, aiCommit, aiPickAugment, aiTakeAugment, isAugmentRound, refreshForRound, upgradeTier, AUGMENT_OFFER_COUNT } from "../src/game/match";
+import { createAugmentState, offerAugments, takeAugment, AUGMENTS } from "../src/game/augments";
+import { settleRound } from "../src/game/roundEnd";
+
+type DrawRule = "none" | "more-damage" | "both";
+const args = process.argv.slice(2);
+const flag = (n: string) => args.find((a) => a.startsWith(`--${n}=`))?.split("=")[1];
+const N = Number(args.find((a) => /^\d+$/.test(a)) ?? 5000);
+const CAP = Number(flag("cap") ?? 300);
+const rule = (flag("draw") ?? "none") as DrawRule;
+if (!["none", "more-damage", "both"].includes(rule)) throw new Error(`bad --draw=${rule}`);
+const startHp = flag("hp") ? Number(flag("hp")) : null;
+const augMode = flag("aug") ?? "ai";
+if (!["ai", "random"].includes(augMode)) throw new Error(`bad --aug=${augMode}`);
+const pickAug = <T>(opts: T[]): T | null =>
+  augMode === "random"
+    ? (opts[Math.floor(Math.random() * opts.length)] ?? null)
+    : (aiPickAugment(opts as never) as T | null);
+const SIDES: Side[] = ["player", "enemy"];
+const other = (s: Side): Side => (s === "player" ? "enemy" : "player");
+
+const rounds: number[] = [];
+let capHits = 0, totRounds = 0, totDraws = 0, zeroDmg = 0;
+const MAXR = 10; // rounds >= MAXR bucketed together
+const byRound = Array.from({ length: MAXR + 1 }, () => ({ n: 0, draws: 0, dmg: 0 }));
+const augWin: Record<string, [number, number]> = {};
+for (const a of AUGMENTS) augWin[a.id] = [0, 0];
+
+for (let i = 0; i < N; i++) {
+  let board = newBoard();
+  if (startHp) board.hp = { player: startHp, enemy: startHp };
+  const aug = { player: createAugmentState(), enemy: createAugmentState() };
+  let winner: Side | null = null, r = 0;
+  while (r < CAP) {
+    r++;
+    const c = cloneBoard(board);
+    // Upgrade rounds open with the upgrade, before unit picks — as in the app.
+    // --aug=ai plays the app's AI upgrade turn (rarity, fit, rerolls); random
+    // mode picks blind, for unbiased per-augment win rates.
+    if (isAugmentRound(r)) for (const s of SIDES) {
+      if (augMode === "ai") { aiTakeAugment(c, s, aug[s], r); continue; }
+      const ch = pickAug(offerAugments(aug[s], AUGMENT_OFFER_COUNT, upgradeTier(r)));
+      if (ch) { const k = takeAugment(aug[s], ch.id, sideUnits(c, s)); if (k) c.hp[s] = Math.max(1, c.hp[s] - k); }
+    }
+    aiCommit(c, "player", aug.player); aiCommit(c, "enemy", aug.enemy);
+    refreshForRound(c, aug.player, aug.enemy);
+    const res = resolveRound(c);
+    // Same round-end bookkeeping as the app (Momentum, Rally, kills, Veteran,
+    // Field medic) — before reading HP, since Field medic heals the result.
+    for (const s of SIDES) settleRound(res, s, aug[s], c);
+    const hp = { ...res.board.hp };
+    let applied = res.hpLoss, isDraw = !res.roundWinner, mw = res.matchWinner;
+    if (isDraw && rule !== "none") {
+      const dp = res.damageDealt.player, de = res.damageDealt.enemy;
+      if (rule === "more-damage" && dp !== de) {
+        const w = dp > de ? "player" : "enemy";
+        hp[other(w)] -= res.damageDealt[w]; applied = res.damageDealt[w]; isDraw = false;
+      } else if (rule === "both") {
+        hp.enemy -= dp; hp.player -= de; applied = dp + de; isDraw = false;
+      }
+      if (!isDraw || applied > 0) {
+        if (hp.player <= 0 || hp.enemy <= 0) mw = hp.player === hp.enemy ? (Math.random() < 0.5 ? "player" : "enemy") : hp.player > hp.enemy ? "player" : "enemy";
+      }
+    }
+    const b = byRound[Math.min(r, MAXR)];
+    b.n++; b.dmg += applied; if (isDraw) { b.draws++; totDraws++; }
+    if (applied === 0) zeroDmg++;
+    if (mw) { winner = mw; break; }
+    board = cloneBoard(c); board.hp = hp;
+  }
+  rounds.push(r); totRounds += r;
+  if (!winner) capHits++;
+  else for (const s of SIDES) for (const id of aug[s].active) { augWin[id][1]++; if (winner === s) augWin[id][0]++; }
+}
+
+rounds.sort((a, b) => a - b);
+const pct = (p: number) => rounds[Math.min(rounds.length - 1, Math.floor(p * rounds.length))];
+const f = (x: number, d = 1) => x.toFixed(d);
+console.log(`draw rule: ${rule}   matches: ${N}   cap: ${CAP}`);
+console.log(`rounds/match: p10 ${pct(0.1)} median ${pct(0.5)} p90 ${pct(0.9)} max ${rounds[rounds.length - 1]}   mean ${f(totRounds / N)}`);
+console.log(`draw rounds: ${f(100 * totDraws / totRounds)}%   zero-damage rounds: ${f(100 * zeroDmg / totRounds)}%   cap hits: ${capHits}`);
+console.log("by round:");
+byRound.forEach((b, r) => { if (r && b.n) console.log(`  r${String(r).padEnd(3)}${r === MAXR ? "+" : " "} draws ${f(100 * b.draws / b.n, 0).padStart(3)}%  avg dmg ${f(b.dmg / b.n).padStart(5)}  (n=${b.n})`); });
+console.log("augment holder win rate:");
+for (const [id, [w, n]] of Object.entries(augWin).sort((a, b) => (b[1][0] / (b[1][1] || 1)) - (a[1][0] / (a[1][1] || 1))))
+  console.log(`  ${id.padEnd(20)} ${n ? f(100 * w / n) + "%" : "n/a"}  (n=${n})`);

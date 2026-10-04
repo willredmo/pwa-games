@@ -8,7 +8,7 @@ export function otherSide(side: Side): Side {
   return side === "player" ? "enemy" : "player";
 }
 
-export type Shape = "circle" | "square" | "triangle" | "diamond" | "hexagon";
+export type Shape = "circle" | "square" | "triangle" | "diamond" | "hexagon" | "shield";
 
 /** A unit definition (the pool-level template). */
 export interface UnitStats {
@@ -19,6 +19,10 @@ export interface UnitStats {
   /** Tags that augments target, e.g. "striker", "tank". */
   classes: string[];
   role: string;
+  /** Keywords the unit always has, before any augment (the Knight's armour). */
+  traits?: UnitTraits;
+  /** False for units that never appear in the offer (the Knight is earned). */
+  offered?: boolean;
 }
 
 /** An in-play unit instance on the board. */
@@ -49,6 +53,51 @@ export interface Unit {
    * always describes *why* the numbers above differ from the base ones.
    */
   auras: string[];
+  /**
+   * Combat keywords granted by augments for this round, recomputed with the
+   * stats by `applyAugments`. Optional so older saves (and fresh units before
+   * their first refresh) read as "no traits".
+   */
+  traits?: UnitTraits;
+  /**
+   * What each augment is doing to this unit this round, rebuilt alongside the
+   * stats. Drives the hover breakdown, so it always matches the real numbers.
+   */
+  auraDetails?: AuraDetail[];
+}
+
+/** One augment's contribution to one unit. */
+export interface AuraDetail {
+  id: string;
+  atk: number;
+  hp: number;
+  traits?: UnitTraits;
+}
+
+/** Combat keywords. Read by `resolveRound`; all absent = plain melee. */
+export interface UnitTraits {
+  /** Strikes before the enemy in the round's FIRST exchange; a kill there means no return blow. */
+  firstStrike?: boolean;
+  /** Damage beyond what kills the target carries on to the next enemy in the queue. */
+  cleave?: boolean;
+  /** Damage reflected back to whoever hits this unit (per hit). */
+  thorns?: number;
+  /** Fraction (0..1) of damage dealt this unit heals, capped at max HP. */
+  lifesteal?: number;
+  /** Flat reduction to every hit this unit takes (a hit still deals at least 1). */
+  damageReduction?: number;
+  /** Bonus ATK against a target below half its max HP. */
+  executioner?: number;
+  /** On death, deals its ATK once to the enemy front. Only the side's FIRST death each round triggers. */
+  lastBreath?: boolean;
+}
+
+/** Side-wide modifiers from augments, set on the board each round. */
+export interface SideMods {
+  /** Extra HP taken from the loser when this side wins a round. */
+  bounty?: number;
+  /** Queue slots this side may use (defaults to board.depth). */
+  capacity?: number;
 }
 
 /**
@@ -62,6 +111,8 @@ export interface Board {
   slots: Record<Side, (Unit | null)[][]>;
   /** Each player's own HP pool (100 at match start). */
   hp: Record<Side, number>;
+  /** Side-wide augment modifiers (bounty, capacity). Absent = none. */
+  mods?: Partial<Record<Side, SideMods>>;
 }
 
 // --- Battle log (drives playback) ---
@@ -72,6 +123,15 @@ export interface AttackEvent {
   attacker: string;
   target: string;
   damage: number;
+  /** Why this blow happened, when it isn't a plain front-vs-front strike. */
+  tag?: "first-strike" | "cleave" | "thorns" | "last-breath" | "executioner";
+  /** Damage soaked by the target's damageReduction (already removed from `damage`). */
+  blocked?: number;
+}
+export interface HealEvent {
+  type: "heal";
+  unit: string;
+  amount: number;
 }
 export interface DeathEvent {
   type: "death";
@@ -81,7 +141,7 @@ export interface DeathEvent {
   side: Side;
 }
 
-export type BattleEvent = AttackEvent | DeathEvent;
+export type BattleEvent = AttackEvent | DeathEvent | HealEvent;
 
 /** One tick's events plus the board state after they're applied. */
 export interface Tick {
@@ -96,8 +156,14 @@ export interface RoundResult {
   roundWinner: Side | null;
   /** Total damage each side dealt during the round. */
   damageDealt: Record<Side, number>;
-  /** HP subtracted from the loser (the winner's total damage). */
+  /** HP subtracted from the loser: the winner's surviving units' attack, plus bounty. */
   hpLoss: number;
+  /** The winner's units left standing, and the attack they hit the loser for. */
+  survivors?: { ids: string[]; damage: number };
+  /** Enemy units each side killed this round (Overwhelm counts these). */
+  kills?: Record<Side, number>;
+  /** Bounty included in hpLoss, for display. */
+  bounty?: number;
   /** Set once a player's HP pool hits 0. */
   matchWinner: Side | null;
 }

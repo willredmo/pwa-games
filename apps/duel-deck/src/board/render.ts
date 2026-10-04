@@ -1,4 +1,18 @@
 import type { Board, Shape, Side } from "../engine/types";
+import { capacityOf } from "../engine/board";
+import {
+  activePose,
+  clamp01,
+  easeInOutSine,
+  easeOutBack,
+  easeOutCubic,
+  prefersReducedMotion,
+  pulse,
+  type Pose,
+  type PoseState,
+} from "./anim";
+import { drawCharacter } from "./characters";
+import type { FxLayer } from "./fx";
 
 // Imperative Canvas 2D board renderer.
 //
@@ -25,16 +39,47 @@ const COLORS = {
   replace: "#e08a4a",
   invalid: "#e0574a",
   mid: "#4a4368",
+  energy: "#8d7bff",
 } as const;
 
 /** Cap on lane width so a one-lane row doesn't stretch into full-width bars. */
-const MAX_LANE_ASPECT = 3.4;
+const MAX_LANE_ASPECT = 8;
+/** Absolute cap on slot width (CSS px) so wide windows stay readable, not stretched. */
+const MAX_LANE_W = 320;
 
 export interface Cell {
   side: Side;
   lane: number;
   spot: number;
+  /**
+   * Which half of the slot the pointer is over, when it came from a pointer.
+   * Holding a placed unit over a same-type unit, left (the character) merges
+   * and right (the stats) just moves — otherwise twins could never be reordered.
+   */
+  zone?: "left" | "right";
 }
+
+export type TargetKind =
+  | "place"
+  | "insert"
+  | "merge"
+  | "replace"
+  | "reorder"
+  | "merge-or-move"
+  | "merge-or-add";
+
+/** Colour and badge text per drop outcome — shared by outlines, badges and labels. */
+const KIND_STYLE: Record<TargetKind, { color: string; badge: string }> = {
+  place: { color: COLORS.target, badge: "＋ ADD" },
+  insert: { color: COLORS.target, badge: "↧ INSERT" },
+  merge: { color: COLORS.merge, badge: "⇪ MERGE" },
+  replace: { color: COLORS.replace, badge: "⇄ REPLACE" },
+  reorder: { color: "#b8b0e0", badge: "↕ MOVE" },
+  // A same-type unit while moving one of yours: split slot, see drawDropHints.
+  "merge-or-move": { color: COLORS.merge, badge: "⇪ MERGE  |  MOVE ↕" },
+  // A same-type unit while holding an offer, with room: left merges, right inserts.
+  "merge-or-add": { color: COLORS.merge, badge: "⇪ MERGE  |  INSERT ↧" },
+};
 
 export interface CellHit {
   side: Side;
@@ -53,6 +98,16 @@ export interface RenderState {
   /** What the hovered slot would do, so the colour matches the outcome. */
   /** "reorder" (and an absent kind) fall through to the neutral gold outline. */
   dropKind?: "place" | "merge" | "replace" | "reorder" | "invalid";
+  /**
+   * What dropping the held unit on each valid target would do, keyed
+   * "lane,spot". Lets every option be colour-coded and badged before the
+   * pointer reaches it, not just the hovered one.
+   */
+  targetKinds?: Record<string, TargetKind>;
+  /** Outcome text for the hovered slot, e.g. "MERGE ⚔6→9 ♥4→6". */
+  dropLabel?: string | null;
+  /** Unit type in hand, drawn as a faint preview when it would be added. */
+  heldKey?: string | null;
   /** Unit being dragged — drawn faded, since it's "lifted off" the board. */
   draggingId?: string | null;
   /**
@@ -66,6 +121,12 @@ export interface RenderState {
    * the renderer stays generic over the game layer.
    */
   auraIcon?: (id: string) => string;
+  /** Animation clock (ms, performance.now). Drawn once per frame by App's rAF loop. */
+  time?: number;
+  /** Per-unit one-shot poses keyed by unit id, set by App (see board/anim.ts). */
+  poses?: Record<string, PoseState>;
+  /** Transient effects layer, owned by App, drawn on top of the board. */
+  fx?: FxLayer;
 }
 
 /** Aura badges drawn per unit before collapsing the rest into a "+N". */
@@ -85,7 +146,7 @@ function layout(canvas: HTMLCanvasElement, board: Board): Layout | null {
   if (cw <= 0 || ch <= 0) return null;
   const rows = board.depth * 2;
   const rowH = ch / rows;
-  const laneW = Math.min(cw / board.lanes, rowH * MAX_LANE_ASPECT);
+  const laneW = Math.min(cw / board.lanes, MAX_LANE_W, rowH * MAX_LANE_ASPECT);
   return { ox: (cw - laneW * board.lanes) / 2, oy: 0, laneW, rowH, rows };
 }
 
@@ -111,7 +172,27 @@ export function pixelToCell(
   const row = Math.floor((y - l.oy) / l.rowH);
   if (lane < 0 || lane >= board.lanes || row < 0 || row >= l.rows) return null;
   const { side, spot } = rowToSideSpot(board, row);
-  return { side, lane, spot };
+  const zone = x - (l.ox + lane * l.laneW) < l.laneW / 2 ? "left" : "right";
+  return { side, lane, spot, zone };
+}
+
+/**
+ * Centre of a cell in CSS px, plus the cell height — where App anchors effects
+ * (damage numbers, slashes, bursts) so they line up with what's drawn.
+ */
+export function cellCenter(
+  canvas: HTMLCanvasElement,
+  board: Board,
+  cell: Cell,
+): { x: number; y: number; size: number } | null {
+  const l = layout(canvas, board);
+  if (!l) return null;
+  const row = sideSpotToRow(board, cell.side, cell.spot);
+  return {
+    x: l.ox + (cell.lane + 0.5) * l.laneW,
+    y: l.oy + (row + 0.5) * l.rowH,
+    size: l.rowH,
+  };
 }
 
 function roundRect(
@@ -158,6 +239,14 @@ export function traceShape(
       ctx.lineTo(cx - r, cy);
       ctx.closePath();
       break;
+    case "shield":
+      ctx.moveTo(cx - r * 0.8, cy - r * 0.86);
+      ctx.lineTo(cx + r * 0.8, cy - r * 0.86);
+      ctx.lineTo(cx + r * 0.8, cy + r * 0.12);
+      ctx.quadraticCurveTo(cx + r * 0.64, cy + r * 0.72, cx, cy + r);
+      ctx.quadraticCurveTo(cx - r * 0.64, cy + r * 0.72, cx - r * 0.8, cy + r * 0.12);
+      ctx.closePath();
+      break;
     case "hexagon":
       for (let i = 0; i < 6; i++) {
         const a = (Math.PI / 3) * i - Math.PI / 6;
@@ -170,6 +259,103 @@ export function traceShape(
   }
 }
 
+// ---- per-unit visual state (module-level so it survives across frames) ----
+
+interface UnitVis {
+  row: number; // displayed row (float)
+  hp: number; // eased hp
+  ghost: number; // lingering damage chunk
+  ghostHold: number; // ms before ghost drains
+  flash: number; // 0..1 bar flash after a hit
+  lastHp: number;
+  seed: number;
+  pose: Pose;
+  t: number;
+  stamp: number;
+}
+
+const vis = new Map<string, UnitVis>();
+let frameStamp = 0;
+let lastTime = -1;
+let lastDt = 16;
+let energy = 0;
+
+const DASH_TARGET = [5, 4];
+const DASH_MID = [12, 9];
+const NO_DASH: number[] = [];
+
+function hashId(id: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
+  return (h >>> 0) % 100000;
+}
+
+function updateVis(
+  board: Board,
+  state: RenderState,
+  time: number,
+  dt: number,
+  animated: boolean,
+  reduce: boolean,
+): void {
+  frameStamp++;
+  let activity = 0;
+  const slideK = 1 - Math.exp(-dt / 110);
+  const hpK = 1 - Math.exp(-dt / 120);
+  const drainK = 1 - Math.exp(-dt / 220);
+  for (const side of ["enemy", "player"] as const) {
+    const lanes = board.slots[side];
+    for (let lane = 0; lane < lanes.length; lane++) {
+      const col = lanes[lane];
+      for (let spot = 0; spot < col.length; spot++) {
+        const u = col[spot];
+        if (!u) continue;
+        const target = sideSpotToRow(board, side, spot);
+        let v = vis.get(u.id);
+        if (!v) {
+          v = {
+            row: target, hp: u.hp, ghost: u.hp, ghostHold: 0, flash: 0, lastHp: u.hp,
+            seed: hashId(u.id), pose: "idle", t: 0, stamp: 0,
+          };
+          vis.set(u.id, v);
+        }
+        v.stamp = frameStamp;
+        // Slide toward the target row.
+        if (!animated || reduce) v.row = target;
+        else {
+          v.row += (target - v.row) * slideK;
+          if (Math.abs(target - v.row) < 0.002) v.row = target;
+        }
+        // HP easing + ghost chunk.
+        if (!animated) {
+          v.hp = v.ghost = u.hp;
+          v.flash = 0;
+        } else {
+          if (u.hp < v.lastHp) {
+            v.flash = 1;
+            v.ghost = Math.max(v.ghost, v.hp, v.lastHp);
+            v.ghostHold = 380;
+          }
+          v.lastHp = u.hp;
+          v.hp = reduce ? u.hp : v.hp + (u.hp - v.hp) * hpK;
+          if (Math.abs(u.hp - v.hp) < 0.01) v.hp = u.hp;
+          if (v.ghostHold > 0) v.ghostHold -= dt;
+          else v.ghost += (v.hp - v.ghost) * drainK;
+          if (v.ghost < v.hp) v.ghost = v.hp;
+          v.flash = Math.max(0, v.flash - dt / 260);
+        }
+        const ap = animated ? activePose(state.poses?.[u.id], time) : { pose: "idle" as Pose, t: 0 };
+        v.pose = ap.pose;
+        v.t = ap.t;
+        if (ap.pose === "attack") activity = Math.max(activity, pulse(ap.t));
+        else if (ap.pose === "hit") activity = Math.max(activity, 0.8 * (1 - ap.t));
+      }
+    }
+  }
+  if (vis.size > 0) for (const [id, v] of vis) if (v.stamp !== frameStamp) vis.delete(id);
+  energy += (activity - energy) * (1 - Math.exp(-dt / (activity > energy ? 50 : 220)));
+}
+
 export function draw(canvas: HTMLCanvasElement, state: RenderState): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -180,20 +366,64 @@ export function draw(canvas: HTMLCanvasElement, state: RenderState): void {
   const dpr = window.devicePixelRatio || 1;
   const cw = canvas.clientWidth;
   const ch = canvas.clientHeight;
-  canvas.width = Math.round(cw * dpr);
-  canvas.height = Math.round(ch * dpr);
+  const bw = Math.round(cw * dpr);
+  const bh = Math.round(ch * dpr);
+  if (canvas.width !== bw || canvas.height !== bh) {
+    canvas.width = bw;
+    canvas.height = bh;
+  }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cw, ch);
 
+  const animated = state.time !== undefined;
+  const time = state.time ?? 0;
+  const reduce = prefersReducedMotion();
+  if (animated && time !== lastTime) {
+    lastDt = lastTime < 0 ? 16 : Math.max(0, Math.min(100, time - lastTime));
+    lastTime = time;
+    updateVis(board, state, time, lastDt, true, reduce);
+  } else if (!animated) {
+    updateVis(board, state, 0, 16, false, reduce);
+  }
+
+  ctx.save();
+  if (state.fx && animated && !reduce) {
+    const o = state.fx.shakeOffset(time);
+    ctx.translate(o.x, o.y);
+  }
+
   const targetSet = new Set(state.validTargets.map((c) => `${c.lane},${c.spot}`));
-  const pad = Math.min(l.laneW, l.rowH) * 0.08;
+  const pad = Math.min(l.laneW, l.rowH) * 0.03;
+  const bx = l.ox;
+  const bwid = l.laneW * board.lanes;
+  const bht = l.rowH * l.rows;
+  const midY = l.oy + board.depth * l.rowH;
 
-  // Arena panel, sized to the lane block rather than the whole canvas.
+  // Arena panel with gradient + soft vignette.
   const pp = pad * 1.5;
-  roundRect(ctx, l.ox - pp, l.oy - pp, l.laneW * board.lanes + pp * 2, l.rowH * l.rows + pp * 2, 10);
-  ctx.fillStyle = COLORS.panel;
+  roundRect(ctx, bx - pp, l.oy - pp, bwid + pp * 2, bht + pp * 2, 10);
+  const g = ctx.createLinearGradient(0, l.oy, 0, l.oy + bht);
+  g.addColorStop(0, "#2a1d2e");
+  g.addColorStop(0.5, "#201d30");
+  g.addColorStop(1, "#1a2038");
+  ctx.fillStyle = g;
   ctx.fill();
+  ctx.save();
+  ctx.clip();
+  const vg = ctx.createRadialGradient(
+    bx + bwid / 2, l.oy + bht / 2, Math.min(bwid, bht) * 0.35,
+    bx + bwid / 2, l.oy + bht / 2, Math.max(bwid, bht) * 0.75,
+  );
+  vg.addColorStop(0, "rgba(0,0,0,0)");
+  vg.addColorStop(1, "rgba(0,0,0,0.45)");
+  ctx.fillStyle = vg;
+  ctx.fillRect(bx - pp, l.oy - pp, bwid + pp * 2, bht + pp * 2);
+  ctx.restore();
 
+  const hasDrop = !!state.dropCell;
+  const pulse1 = 0.5 + 0.5 * Math.sin(time / 180);
+
+  // Slots (static layer).
   for (let lane = 0; lane < board.lanes; lane++) {
     for (let row = 0; row < l.rows; row++) {
       const { side, spot } = rowToSideSpot(board, row);
@@ -203,15 +433,12 @@ export function draw(canvas: HTMLCanvasElement, state: RenderState): void {
       const h = l.rowH - pad * 2;
       const unit = board.slots[side][lane][spot];
       const isTarget = side === "player" && targetSet.has(`${lane},${spot}`);
-      const isSelected = !!unit && !!state.selectedId && unit.id === state.selectedId;
       const isDrop =
-        !!state.dropCell &&
-        state.dropCell.side === side &&
-        state.dropCell.lane === lane &&
-        state.dropCell.spot === spot;
-
-      // Colour the hovered slot by outcome: gold place, green merge, orange
-      // replace (destructive), red invalid.
+        hasDrop &&
+        state.dropCell!.side === side &&
+        state.dropCell!.lane === lane &&
+        state.dropCell!.spot === spot;
+      const kind = isTarget ? state.targetKinds?.[`${lane},${spot}`] : undefined;
       const dropColor = isDrop
         ? state.dropKind === "merge"
           ? COLORS.merge
@@ -220,125 +447,135 @@ export function draw(canvas: HTMLCanvasElement, state: RenderState): void {
             : state.dropKind === "invalid"
               ? COLORS.invalid
               : COLORS.target
-        : COLORS.target;
+        : kind
+          ? KIND_STYLE[kind].color
+          : COLORS.target;
+      const r = Math.min(w, h) * 0.16;
 
-      roundRect(ctx, x, y, w, h, Math.min(w, h) * 0.16);
+      roundRect(ctx, x, y, w, h, r);
       ctx.fillStyle = COLORS.slot;
       ctx.fill();
-      // The picked-up unit gets the same weight as a drop target but a solid
-      // line, so "this is in hand" reads differently from "you may drop here".
-      ctx.lineWidth =
-        isDrop || isSelected ? Math.max(3, h * 0.1) : isTarget ? Math.max(2, h * 0.05) : 1;
-      ctx.strokeStyle =
-        isDrop || isTarget ? dropColor : isSelected ? COLORS.target : COLORS.slotEdge;
-      if (isTarget && !isDrop) ctx.setLineDash([5, 4]);
-      ctx.stroke();
-      ctx.setLineDash([]);
+      ctx.fillStyle = side === "player" ? "rgba(58,134,214,0.07)" : "rgba(209,72,58,0.07)";
+      ctx.fill();
 
-      // A replace discards the unit standing there, so mark it plainly.
+      if (isDrop || isTarget) {
+        ctx.lineWidth = isDrop ? Math.max(3, h * 0.1) * (0.8 + 0.3 * pulse1) : Math.max(2, h * 0.05);
+        ctx.strokeStyle = dropColor;
+        if (isDrop) {
+          ctx.shadowColor = dropColor;
+          ctx.shadowBlur = 6 + 10 * pulse1;
+        } else {
+          ctx.setLineDash(DASH_TARGET);
+          ctx.lineDashOffset = -time * 0.02;
+        }
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.setLineDash(NO_DASH);
+        ctx.lineDashOffset = 0;
+      } else {
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = COLORS.slotEdge;
+        ctx.stroke();
+      }
+
       if (isDrop && state.dropKind === "replace") {
         ctx.fillStyle = "rgba(224, 138, 74, 0.22)";
-        roundRect(ctx, x, y, w, h, Math.min(w, h) * 0.16);
+        roundRect(ctx, x, y, w, h, r);
         ctx.fill();
       }
+      void unit;
 
-      if (!unit) continue;
-
-      // The dragged unit is drawn faded — it's lifted off the board.
-      const lifted = state.draggingId === unit.id;
-      ctx.save();
-      if (lifted) ctx.globalAlpha = 0.3;
-
-      // Shape encodes type, colour encodes ownership.
-      const cx = x + h * 0.55;
-      const cy = y + h / 2;
-      const r = h * 0.34;
-      traceShape(ctx, unit.shape, cx, cy, r);
-      ctx.fillStyle = side === "player" ? COLORS.player : COLORS.enemy;
-      ctx.fill();
-      ctx.lineWidth = Math.max(1.5, h * 0.05);
-      ctx.strokeStyle = side === "player" ? COLORS.playerEdge : COLORS.enemyEdge;
-      ctx.stroke();
-
-      // Name above, then the two numbers large and colour-coded so ATK vs HP
-      // is readable at a glance without parsing the icons.
-      const tx = x + h * 1.0;
-      ctx.textAlign = "left";
-      ctx.textBaseline = "middle";
-      ctx.fillStyle = COLORS.name;
-      ctx.font = `600 ${Math.round(h * 0.24)}px system-ui, sans-serif`;
-      ctx.fillText(unit.name, tx, y + h * 0.26);
-
-      const statY = y + h * 0.66;
-      ctx.font = `800 ${Math.round(h * 0.42)}px system-ui, sans-serif`;
-      const atkLabel = `⚔${unit.atk}`;
-      ctx.fillStyle = COLORS.atkText;
-      ctx.fillText(atkLabel, tx, statY);
-      ctx.fillStyle = COLORS.hpText;
-      ctx.fillText(`♥${unit.hp}`, tx + ctx.measureText(atkLabel).width + h * 0.28, statY);
-
-      // Merge badge: how many offered units have been folded into this one.
-      const mergeW = h * 0.4;
-      const mergeX = x + w - mergeW - pad * 0.5;
-      if (unit.merges > 0) {
-        const by = y + h * 0.12;
-        roundRect(ctx, mergeX, by, mergeW, h * 0.3, h * 0.1);
-        ctx.fillStyle = COLORS.target;
+      if (spot >= capacityOf(board, side)) {
+        // Locked slot: dim it, hatch diagonally, and stamp a small padlock.
+        ctx.save();
+        roundRect(ctx, x, y, w, h, r);
+        ctx.fillStyle = "rgba(10, 8, 20, 0.55)";
         ctx.fill();
-        ctx.fillStyle = "#2a1f05";
-        ctx.textAlign = "center";
-        ctx.font = `800 ${Math.round(h * 0.22)}px system-ui, sans-serif`;
-        ctx.fillText(`+${unit.merges}`, mergeX + mergeW / 2, by + h * 0.16);
-        ctx.textAlign = "left";
-      }
-
-      // Augment badges: one glyph per upgrade currently changing this unit's
-      // numbers. Laid out right-to-left from just inside the merge badge, and
-      // only as many as genuinely fit beside the name — an overflowing row of
-      // icons would obscure exactly the stats it's meant to explain.
-      if (unit.auras.length > 0 && state.auraIcon) {
-        const size = h * 0.26;
-        const gap = h * 0.08;
-        const right = (unit.merges > 0 ? mergeX : x + w) - pad * 0.8;
-        ctx.font = `${Math.round(size)}px system-ui, sans-serif`;
-        const nameRight = tx + ctx.measureText(unit.name).width;
-        const room = Math.max(0, right - nameRight - gap);
-        const fits = Math.floor(room / (size + gap));
-        const budget = Math.min(unit.auras.length, MAX_AURA_BADGES, fits);
-        // If some are hidden, the leftmost slot becomes a "+N" count instead.
-        const hidden = unit.auras.length - budget;
-        const shown = hidden > 0 ? Math.max(0, budget - 1) : budget;
-
-        ctx.textAlign = "center";
-        let bx = right - size / 2;
-        for (let k = 0; k < shown; k++) {
-          ctx.fillText(state.auraIcon(unit.auras[k]), bx, y + h * 0.27);
-          bx -= size + gap;
+        ctx.clip();
+        ctx.strokeStyle = "rgba(160, 150, 200, 0.18)";
+        ctx.lineWidth = 1;
+        const step = Math.max(6, h * 0.16);
+        ctx.beginPath();
+        for (let d = -h; d < w; d += step) {
+          ctx.moveTo(x + d, y + h);
+          ctx.lineTo(x + d + h, y);
         }
-        if (hidden > 0 && budget > 0) {
-          ctx.fillStyle = COLORS.name;
-          ctx.font = `800 ${Math.round(h * 0.2)}px system-ui, sans-serif`;
-          ctx.fillText(`+${unit.auras.length - shown}`, bx, y + h * 0.27);
-        }
-        ctx.textAlign = "left";
+        ctx.stroke();
+        ctx.restore();
+        const s = Math.min(w, h) * 0.2;
+        const cx = x + w / 2;
+        const cy = y + h / 2;
+        ctx.save();
+        ctx.strokeStyle = "rgba(190, 180, 230, 0.55)";
+        ctx.fillStyle = "rgba(190, 180, 230, 0.55)";
+        ctx.lineWidth = Math.max(1.5, s * 0.18);
+        ctx.beginPath();
+        ctx.arc(cx, cy - s * 0.25, s * 0.38, Math.PI, 0);
+        ctx.stroke();
+        ctx.fillRect(cx - s * 0.55, cy - s * 0.25, s * 1.1, s * 0.85);
+        ctx.restore();
       }
-
-      // HP bar along the bottom of the text area.
-      const barW = w - (tx - x) - pad;
-      const barH = Math.max(3, h * 0.08);
-      const barY = y + h * 0.9;
-      ctx.fillStyle = COLORS.hpTrack;
-      roundRect(ctx, tx, barY, barW, barH, barH / 2);
-      ctx.fill();
-      ctx.fillStyle = COLORS.hpFill;
-      const frac = Math.max(0, Math.min(1, unit.hp / unit.maxHp));
-      roundRect(ctx, tx, barY, barW * frac, barH, barH / 2);
-      ctx.fill();
-      ctx.restore();
     }
   }
 
-  // Battle effects: flash the struck cell, float a damage number.
+  // Energy line along the centre.
+  {
+    const e = energy;
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.strokeStyle = COLORS.energy;
+    ctx.globalAlpha = 0.18 + 0.12 * (0.5 + 0.5 * Math.sin(time / 420)) + 0.5 * e;
+    ctx.lineWidth = 3 + 5 * e;
+    ctx.shadowColor = COLORS.energy;
+    ctx.shadowBlur = 8 + 18 * e;
+    ctx.beginPath();
+    ctx.moveTo(bx, midY);
+    ctx.lineTo(bx + bwid, midY);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 0.55 + 0.45 * e;
+    ctx.strokeStyle = e > 0.2 ? "#d9d2ff" : COLORS.mid;
+    ctx.lineWidth = 2;
+    ctx.setLineDash(DASH_MID);
+    ctx.lineDashOffset = -time * (0.03 + 0.08 * e);
+    ctx.beginPath();
+    ctx.moveTo(bx, midY);
+    ctx.lineTo(bx + bwid, midY);
+    ctx.stroke();
+    ctx.setLineDash(NO_DASH);
+    if (animated) {
+      const px = bx + (((time * (0.0003 + 0.0006 * e)) % 1 + 1) % 1) * bwid;
+      ctx.globalAlpha = 0.5 + 0.5 * e;
+      ctx.fillStyle = "#fff";
+      ctx.shadowColor = COLORS.energy;
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      ctx.arc(px, midY, 2 + 2 * e, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Units: idle ones first, attackers last so lunges pass over neighbours.
+  for (let passIdx = 0; passIdx < 2; passIdx++) {
+    for (let lane = 0; lane < board.lanes; lane++) {
+      for (const side of ["enemy", "player"] as const) {
+        const col = board.slots[side][lane];
+        for (let spot = 0; spot < col.length; spot++) {
+          const unit = col[spot];
+          if (!unit) continue;
+          const v = vis.get(unit.id);
+          if (!v) continue;
+          if ((v.pose === "attack" ? 1 : 0) !== passIdx) continue;
+          drawUnit(ctx, state, unit, side, lane, v, l, pad, time, animated, reduce);
+        }
+      }
+    }
+  }
+
+  drawDropHints(ctx, state, l, pad, time, animated);
+
+  // Battle effects: brief subtle flash on struck cells.
   for (const hit of state.hits) {
     const row = sideSpotToRow(board, hit.side, hit.spot);
     const x = l.ox + hit.lane * l.laneW + pad;
@@ -346,28 +583,312 @@ export function draw(canvas: HTMLCanvasElement, state: RenderState): void {
     const w = l.laneW - pad * 2;
     const h = l.rowH - pad * 2;
     roundRect(ctx, x, y, w, h, Math.min(w, h) * 0.16);
-    ctx.fillStyle = hit.dying ? "rgba(12,10,18,0.55)" : "rgba(255,70,45,0.34)";
+    ctx.fillStyle = hit.dying ? "rgba(12,10,18,0.3)" : "rgba(255,70,45,0.16)";
     ctx.fill();
-
-    ctx.fillStyle = "#ffe27a";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = `800 ${Math.round(h * 0.5)}px system-ui, sans-serif`;
-    ctx.lineWidth = Math.max(2, h * 0.06);
-    ctx.strokeStyle = "rgba(0,0,0,0.55)";
-    const label = hit.dying ? `✕ -${hit.amount}` : `-${hit.amount}`;
-    ctx.strokeText(label, x + w / 2, y + h / 2);
-    ctx.fillText(label, x + w / 2, y + h / 2);
   }
 
-  // Centre line where the two front-most units meet.
-  const midY = l.oy + board.depth * l.rowH;
-  ctx.strokeStyle = COLORS.mid;
-  ctx.lineWidth = 2;
-  ctx.setLineDash([6, 5]);
-  ctx.beginPath();
-  ctx.moveTo(l.ox, midY);
-  ctx.lineTo(l.ox + l.laneW * board.lanes, midY);
-  ctx.stroke();
-  ctx.setLineDash([]);
+  if (state.fx && animated) state.fx.draw(ctx, time);
+  ctx.restore();
+}
+
+/**
+ * While a unit is in hand: a small action badge on every valid slot, and on the
+ * hovered one a larger outcome label (plus a faint preview of the unit when
+ * it would be added). Drawn over the units so it reads even on a full row.
+ */
+function drawDropHints(
+  ctx: CanvasRenderingContext2D,
+  state: RenderState,
+  l: Layout,
+  pad: number,
+  time: number,
+  animated: boolean,
+): void {
+  const kinds = state.targetKinds;
+  if (!kinds || state.validTargets.length === 0) return;
+  const { board } = state;
+  const drop = state.dropCell && state.dropCell.side === "player" ? state.dropCell : null;
+
+  for (const cell of state.validTargets) {
+    const kind = kinds[`${cell.lane},${cell.spot}`];
+    if (!kind) continue;
+    const row = sideSpotToRow(board, "player", cell.spot);
+    const x = l.ox + cell.lane * l.laneW + pad;
+    const y = l.oy + row * l.rowH + pad;
+    const w = l.laneW - pad * 2;
+    const h = l.rowH - pad * 2;
+    const style = KIND_STYLE[kind];
+    const hovered = !!drop && drop.lane === cell.lane && drop.spot === cell.spot;
+
+    // Faint preview of the incoming unit. The queue stays contiguous, so it
+    // lands right behind the last unit whichever empty slot is hovered — draw
+    // it there, not under the pointer.
+    if (hovered && kind === "place" && state.heldKey) {
+      const landSpot = board.slots.player[cell.lane].filter((u) => u).length;
+      const landY = l.oy + sideSpotToRow(board, "player", landSpot) * l.rowH + pad;
+      ctx.save();
+      ctx.globalAlpha = 0.45;
+      drawCharacter(ctx, {
+        key: state.heldKey,
+        side: "player",
+        cx: x + h * 0.65,
+        cy: landY + h / 2,
+        size: h * 0.78,
+        time,
+        pose: "idle",
+        t: 0,
+        seed: 0,
+        merges: 0,
+      });
+      ctx.restore();
+    }
+
+    // Split slot: left half merges, right half moves. Mark the halves so the
+    // choice is visible before release.
+    const split = kind === "merge-or-move" || kind === "merge-or-add";
+    if (split) {
+      const mid = x + w / 2;
+      const left = hovered && drop!.zone !== "right";
+      ctx.save();
+      ctx.fillStyle = left
+        ? "rgba(95, 224, 143, 0.16)"
+        : kind === "merge-or-add"
+          ? "rgba(240, 180, 41, 0.16)"
+          : "rgba(184, 176, 224, 0.16)";
+      if (hovered) ctx.fillRect(left ? x : mid, y, w / 2, h);
+      ctx.strokeStyle = "rgba(230, 226, 245, 0.45)";
+      ctx.setLineDash([3, 3]);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(mid, y + h * 0.15);
+      ctx.lineTo(mid, y + h * 0.85);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    const hoverStyle =
+      split && hovered && drop!.zone === "right"
+        ? kind === "merge-or-move"
+          ? KIND_STYLE.reorder
+          : KIND_STYLE.insert
+        : style;
+    const text = hovered && state.dropLabel ? state.dropLabel : style.badge;
+    const fs = Math.round(Math.max(10, h * (hovered ? 0.34 : 0.26)));
+    ctx.font = `800 ${fs}px system-ui, sans-serif`;
+    const tw = ctx.measureText(text).width;
+    const bh = fs * 1.5;
+    const bw = tw + fs * 1.1;
+    // Hovered: centred in the slot. Otherwise tucked into the right edge.
+    const bx = hovered ? x + (w - bw) / 2 : x + w - bw - pad * 2;
+    const by = y + (h - bh) / 2;
+    const bob = hovered && animated ? Math.sin(time / 180) * h * 0.03 : 0;
+
+    ctx.save();
+    roundRect(ctx, bx, by + bob, bw, bh, bh / 2);
+    ctx.globalAlpha = hovered ? 0.96 : 0.82;
+    ctx.fillStyle = hoverStyle.color;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#17131f";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, bx + bw / 2, by + bob + bh / 2 + 1);
+    ctx.restore();
+  }
+}
+
+function drawUnit(
+  ctx: CanvasRenderingContext2D,
+  state: RenderState,
+  unit: Board["slots"][Side][number][number] & object,
+  side: Side,
+  lane: number,
+  v: UnitVis,
+  l: Layout,
+  pad: number,
+  time: number,
+  animated: boolean,
+  reduce: boolean,
+): void {
+  const w = l.laneW - pad * 2;
+  const h = l.rowH - pad * 2;
+  const x = l.ox + lane * l.laneW + pad;
+  const y = l.oy + v.row * l.rowH + pad;
+  const toward = side === "player" ? -1 : 1;
+  const t = v.t;
+
+  // Whole-slot motion (entrances, deaths) vs. body-only motion (lunge,
+  // knockback): moving the name and stats with a lunge would smear them over
+  // the opposing front's text at exactly the moment the player is reading it.
+  let dx = 0;
+  let dy = 0;
+  let bdx = 0;
+  let bdy = 0;
+  let scale = 1;
+  let alpha = 1;
+  switch (v.pose) {
+    case "attack": {
+      if (reduce) break;
+      let f: number;
+      if (t < 0.25) f = -0.1 * easeInOutSine(t / 0.25);
+      else if (t < 0.45) f = -0.1 + 0.52 * easeOutCubic((t - 0.25) / 0.2);
+      else f = 0.42 * (1 - easeInOutSine((t - 0.45) / 0.55));
+      bdy = toward * f * l.rowH;
+      break;
+    }
+    case "hit": {
+      if (reduce) break;
+      bdy = -toward * 0.12 * l.rowH * pulse(t);
+      bdx = Math.sin(t * 38) * (1 - t) * h * 0.05;
+      break;
+    }
+    case "dying": {
+      if (!reduce) dy = -toward * 0.25 * l.rowH * easeOutCubic(t);
+      alpha = 1 - t * t;
+      scale = 1 - 0.15 * t;
+      break;
+    }
+    case "spawn": {
+      if (!reduce) dy = -(1 - easeOutCubic(t)) * l.rowH * 0.8;
+      alpha = clamp01(t * 3);
+      scale = 0.6 + 0.4 * easeOutBack(t);
+      break;
+    }
+    case "merge":
+      if (!reduce) scale = 1 + 0.18 * pulse(t);
+      break;
+  }
+
+  const lifted = state.draggingId === unit.id;
+  const ccx = x + w / 2;
+  const ccy = y + h / 2;
+  ctx.save();
+  ctx.globalAlpha = alpha * (lifted ? 0.3 : 1);
+  ctx.translate(ccx + dx, ccy + dy);
+  if (scale !== 1) ctx.scale(scale, scale);
+  ctx.translate(-ccx, -ccy);
+
+  // Selection glow.
+  if (state.selectedId === unit.id) {
+    const p = 0.5 + 0.5 * Math.sin(time / 200);
+    roundRect(ctx, x, y, w, h, Math.min(w, h) * 0.16);
+    ctx.lineWidth = Math.max(3, h * 0.08);
+    ctx.strokeStyle = COLORS.target;
+    ctx.shadowColor = COLORS.target;
+    ctx.shadowBlur = 8 + 14 * p;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  // Character. Deliberately a little taller than its slot so it stands out of
+  // the row rather than sitting inside it — at ~35px rows anything smaller
+  // loses the faces and weapons the combat animation relies on.
+  const cx = x + h * 0.65;
+  const cy = y + h / 2;
+  ctx.save();
+  ctx.translate(bdx, bdy);
+  drawCharacter(ctx, {
+    key: unit.key,
+    side,
+    cx,
+    cy,
+    size: h * 0.78,
+    time,
+    pose: v.pose,
+    t,
+    seed: v.seed,
+    merges: unit.merges,
+  });
+  ctx.restore();
+
+    // Name, stats.
+    const tx = x + h * 1.35;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = COLORS.name;
+    ctx.font = `600 ${Math.round(Math.max(11, h * 0.26))}px system-ui, sans-serif`;
+    ctx.fillText(unit.name, tx, y + h * 0.26);
+
+    const statY = y + h * 0.66;
+    ctx.font = `800 ${Math.round(Math.max(15, h * 0.44))}px system-ui, sans-serif`;
+    const atkLabel = `⚔${unit.atk}`;
+    ctx.fillStyle = COLORS.atkText;
+    ctx.fillText(atkLabel, tx, statY);
+    ctx.fillStyle = COLORS.hpText;
+    ctx.fillText(`♥${unit.hp}`, tx + ctx.measureText(atkLabel).width + h * 0.28, statY);
+
+    const mergeW = h * 0.4;
+    const mergeX = x + w - mergeW - pad * 0.5;
+    if (unit.merges > 0) {
+      const by = y + h * 0.12;
+      roundRect(ctx, mergeX, by, mergeW, h * 0.3, h * 0.1);
+      ctx.fillStyle = COLORS.target;
+      ctx.fill();
+      ctx.fillStyle = "#2a1f05";
+      ctx.textAlign = "center";
+      ctx.font = `800 ${Math.round(h * 0.22)}px system-ui, sans-serif`;
+      ctx.fillText(`+${unit.merges}`, mergeX + mergeW / 2, by + h * 0.16);
+      ctx.textAlign = "left";
+    }
+
+    if (unit.auras.length > 0 && state.auraIcon) {
+      const size = h * 0.26;
+      const gap = h * 0.08;
+      const right = (unit.merges > 0 ? mergeX : x + w) - pad * 0.8;
+      ctx.font = `${Math.round(size)}px system-ui, sans-serif`;
+      const nameRight = tx + ctx.measureText(unit.name).width;
+      const room = Math.max(0, right - nameRight - gap);
+      const fits = Math.floor(room / (size + gap));
+      const budget = Math.min(unit.auras.length, MAX_AURA_BADGES, fits);
+      const hidden = unit.auras.length - budget;
+      const shown = hidden > 0 ? Math.max(0, budget - 1) : budget;
+      ctx.textAlign = "center";
+      let abx = right - size / 2;
+      for (let k = 0; k < shown; k++) {
+        ctx.fillText(state.auraIcon(unit.auras[k]), abx, y + h * 0.27);
+        abx -= size + gap;
+      }
+      if (hidden > 0 && budget > 0) {
+        ctx.fillStyle = COLORS.name;
+        ctx.font = `800 ${Math.round(h * 0.2)}px system-ui, sans-serif`;
+        ctx.fillText(`+${unit.auras.length - shown}`, abx, y + h * 0.27);
+      }
+      ctx.textAlign = "left";
+    }
+
+    // HP bar: eased fill, lingering ghost chunk, hit flash, low-HP pulse.
+    const barW = w - (tx - x) - pad;
+    const barH = Math.max(3, h * 0.08);
+    const barY = y + h * 0.9;
+    const r = barH / 2;
+    const max = unit.maxHp || 1;
+    const frac = clamp01(v.hp / max);
+    const gfrac = clamp01(v.ghost / max);
+    ctx.fillStyle = COLORS.hpTrack;
+    roundRect(ctx, tx, barY, barW, barH, r);
+    ctx.fill();
+    if (gfrac > frac + 0.002) {
+      ctx.fillStyle = "rgba(255,255,255,0.6)";
+      roundRect(ctx, tx, barY, barW * gfrac, barH, r);
+      ctx.fill();
+    }
+    if (frac > 0) {
+      ctx.fillStyle = COLORS.hpFill;
+      roundRect(ctx, tx, barY, Math.max(barH, barW * frac), barH, r);
+      ctx.fill();
+      if (frac < 0.3 && animated) {
+        ctx.globalAlpha *= 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(time / 130));
+        ctx.fillStyle = "#ff4a3a";
+        roundRect(ctx, tx, barY, Math.max(barH, barW * frac), barH, r);
+        ctx.fill();
+        ctx.globalAlpha = alpha * (lifted ? 0.3 : 1);
+      }
+      if (v.flash > 0.01) {
+        ctx.globalAlpha *= v.flash;
+        ctx.fillStyle = "#fff";
+        roundRect(ctx, tx, barY, Math.max(barH, barW * frac), barH, r);
+        ctx.fill();
+      }
+    }
+  ctx.restore();
 }

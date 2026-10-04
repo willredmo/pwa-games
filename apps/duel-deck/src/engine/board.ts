@@ -1,4 +1,4 @@
-import { UNITS } from "./units";
+import { KNIGHTING_BONUS, SQUIRE_STEP, UNITS, mergesInto } from "./units";
 import type { Board, Side, Unit } from "./types";
 
 // Board construction and slot access. Generic over `lanes` and `depth`.
@@ -6,6 +6,19 @@ import type { Board, Side, Unit } from "./types";
 export const SIDES: Side[] = ["player", "enemy"];
 
 let unitCounter = 0;
+
+/**
+ * Move the id counter past every unit on a board restored from a save. The
+ * counter restarts at 0 on each page load, and ids key drags, playback and
+ * augment grants — a fresh unit reusing a restored unit's id would alias it.
+ */
+export function reserveUnitIds(board: Board): void {
+  for (const u of [...sideUnits(board, "player"), ...sideUnits(board, "enemy")]) {
+    const n = Number(u.id.slice(1));
+    if (Number.isInteger(n) && n >= unitCounter) unitCounter = n + 1;
+  }
+}
+
 export function makeUnit(key: string, side: Side): Unit {
   const stats = UNITS[key];
   if (!stats) throw new Error(`makeUnit: unknown unit "${key}"`);
@@ -28,7 +41,7 @@ export function makeUnit(key: string, side: Side): Unit {
 
 /**
  * Whether an offered unit may merge into the unit at this slot. Like merges
- * with like only — a Guard can only be folded into another Guard.
+ * with like (a Guard only folds into a Guard), plus Squires into Knights.
  */
 export function canMerge(
   board: Board,
@@ -39,7 +52,7 @@ export function canMerge(
 ): boolean {
   if (lane < 0 || lane >= board.lanes || spot < 0 || spot >= board.depth) return false;
   const unit = board.slots[side][lane][spot];
-  return !!unit && !!UNITS[key] && unit.key === key;
+  return !!unit && !!UNITS[key] && mergesInto(unit.key, key);
 }
 
 /**
@@ -50,13 +63,32 @@ export function canMerge(
  */
 export const MERGE_RATIO = 0.5;
 
-/** What merging this unit type would grant the target. */
-export function mergeGain(key: string): { atk: number; hp: number } {
+/**
+ * What the n-th through (n+count-1)-th merges into a Squire line grant:
+ * merge k adds k × SQUIRE_STEP, so each one is bigger than the last.
+ */
+function squireGain(targetMerges: number, count = 1): { atk: number; hp: number } {
+  let k = 0;
+  for (let i = 1; i <= count; i++) k += targetMerges + i;
+  return { atk: Math.round(k * SQUIRE_STEP.atk), hp: Math.round(k * SQUIRE_STEP.hp) };
+}
+
+/**
+ * What merging an offered unit of this type would grant the target. Squires
+ * follow their own escalating rule (and ignore `ratio`), so they need to know
+ * how many merges the target already has.
+ */
+export function mergeGain(
+  key: string,
+  ratio = MERGE_RATIO,
+  targetMerges = 0,
+): { atk: number; hp: number } {
   const stats = UNITS[key];
   if (!stats) return { atk: 0, hp: 0 };
+  if (key === "squire") return squireGain(targetMerges);
   return {
-    atk: Math.round(stats.atk * MERGE_RATIO),
-    hp: Math.round(stats.maxHp * MERGE_RATIO),
+    atk: Math.round(stats.atk * ratio),
+    hp: Math.round(stats.maxHp * ratio),
   };
 }
 
@@ -71,10 +103,11 @@ export function upgradeUnit(
   lane: number,
   spot: number,
   key: string,
+  ratio = MERGE_RATIO,
 ): boolean {
   if (!canMerge(board, side, lane, spot, key)) return false;
   const unit = board.slots[side][lane][spot]!;
-  const gain = mergeGain(key);
+  const gain = mergeGain(key, ratio, unit.merges);
   unit.baseAtk += gain.atk;
   unit.baseMaxHp += gain.hp;
   unit.merges += 1;
@@ -86,10 +119,19 @@ export function upgradeUnit(
  * *current* base stats, so a unit that has itself absorbed merges carries that
  * accumulated value across rather than reverting to its printed stats.
  */
-export function unitMergeGain(unit: Unit): { atk: number; hp: number } {
+export function unitMergeGain(
+  unit: Unit,
+  ratio = MERGE_RATIO,
+  targetMerges = 0,
+): { atk: number; hp: number } {
+  // A Squire line counts bodies, not stats: absorbing a Squire that already
+  // holds m merges is m + 1 more escalating steps.
+  if (unit.key === "squire" || unit.key === "knight") {
+    return squireGain(targetMerges, unit.merges + 1);
+  }
   return {
-    atk: Math.round(unit.baseAtk * MERGE_RATIO),
-    hp: Math.round(unit.baseMaxHp * MERGE_RATIO),
+    atk: Math.round(unit.baseAtk * ratio),
+    hp: Math.round(unit.baseMaxHp * ratio),
   };
 }
 
@@ -105,20 +147,53 @@ export function mergePlaced(
   lane: number,
   from: number,
   to: number,
+  ratio = MERGE_RATIO,
 ): boolean {
   if (lane < 0 || lane >= board.lanes || from === to) return false;
   const list = occupants(board, side, lane);
   if (from < 0 || from >= list.length || to < 0 || to >= list.length) return false;
   const source = list[from];
   const target = list[to];
-  if (source.key !== target.key) return false;
-  const gain = unitMergeGain(source);
+  // Squire into Knight, never the reverse: a Knight folded into a Squire would
+  // throw away its knighthood.
+  if (!mergesInto(target.key, source.key)) return false;
+  const gain = unitMergeGain(source, ratio, target.merges);
   target.baseAtk += gain.atk;
   target.baseMaxHp += gain.hp;
   target.merges += source.merges + 1;
   list.splice(from, 1);
   writeLane(board, side, lane, list);
   return true;
+}
+
+/**
+ * Knight a Squire in place: it keeps its id, merges and grown stats, takes the
+ * Knight's type and look, and gains the one-off KNIGHTING_BONUS.
+ */
+export function promoteToKnight(unit: Unit): void {
+  const knight = UNITS.knight;
+  unit.key = "knight";
+  unit.name = knight.name;
+  unit.shape = knight.shape;
+  unit.classes = [...knight.classes];
+  unit.baseAtk += KNIGHTING_BONUS.atk;
+  unit.baseMaxHp += KNIGHTING_BONUS.hp;
+}
+
+/** Queue slots a side may use: its `capacity` mod, else the board depth. */
+export function capacityOf(board: Board, side: Side): number {
+  return Math.min(board.depth, board.mods?.[side]?.capacity ?? board.depth);
+}
+
+/** Grow every lane to at least `depth` slots (Reinforcements). Never shrinks. */
+export function ensureDepth(board: Board, depth: number): void {
+  if (depth <= board.depth) return;
+  for (const side of SIDES) {
+    for (const lane of board.slots[side]) {
+      while (lane.length < depth) lane.push(null);
+    }
+  }
+  board.depth = depth;
 }
 
 export function createBoard(lanes: number, depth: number, startHp: number): Board {
@@ -149,6 +224,9 @@ export function cloneBoard(board: Board): Board {
       enemy: cloneSide(board.slots.enemy),
     },
     hp: { ...board.hp },
+    ...(board.mods
+      ? { mods: { player: { ...board.mods.player }, enemy: { ...board.mods.enemy } } }
+      : {}),
   };
 }
 
@@ -199,7 +277,7 @@ export function isValidPlacement(
   spot: number,
 ): boolean {
   if (lane < 0 || lane >= board.lanes) return false;
-  if (spot < 0 || spot >= board.depth) return false;
+  if (spot < 0 || spot >= capacityOf(board, side)) return false;
   return board.slots[side][lane][spot] === null;
 }
 
@@ -219,7 +297,7 @@ export function firstEmptySpot(
   side: Side,
 ): { lane: number; spot: number } | null {
   for (let lane = 0; lane < board.lanes; lane++) {
-    for (let spot = 0; spot < board.depth; spot++) {
+    for (let spot = 0; spot < capacityOf(board, side); spot++) {
       if (!board.slots[side][lane][spot]) return { lane, spot };
     }
   }
@@ -229,7 +307,7 @@ export function firstEmptySpot(
 export function emptySpotCount(board: Board, side: Side): number {
   let n = 0;
   for (let lane = 0; lane < board.lanes; lane++) {
-    for (let spot = 0; spot < board.depth; spot++) {
+    for (let spot = 0; spot < capacityOf(board, side); spot++) {
       if (!board.slots[side][lane][spot]) n++;
     }
   }
@@ -262,7 +340,7 @@ export function insertUnit(
   unit: Unit,
 ): boolean {
   const list = occupants(board, side, lane);
-  if (list.length >= board.depth) return false;
+  if (list.length >= capacityOf(board, side)) return false;
   list.splice(Math.max(0, Math.min(index, list.length)), 0, unit);
   writeLane(board, side, lane, list);
   return true;

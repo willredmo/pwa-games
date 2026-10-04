@@ -17,16 +17,27 @@ the code maps onto it and where the two intentionally differ.
 - **Pick 2 of 5 each round**, drawn from the flat pool. **No economy** — picks
   are free. The offer samples *with replacement*, so a round can offer duplicates
   (otherwise, with only five unit types, every round would offer the whole pool).
-- **Win condition.** Both players hold a 100 HP pool. The side left holding the
-  row wins the round, and *its total damage dealt that round* is subtracted from
-  the loser's pool. First to 0 loses.
-- **Persistent upgrades ("augments")** — `game/augments.ts`. All 18 from the
-  tracker. A **separate offer track**, offered **every 3rd round**, and
+- **Win condition.** Both players hold a 100 HP pool (`START_HP`). The side
+  left holding the row wins the round, and each of its *surviving* units hits
+  the loser's pool for its attack (plus Bounty). First to 0 loses. (Deviation:
+  the tracker charged the winner's total damage dealt; survivor damage rewards
+  keeping units alive and puts the median match at ~11-13 rounds.)
+- **Persistent upgrades ("augments")** — `game/augments.ts`. The 18 from the
+  tracker plus 12 added in session (see "Combat keywords" below), 30 in all. A **separate offer track**, offered **every 3rd round**, and
   **match-scoped**: `AugmentState` is recreated per match and never carried over.
 - **Abstract/geometric theming.** Units are flat shapes — Guard square, Striker
   triangle, Skirmisher diamond, Bulwark hexagon, Berserker circle — with colour
   encoding ownership.
-- **AI opponent** — v1 random picks for both units and augments.
+- **AI opponent** — `aiCommit` in `game/match.ts`. Takes the best-valued offer
+  (a type it already owns, so it can merge, then highest ATK), merges before
+  placing, and sorts its row highest-ATK-first. Augments are chosen from a static
+  score table (`AUGMENT_SCORE`) of measured holder win rates, plus a rarity
+  premium (`RARITY_BONUS`) and fit to its own row (`aiAugmentScore`: unit-
+  specific augments score up when it fields those units, down when it fields
+  none). `aiTakeAugment` runs its whole upgrade turn — tiered offer, rerolls
+  while the best card scores below `AI_REROLL_BELOW` — for both the app and the
+  sim. The win-rate table alone left it taking commons over rares/epics, since
+  augments are balanced to similar win rates.
 - **Deterministic sim.** `resolveRound` is pure (clones its input) and returns a
   per-tick event log, so a future netcode layer can replay a round from a synced
   commit rather than streaming it.
@@ -82,8 +93,15 @@ round (`applyAugments`), rather than mutated into units once. Stacking counters
 - The AI follows the same rules when its row is full: merge into a matching
   type if it can, otherwise swap out its weakest unit — but only when the
   incoming unit's raw stats beat it, so it never downgrades itself.
-  Because dropping on a unit means "merge", queue position is set by dragging
-  placed units around rather than by inserting ahead of one.
+- **Every drop on your row does something** (`dropActionFor`): an empty slot
+  adds to the back; a different unit type inserts the new unit at that spot
+  (pushing the rest back) while there's room, and is replaced once the row is
+  full; a same-type unit merges. While there's room a same-type slot is split
+  — left half (the character) merges, right half inserts — and the same split
+  applies when moving a placed unit onto its twin (right half just moves), so
+  twins with different merges can still be reordered. The board badges every
+  target with its outcome and labels the hovered one (`targetKinds`,
+  `dropLabel` in `RenderState`).
 - **Units already on the board can also be merged into each other**, not just
   offers into units. Dragging a placed unit onto a **same-type** neighbour folds
   it in (same 50% rule); onto anything else it reorders. This costs a body
@@ -150,20 +168,81 @@ toggling applies from the next beat with no replay. `speedRef` is a ref rather
 than the `fast` state precisely so it stays out of the effect's dependency
 array; putting `fast` in there would reintroduce the restart.
 
+### Combat keywords and side mods
+Augments can grant more than stat deltas. `traits` puts combat keywords on a
+unit (`UnitTraits`: first strike, cleave, thorns, lifesteal, damage reduction,
+executioner, last breath), rebuilt each round alongside the stats and read by
+`resolveRound`, which tags the resulting events so playback can show them.
+`mods` are side-wide (`SideMods`: bounty, capacity) and land on `board.mods` in
+`refreshForRound`. Capacity is always set explicitly per side — Reinforcements
+grows the board to 6 rows, and an implicit default would hand the other side
+the extra slot too. Round-end bookkeeping (Momentum, Rally, kills for Overwhelm,
+Veteran growth) lives in `game/roundEnd.ts`, shared by the app and `pnpm sim`.
+
+### Squire → Knight
+The late-game unit. A Squire is the weakest body in the offer (2/4), but its
+merges don't use `MERGE_RATIO`: the n-th merge into a Squire line adds
+n × `SQUIRE_STEP` (`engine/units.ts`), so each is bigger than the last. At
+`KNIGHT_AT` merges (`knightAt` — Early knighthood lowers it by one) it is
+promoted in place to a Knight (`promoteToKnight`): same id, merges and grown
+stats, plus `KNIGHTING_BONUS` and innate `damageReduction` 1 (`UnitStats.traits`,
+seeded into `unit.traits` before augments each round). Knights are never offered
+(`OFFER_KEYS`), and Squires keep merging into them (`mergesInto`). Promotion
+runs in `refreshForRound`, which follows every merge path, so none can skip it.
+
+Balancing note: the sim showed an AI that leans into one ever-growing unit wins
+far more often regardless of the unit's stats — concentration is the dominant
+plan in front-only combat, and the Squire's escalation amplifies it. The AI
+values a fresh Squire like a mid-tier pick (`SQUIRE_PICK_VALUE`) and only
+nudges it up when holding a Squire augment; raising that nudge makes Squire
+augments read far stronger than they are.
+
+### Rarity, rerolls and the AI's row
+Augments carry a `rarity` (absent = common). `offerAugments(state, n, tier)`
+only offers rarities unlocked by `upgradeTier(round)` — commons from the first
+upgrade round, rares from the second, epics from the third (`RARITY_UNLOCK`) —
+and the round a rarity unlocks guarantees one card of it. Each upgrade choice
+has `AUGMENT_REROLLS` (2); unit picking has `UNIT_REROLLS` (1) per round, plus
+one with Scout, rerolling only the cards not yet taken (undo can't cross it).
+The AI fills its row before merging (`deployToBack`): merging first left it
+fielding two or three bodies, and with survivor damage empty slots are lost
+damage. Hovering a unit shows `UnitInfo`, built from `unit.auraDetails`, which
+`applyAugments` rebuilds with the stats.
+
+### Save and resume
+The match is saved to `localStorage` (`duel-deck:match`) at the start of every
+pick phase — never mid-battle — so a reload lands back at the start of the
+current round's picks. Unit ids come from a module counter that restarts at 0
+per page load, so restoring a save calls `reserveUnitIds` to move it past the
+restored ids; without that, new units would alias restored ones (ids key drags,
+playback and augment grants).
+
+### Balance simulation
+`pnpm sim [matches] [--draw=…] [--cap=…]` (`scripts/sim.ts`) plays AI-vs-AI
+matches headlessly through the real engine and reports match length, draw rate
+and damage by round, and per-augment holder win rate. It's how the merge
+question was settled: merging first beats placing ~59% of the time, because one
+concentrated front unit wastes less damage to overkill.
+
 ## Deferred (not v1)
 
 - Real 1v1 over Supabase/Firebase — the reason this app exists long-term.
   The `commit → resolveRound` boundary is where it plugs in.
 - Ranged units, multi-lane boards, economy/currency, scaling/rarity tiers.
-- Smarter AI (stat-scoring, then board-synergy awareness).
+- Board-synergy-aware AI (picks that build toward an augment it holds).
 
 ## Open questions
 
-- **Merge balance.** At 50%, merging is a deliberate stat loss, so it's only
-  worth it when concentration matters more than totals — a full row, or wanting
-  one front-liner that survives several exchanges. Watch whether it ever pays:
-  if merging is always the wrong choice while slots remain, raise `MERGE_RATIO`
-  or make merges grant something placement can't (a keyword, say).
+- **Draws.** A round where both rows die in the same tick deals no damage:
+  ~32% of rounds, and over half of round 1, with the current AI on both sides.
+  `pnpm sim --draw=none|more-damage|both` compares candidate rules; a rule
+  hasn't been chosen yet.
+- **Augment balance.** After the balance pass every augment's holder win rate
+  sits at 46-56% under `pnpm sim 60000 --aug=random` (was 41-95%). Always
+  balance with `--aug=random`: the default score-based picking leaves weak
+  augments nearly unsampled. Tank augments (Iron will, Shield wall, Tank wall)
+  and Scout read low partly because of the AI, which always fronts its highest-
+  ATK units and only rerolls when stuck — a human may get more from them.
 - **Accidental replaces.** Replace discards a unit outright, including merges.
   The colour coding and the "⚠ Replace X" hint are the only guards — there's no
   undo. If it bites in playtesting, an explicit confirm on replacing a merged

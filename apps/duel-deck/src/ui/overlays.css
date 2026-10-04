@@ -1,0 +1,354 @@
+/* Overlay animations. Loaded after App.css; transform/opacity only. */
+.overlay { animation: ov-fade 0.28s ease-out both; backdrop-filter: blur(5px); }
+.overlay .panel { animation: ov-pop 0.5s cubic-bezier(0.2, 1.3, 0.4, 1) both; transform-origin: 50% 60%; }
+@keyframes ov-fade { from { opacity: 0; backdrop-filter: blur(0); } to { opacity: 1; backdrop-filter: blur(5px); } }
+@keyframes ov-pop {
+  0% { opacity: 0; transform: translateY(26px) scale(0.86); }
+  60% { opacity: 1; }
+  100% { opacity: 1; transform: none; }
+}
+
+/* Staggered list items (help / augments view) */
+.overlay .card-row--static,
+.overlay .rules li,
+.overlay .panel__hint {
+  animation: ov-item 0.4s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+  animation-delay: calc(0.12s + var(--i, 0) * 45ms);
+}
+.overlay .rules li:nth-child(n) { --i: 8; }
+.overlay .rules li:nth-child(1) { --i: 9; } .overlay .rules li:nth-child(2) { --i: 10; }
+.overlay .rules li:nth-child(3) { --i: 11; } .overlay .rules li:nth-child(4) { --i: 12; }
+.overlay .rules li:nth-child(5) { --i: 13; } .overlay .rules li:nth-child(6) { --i: 14; }
+.overlay .rules li:nth-child(7) { --i: 15; } .overlay .rules li:nth-child(8) { --i: 16; }
+.overlay .rules li:nth-child(n+9) { --i: 17; }
+@keyframes ov-item { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: none; } }
+.overlay .tab { transition: transform 0.15s, background 0.15s; }
+.overlay .tab:active { transform: scale(0.94); }
+
+/* Augment cards */
+.cards--deal { perspective: 900px; }
+.card-row--deal {
+  --glow: 240, 180, 41;
+  animation: card-deal 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+  animation-delay: calc(0.25s + var(--i, 0) * 130ms);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s;
+  transform-origin: 50% 100%;
+  will-change: transform;
+}
+.card-row--class { --glow: 76, 154, 235; }
+.card-row--global { --glow: 240, 180, 41; }
+.card-row--synergy { --glow: 178, 110, 255; }
+.card-row--combat { --glow: 235, 90, 80; }
+.card-row--strategy { --glow: 80, 210, 160; }
+@keyframes card-deal {
+  0% { opacity: 0; transform: translateY(-30px) rotateX(-90deg) scale(0.9); }
+  70% { opacity: 1; transform: translateY(3px) rotateX(10deg); }
+  100% { opacity: 1; transform: none; }
+}
+.card-row--deal:not(:disabled):hover,
+.card-row--deal:not(:disabled):focus-visible {
+  transform: translateY(-4px) rotateX(4deg) scale(1.02);
+  border-color: rgb(var(--glow));
+  box-shadow: 0 6px 18px rgba(var(--glow), 0.4), 0 0 0 1px rgba(var(--glow), 0.6);
+}
+.card-row--deal .aura-icon {
+  display: inline-block;
+  animation: icon-bounce 1.6s ease-in-out infinite;
+  animation-delay: calc(0.8s + var(--i, 0) * 130ms);
+}
+@keyframes icon-bounce {
+  0%, 60%, 100% { transform: translateY(0) scale(1); }
+  70% { transform: translateY(-5px) scale(1.2); }
+  80% { transform: translateY(0) scale(0.95); }
+  90% { transform: translateY(-2px); }
+}
+.cards--picked .card-row--deal { pointer-events: none; }
+.card-row--chosen {
+  animation: card-chosen 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.2) both !important;
+  position: relative;
+  z-index: 2;
+  border-color: rgb(var(--glow));
+}
+.card-row--chosen::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 11px;
+  pointer-events: none;
+  box-shadow: 0 0 0 0 rgba(var(--glow), 0.9), 0 0 24px 6px rgba(var(--glow), 0.7);
+  animation: card-burst 0.55s ease-out both;
+}
+@keyframes card-chosen {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.08); }
+  100% { transform: scale(1.04); }
+}
+@keyframes card-burst {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.18); box-shadow: 0 0 0 14px rgba(var(--glow), 0), 0 0 40px 16px rgba(var(--glow), 0); }
+}
+.card-row--away {
+  animation: card-away 0.4s ease-in both !important;
+}
+@keyframes card-away { to { opacity: 0; transform: translateY(40px) scale(0.9); } }
+
+/* Result panel */
+.panel--result { position: relative; overflow: visible; }
+.panel--result h2 { font-size: 2rem; margin: 0 0 0.4rem; letter-spacing: 0.02em; }
+.panel--victory h2 {
+  animation: title-slam 0.7s cubic-bezier(0.2, 1.4, 0.4, 1) 0.2s both;
+  background: linear-gradient(100deg, #f0b429 30%, #fff6c8 50%, #f0b429 70%) 0 0 / 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: title-slam 0.7s cubic-bezier(0.2, 1.4, 0.4, 1) 0.2s both, gold-shine 2.4s linear 0.9s infinite;
+}
+@keyframes title-slam {
+  0% { opacity: 0; transform: scale(3.2); }
+  60% { opacity: 1; transform: scale(0.92); }
+  80% { transform: scale(1.06); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes gold-shine { from { background-position: 150% 0; } to { background-position: -100% 0; } }
+.panel--defeat { animation: ov-pop 0.5s cubic-bezier(0.2, 1.3, 0.4, 1) both, defeat-pulse 4s ease-in-out 1s infinite; }
+.panel--defeat h2 {
+  color: #d96a6a;
+  animation: title-drop 0.8s cubic-bezier(0.5, 0, 0.7, 0.4) 0.2s both;
+}
+@keyframes title-drop {
+  0% { opacity: 0; transform: translateY(-120px); }
+  55% { opacity: 1; transform: translateY(0); }
+  70% { transform: translateY(-14px); }
+  85% { transform: translateY(0); }
+  93% { transform: translateY(-4px); }
+  100% { transform: translateY(0); }
+}
+@keyframes defeat-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(200, 40, 40, 0); }
+  50% { box-shadow: 0 0 40px 6px rgba(200, 40, 40, 0.35); }
+}
+.overlay--defeat .panel { filter: saturate(0.55); }
+.panel--result .primary-btn { animation: btn-pulse 1.6s ease-in-out 1s infinite; }
+@keyframes btn-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(240, 180, 41, 0.5); }
+  50% { transform: scale(1.06); box-shadow: 0 0 0 10px rgba(240, 180, 41, 0); }
+}
+
+.confetti { position: absolute; left: 50%; top: 30%; width: 0; height: 0; pointer-events: none; z-index: 3; }
+.confetti i {
+  position: absolute;
+  left: 0; top: 0;
+  width: 7px; height: 11px;
+  background: var(--c);
+  border-radius: 1px;
+  opacity: 0;
+  animation: confetti-burst var(--d) cubic-bezier(0.15, 0.7, 0.3, 1) var(--dl) both;
+}
+@keyframes confetti-burst {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0) scale(0.6); }
+  35% { opacity: 1; transform: translate(var(--x), var(--y)) rotate(calc(var(--r) * 0.5)) scale(1); }
+  100% { opacity: 0; transform: translate(calc(var(--x) * 1.15), calc(var(--y) + 220px)) rotate(var(--r)) scale(0.9); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay, .overlay *, .overlay *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .confetti { display: none; }
+  .panel--victory h2 { background: none; -webkit-text-fill-color: #f0b429; color: #f0b429; }
+}
+
+/* --- Peeking at the board during an upgrade choice ---
+   The panel stays mounted and in place, so the toggle never jumps; everything
+   but the toggle fades out and stops catching clicks. */
+/* Doubled class selectors: App.css loads after this file and its .overlay /
+   .panel backgrounds would otherwise win at equal specificity. */
+.overlay.overlay--peek {
+  /* The fade-in animation (fill: both) holds a 5px backdrop blur, and an
+     animation's held frame beats normal declarations — so it has to go, or
+     the board stays blurred behind the "transparent" overlay. */
+  animation: none;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  pointer-events: none;
+}
+.panel.panel--peek {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+/* filter, not opacity: the hint and cards have entrance animations whose held
+   final frame (opacity: 1) would override a plain opacity rule. */
+.panel--peek > *:not(.panel__head),
+.panel--peek .panel__head > h2 {
+  filter: opacity(0.08);
+  transition: filter 0.2s;
+}
+.panel .peek-toggle { pointer-events: auto; }
+.panel--peek .peek-toggle {
+  border-color: #f0b429;
+  color: #ffe27a;
+  background: rgba(30, 27, 46, 0.92);
+}
+
+/* --- "All upgrades" tab --- */
+.owned-tags { display: inline-flex; gap: 0.25rem; }
+.owned {
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+}
+.owned--you { background: #2f5d8a; color: #d6ebff; }
+.owned--enemy { background: #7a2a2a; color: #ffd9d4; }
+/* Same box for both labels, so toggling never shifts the button. */
+.panel .peek-toggle {
+  min-width: 10.5rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* --- Filter-by-unit chips on the All tab --- */
+.unit-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0.2rem 0 0.6rem;
+}
+.unit-chip {
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.22rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid #3a3454;
+  background: #221e33;
+  color: #c9c3e4;
+  cursor: pointer;
+}
+.unit-chip--on {
+  border-color: #f0b429;
+  background: rgba(240, 180, 41, 0.18);
+  color: #ffe27a;
+}
+
+/* --- Units codex --- */
+.unit-codex { display: flex; flex-direction: column; gap: 0.6rem; }
+.unit-entry {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid #3a3454;
+  border-radius: 10px;
+  background: #221e33;
+  text-align: left;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .unit-entry {
+    animation: ov-item 0.4s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+    animation-delay: calc(0.1s + var(--i, 0) * 70ms);
+  }
+}
+.unit-entry__portrait {
+  flex: none;
+  width: 72px;
+  height: 72px;
+  border-radius: 12px;
+  background: radial-gradient(circle at 50% 40%, rgba(58, 134, 214, 0.25), transparent 70%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.unit-entry__body { min-width: 0; }
+.unit-entry__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.unit-entry__head h3 { margin: 0; font-size: 1.05rem; }
+.unit-entry__stats { display: inline-flex; gap: 0.5rem; font-weight: 800; }
+.unit-entry__title {
+  margin: 0.1rem 0 0;
+  color: #f0b429;
+  font-size: 0.8rem;
+  font-style: italic;
+}
+.unit-entry__role { margin: 0.15rem 0 0; color: #9d97b8; font-size: 0.78rem; }
+.unit-entry__story { margin: 0.4rem 0 0; font-size: 0.86rem; line-height: 1.45; color: #e3dff2; }
+.unit-entry__augs {
+  margin: 0.45rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+  font-size: 0.74rem;
+}
+.unit-entry__augs-label { color: #9d97b8; font-weight: 700; }
+.unit-entry__aug {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: #2f2a45;
+  color: #d8d2ef;
+}
+.overlay.overlay--full {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  border-radius: 0;
+  padding: 1rem;
+}
+.panel.panel--codex {
+  width: min(36rem, 100%);
+  max-height: calc(100dvh - 2rem);
+}
+.unit-entry__earned {
+  margin: 0.25rem 0 0;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #ffe27a;
+}
+
+/* --- Confirm prompt --- */
+.panel.panel--confirm { max-width: 19rem; }
+.panel--confirm h2 { margin: 0 0 0.4rem; font-size: 1.05rem; }
+.confirm-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+}
+.confirm-actions button { white-space: nowrap; padding-left: 0.8rem; padding-right: 0.8rem; }
+
+/* --- Rarity --- */
+.tags { display: inline-flex; gap: 0.3rem; align-items: center; }
+.rarity {
+  font-size: 0.64rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+}
+.rarity--common { background: #3a3651; color: #c9c3e4; }
+.rarity--rare { background: #1f4f8a; color: #cfe6ff; box-shadow: 0 0 6px rgba(76, 154, 235, 0.45); }
+.rarity--epic {
+  background: linear-gradient(135deg, #7b3fd1, #c2408f);
+  color: #fff0fb;
+  box-shadow: 0 0 8px rgba(178, 110, 255, 0.6);
+}
+.card-row.card-row--rare { border-color: #3f7fc9; }
+.card-row.card-row--epic {
+  border-color: #b26eff;
+  box-shadow: 0 0 0 1px rgba(178, 110, 255, 0.35), 0 0 14px rgba(178, 110, 255, 0.25);
+}
+.panel__hint--row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.panel__hint--row .ghost-btn { white-space: nowrap; flex: none; }
