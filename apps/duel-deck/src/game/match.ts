@@ -10,7 +10,9 @@ import {
   sideUnits,
   upgradeUnit,
   writeLane,
+  cloneBoard,
 } from "../engine/board";
+import { resolveRound } from "../engine/combat";
 import { KNIGHT_AT, OFFER_KEYS, UNITS, mergesInto } from "../engine/units";
 import type { Board, Side, Unit } from "../engine/types";
 import {
@@ -137,13 +139,155 @@ function sortByAttack(board: Board, side: Side): void {
   }
 }
 
+/** How hard the enemy plays. */
+export type Difficulty = "easy" | "normal" | "hard";
+export const DIFFICULTIES: Difficulty[] = ["easy", "normal", "hard"];
+
+export interface AiOptions {
+  difficulty?: Difficulty;
+  /** Hard: the opponent's upgrades, to simulate its row as it will fight. */
+  oppAug?: AugmentState;
+  /**
+   * Hard: a board holding the opponent's row as it stood at the start of the
+   * round — what a player could see too. Not this round's picks, which would
+   * be peeking at a simultaneous commit.
+   */
+  scout?: Board;
+}
+
+/** Easy: two random cards, placed where they land, no rerolls, no arranging. */
+function easyCommit(board: Board, side: Side, state?: AugmentState): string[] {
+  const offer = rollOffer();
+  const picked: string[] = [];
+  const order = offer.map((_, i) => i).sort(() => Math.random() - 0.5);
+  for (const i of order) {
+    if (picked.length >= PICK_COUNT) break;
+    if (deployToBack(board, side, offer[i], state)) picked.push(offer[i]);
+  }
+  return picked;
+}
+
+/** Reorder a side's row by a comparator (front first). */
+function arrange(board: Board, side: Side, cmp: (a: Unit, b: Unit) => number): void {
+  for (let lane = 0; lane < board.lanes; lane++) {
+    writeLane(board, side, lane, occupants(board, side, lane).sort(cmp));
+  }
+}
+
+/** Formations Hard tries for every pick: hitters first, walls first, as placed. */
+const FORMATIONS: ((a: Unit, b: Unit) => number)[] = [
+  (a, b) => b.baseAtk - a.baseAtk || b.baseMaxHp - a.baseMaxHp,
+  (a, b) => b.baseMaxHp - a.baseMaxHp || b.baseAtk - a.baseAtk,
+  (a, b) => b.baseAtk + b.baseMaxHp - (a.baseAtk + a.baseMaxHp),
+  () => 0,
+];
+
+/**
+ * Add a unit, Hard's way: merge into the most-merged matching unit when it
+ * can (one big unit beats several medium ones), otherwise as Normal does.
+ */
+function concentrate(board: Board, side: Side, key: string, state: AugmentState): boolean {
+  let best: { lane: number; spot: number; merges: number } | null = null;
+  for (let lane = 0; lane < board.lanes; lane++) {
+    board.slots[side][lane].forEach((u, spot) => {
+      if (u && mergesInto(u.key, key) && (!best || u.merges > best.merges)) best = { lane, spot, merges: u.merges };
+    });
+  }
+  const b = best as { lane: number; spot: number } | null;
+  if (b && upgradeUnit(board, side, b.lane, b.spot, key, mergeRatioFor(state))) return true;
+  return deployToBack(board, side, key, state);
+}
+
+/**
+ * How good a candidate row is: fight it against the scouted opponent row
+ * (combat is deterministic) and score the HP swing, with the row's total
+ * stats as a tie-break so it still builds for later rounds.
+ */
+function scoreRow(
+  cand: Board,
+  side: Side,
+  state: AugmentState,
+  oppAug: AugmentState,
+  scout: Board,
+): number {
+  const opp: Side = side === PLAYER ? ENEMY : PLAYER;
+  const test = cloneBoard(cand);
+  test.slots[opp] = cloneBoard(scout).slots[opp];
+  ensureDepth(test, Math.max(test.depth, test.slots[opp][0]?.length ?? 0));
+  if (side === PLAYER) refreshForRound(test, state, oppAug);
+  else refreshForRound(test, oppAug, state);
+  const res = resolveRound(test);
+  let score = 0;
+  if (res.roundWinner === side) score += 20 + res.hpLoss;
+  else if (res.roundWinner === opp) score -= 20 + res.hpLoss;
+  // Survivors' attack also covers a draw-ish wipe: more left standing is better.
+  score += (res.survivors?.ids.length ?? 0) * (res.roundWinner === side ? 1 : 0);
+  for (const u of sideUnits(cand, side)) score += (u.baseAtk + u.baseMaxHp) * 0.15;
+  return score;
+}
+
+/**
+ * Hard: try every pair of offer cards, two ways of adding them and several
+ * formations, simulate each against the opponent's scouted row, and keep the
+ * best. Rerolls (same allowance as the player) when even the best loses.
+ */
+function hardCommit(
+  board: Board,
+  side: Side,
+  state: AugmentState,
+  oppAug: AugmentState,
+  scout: Board,
+): string[] {
+  const search = (offer: string[]) => {
+    let best: { score: number; board: Board; picked: string[] } | null = null;
+    for (let i = 0; i < offer.length; i++) {
+      for (let j = 0; j < offer.length; j++) {
+        if (i === j) continue;
+        for (const add of [deployToBack, concentrate]) {
+          const cand = cloneBoard(board);
+          const picked: string[] = [];
+          for (const k of [offer[i], offer[j]]) {
+            if (add(cand, side, k, state as AugmentState)) picked.push(k);
+          }
+          for (const formation of FORMATIONS) {
+            const arranged = cloneBoard(cand);
+            arrange(arranged, side, formation);
+            const score = scoreRow(arranged, side, state, oppAug, scout);
+            if (!best || score > best.score) best = { score, board: arranged, picked };
+          }
+        }
+      }
+    }
+    return best;
+  };
+  let best = search(rollOffer());
+  for (let left = unitRerollsFor(state); left > 0 && best && best.score < 0; left--) {
+    const next = search(rollOffer());
+    if (next && next.score > best.score) best = next;
+  }
+  if (!best) return [];
+  board.slots[side] = best.board.slots[side];
+  ensureDepth(board, best.board.depth);
+  return best.picked;
+}
+
 /**
  * AI commit — takes PICK_COUNT *distinct* offers (each of the five is
  * single-use, as for the player). Fills the row with the best-valued units,
  * then prefers offers it can merge; finishes by sorting the row
  * highest-ATK-first.
  */
-export function aiCommit(board: Board, side: Side, state?: AugmentState): string[] {
+export function aiCommit(
+  board: Board,
+  side: Side,
+  state?: AugmentState,
+  opts: AiOptions = {},
+): string[] {
+  const difficulty = opts.difficulty ?? "normal";
+  if (difficulty === "easy") return easyCommit(board, side, state);
+  if (difficulty === "hard" && state && opts.oppAug) {
+    return hardCommit(board, side, state, opts.oppAug, opts.scout ?? board);
+  }
   let offer = rollOffer();
   // Same rerolls as the player: spend them on an offer that's useless to a full
   // row (nothing it can merge into).
@@ -170,11 +314,10 @@ export function aiCommit(board: Board, side: Side, state?: AugmentState): string
       const owns = !firstEmptySpot(board, side) && [...mine].some((k) => mergesInto(k, key));
       // Survivors deal the round's damage, so a unit's health matters as well
       // as its attack — an attack-only score over-picked glass cannons.
-      const st = UNITS[key];
       const base =
         key === "squire"
           ? SQUIRE_PICK_VALUE + (squireBuild ? NUDGE : 0)
-          : (st?.atk ?? 0) + (st?.maxHp ?? 0) * 0.5;
+          : (AI_UNIT_VALUE[key] ?? 5);
       return (owns ? 100 : 0) + base;
     };
     available.sort((a, b) => value(b) - value(a));
@@ -209,7 +352,7 @@ const AUGMENT_SCORE: Record<string, number> = {
   "squires-drill": 55,
   "early-knighthood": 54,
   "field-medic": 50,
-  "first-strike": 56,
+  "first-strike": 44,
   bloodpact: 55,
   "last-stand": 54,
   "united-front": 54,
@@ -250,14 +393,21 @@ const AUGMENT_SCORE: Record<string, number> = {
 const RARITY_BONUS: Record<Rarity, number> = { common: 0, rare: 6, epic: 12 };
 /** Below this the AI spends a reroll rather than settle. */
 const AI_REROLL_BELOW = 52;
+/** HP the AI keeps in reserve when an augment costs pool HP. */
+const AI_HP_FLOOR = 70;
+/** Hard's extra upgrade rerolls on top of the player's allowance. */
+const HARD_EXTRA_REROLLS = 1;
 
 /**
  * How much the AI wants an augment given its row: the base win-rate score, the
  * rarity premium, and fit — unit-specific augments are worth more when it
  * fields those units and close to nothing when it fields none.
  */
-export function aiAugmentScore(def: AugmentDef, units: Unit[] = []): number {
+export function aiAugmentScore(def: AugmentDef, units: Unit[] = [], ownHp = START_HP): number {
   let score = (AUGMENT_SCORE[def.id] ?? 45) + RARITY_BONUS[rarityOf(def)];
+  // An HP cost (Bloodpact) is only worth paying with health to spare: taken
+  // low, it left the AI on 1 HP, one round from losing.
+  if (def.hpCost && ownHp - def.hpCost < AI_HP_FLOOR) score -= 100;
   const affects = unitsAffectedBy(def);
   const specific = affects.length > 0 && affects.length < Object.keys(UNITS).length;
   if (specific && units.length > 0) {
@@ -271,13 +421,14 @@ export function aiAugmentScore(def: AugmentDef, units: Unit[] = []): number {
 export function aiPickAugment<T extends { id: string } | string>(
   options: T[],
   units: Unit[] = [],
+  ownHp = START_HP,
 ): T | null {
   let best: T | null = null;
   let bestScore = -Infinity;
   for (const o of options) {
     const id = typeof o === "string" ? o : o.id;
     const def = typeof o === "string" ? null : (o as AugmentDef);
-    const score = def ? aiAugmentScore(def, units) : (AUGMENT_SCORE[id] ?? 45);
+    const score = def ? aiAugmentScore(def, units, ownHp) : (AUGMENT_SCORE[id] ?? 45);
     if (score > bestScore) {
       best = o;
       bestScore = score;
@@ -296,15 +447,27 @@ export function aiTakeAugment(
   side: Side,
   state: AugmentState,
   round: number,
+  difficulty: Difficulty = "normal",
 ): string | null {
   const units = sideUnits(board, side);
   let offer = offerAugments(state, AUGMENT_OFFER_COUNT, upgradeTier(round));
-  for (let left = AUGMENT_REROLLS; left > 0; left--) {
-    const top = aiPickAugment(offer, units);
-    if (!top || aiAugmentScore(top, units) >= AI_REROLL_BELOW) break;
+  if (difficulty === "easy") {
+    // Easy takes a card at random.
+    const choice = offer[Math.floor(Math.random() * offer.length)];
+    if (!choice) return null;
+    const cost = takeAugment(state, choice.id, units);
+    if (cost) board.hp[side] = Math.max(1, board.hp[side] - cost);
+    return choice.id;
+  }
+  // Hard holds out for a better card a little longer.
+  const rerolls = AUGMENT_REROLLS + (difficulty === "hard" ? HARD_EXTRA_REROLLS : 0);
+  const bar = AI_REROLL_BELOW + (difficulty === "hard" ? 4 : 0);
+  for (let left = rerolls; left > 0; left--) {
+    const top = aiPickAugment(offer, units, board.hp[side]);
+    if (!top || aiAugmentScore(top, units, board.hp[side]) >= bar) break;
     offer = offerAugments(state, AUGMENT_OFFER_COUNT, upgradeTier(round));
   }
-  const choice = aiPickAugment(offer, units);
+  const choice = aiPickAugment(offer, units, board.hp[side]);
   if (!choice) return null;
   const cost = takeAugment(state, choice.id, units);
   if (cost) board.hp[side] = Math.max(1, board.hp[side] - cost);
@@ -316,8 +479,21 @@ export function aiTakeAugment(
  * heal survivors to full. Player augments only affect the player's units; the
  * enemy gets its own state.
  */
-/** What the AI treats a fresh Squire as worth — roughly a Striker's attack. */
-const SQUIRE_PICK_VALUE = 8;
+/**
+ * How much the AI wants each unit as a fresh pick. Stats alone misjudge them
+ * now that each has an ability (Evasion is worth far more than its health
+ * suggests), so these are set from the "always take X" sim rather than derived.
+ */
+const AI_UNIT_VALUE: Record<string, number> = {
+  guard: 6,
+  berserker: 5.8,
+  bulwark: 5.5,
+  skirmisher: 5.3,
+  striker: 5.2,
+};
+
+/** What the AI treats a fresh Squire as worth, on the same scale as AI_UNIT_VALUE. */
+const SQUIRE_PICK_VALUE = 5.6;
 const NUDGE = 1;
 
 /** Augments that make Squires worth starting (the AI leans in when it has one). */

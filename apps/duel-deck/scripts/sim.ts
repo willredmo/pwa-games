@@ -1,5 +1,9 @@
 // Headless AI-vs-AI balance sim for Duel Deck, mirroring the app's round flow.
 // Usage: pnpm sim [matches=5000] [--draw=none|more-damage|both] [--cap=300] [--aug=ai|random] [--hp=N]
+//                 [--player=easy|normal|hard] [--enemy=easy|normal|hard]
+//
+// --player / --enemy set each side's AI difficulty (default normal), so
+// `--enemy=hard` reports how often a Normal AI beats a Hard one.
 //
 // --aug=random picks augments uniformly from each offer instead of by the AI's
 // score table. Use it for balance work: score-based picking means weak augments
@@ -8,7 +12,7 @@
 import { cloneBoard, sideUnits } from "../src/engine/board";
 import { resolveRound } from "../src/engine/combat";
 import type { Side } from "../src/engine/types";
-import { newBoard, aiCommit, aiPickAugment, aiTakeAugment, isAugmentRound, refreshForRound, upgradeTier, AUGMENT_OFFER_COUNT } from "../src/game/match";
+import { newBoard, aiCommit, type Difficulty, aiPickAugment, aiTakeAugment, isAugmentRound, refreshForRound, upgradeTier, AUGMENT_OFFER_COUNT } from "../src/game/match";
 import { createAugmentState, offerAugments, takeAugment, AUGMENTS } from "../src/game/augments";
 import { settleRound } from "../src/game/roundEnd";
 
@@ -21,6 +25,10 @@ const rule = (flag("draw") ?? "none") as DrawRule;
 if (!["none", "more-damage", "both"].includes(rule)) throw new Error(`bad --draw=${rule}`);
 const startHp = flag("hp") ? Number(flag("hp")) : null;
 const augMode = flag("aug") ?? "ai";
+const diff: Record<Side, Difficulty> = {
+  player: (flag("player") ?? "normal") as Difficulty,
+  enemy: (flag("enemy") ?? "normal") as Difficulty,
+};
 if (!["ai", "random"].includes(augMode)) throw new Error(`bad --aug=${augMode}`);
 const pickAug = <T>(opts: T[]): T | null =>
   augMode === "random"
@@ -30,6 +38,7 @@ const SIDES: Side[] = ["player", "enemy"];
 const other = (s: Side): Side => (s === "player" ? "enemy" : "player");
 
 const rounds: number[] = [];
+const sideWins: Record<Side, number> = { player: 0, enemy: 0 };
 let capHits = 0, totRounds = 0, totDraws = 0, zeroDmg = 0;
 const MAXR = 10; // rounds >= MAXR bucketed together
 const byRound = Array.from({ length: MAXR + 1 }, () => ({ n: 0, draws: 0, dmg: 0 }));
@@ -48,11 +57,14 @@ for (let i = 0; i < N; i++) {
     // --aug=ai plays the app's AI upgrade turn (rarity, fit, rerolls); random
     // mode picks blind, for unbiased per-augment win rates.
     if (isAugmentRound(r)) for (const s of SIDES) {
-      if (augMode === "ai") { aiTakeAugment(c, s, aug[s], r); continue; }
+      if (augMode === "ai") { aiTakeAugment(c, s, aug[s], r, diff[s]); continue; }
       const ch = pickAug(offerAugments(aug[s], AUGMENT_OFFER_COUNT, upgradeTier(r)));
       if (ch) { const k = takeAugment(aug[s], ch.id, sideUnits(c, s)); if (k) c.hp[s] = Math.max(1, c.hp[s] - k); }
     }
-    aiCommit(c, "player", aug.player); aiCommit(c, "enemy", aug.enemy);
+    // Hard scouts the rows as they stood before either side picked.
+    const scout = cloneBoard(c);
+    aiCommit(c, "player", aug.player, { difficulty: diff.player, oppAug: aug.enemy, scout });
+    aiCommit(c, "enemy", aug.enemy, { difficulty: diff.enemy, oppAug: aug.player, scout });
     refreshForRound(c, aug.player, aug.enemy);
     const res = resolveRound(c);
     // Same round-end bookkeeping as the app (Momentum, Rally, kills, Veteran,
@@ -79,6 +91,7 @@ for (let i = 0; i < N; i++) {
     board = cloneBoard(c); board.hp = hp;
   }
   rounds.push(r); totRounds += r;
+  if (winner) sideWins[winner]++;
   if (!winner) capHits++;
   else for (const s of SIDES) for (const id of aug[s].active) { augWin[id][1]++; if (winner === s) augWin[id][0]++; }
 }
@@ -87,6 +100,7 @@ rounds.sort((a, b) => a - b);
 const pct = (p: number) => rounds[Math.min(rounds.length - 1, Math.floor(p * rounds.length))];
 const f = (x: number, d = 1) => x.toFixed(d);
 console.log(`draw rule: ${rule}   matches: ${N}   cap: ${CAP}`);
+console.log(`player (${diff.player}) wins ${f(100 * sideWins.player / N)}%   enemy (${diff.enemy}) wins ${f(100 * sideWins.enemy / N)}%`);
 console.log(`rounds/match: p10 ${pct(0.1)} median ${pct(0.5)} p90 ${pct(0.9)} max ${rounds[rounds.length - 1]}   mean ${f(totRounds / N)}`);
 console.log(`draw rounds: ${f(100 * totDraws / totRounds)}%   zero-damage rounds: ${f(100 * zeroDmg / totRounds)}%   cap hits: ${capHits}`);
 console.log("by round:");

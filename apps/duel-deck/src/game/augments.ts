@@ -1,5 +1,5 @@
 import type { AuraDetail, SideMods, Side, Unit, UnitTraits } from "../engine/types";
-import { UNITS, UNIT_KEYS } from "../engine/units";
+import { KNIGHT_AT, UNITS, UNIT_KEYS, innateTraits } from "../engine/units";
 
 // Persistent upgrades ("augments") — the tracker doc's separate offer track.
 //
@@ -227,10 +227,10 @@ export const AUGMENTS: AugmentDef[] = [
     id: "tank-wall",
     icon: "🏰",
     name: "Tank wall",
-    description: "+2 health to Guards/Bulwarks per Guard or Bulwark you have.",
+    description: "+1 health to Guards/Bulwarks per Guard or Bulwark you have.",
     category: "synergy",
     effect: (u, _i, ctx) =>
-      has(u, "tank") ? { hp: 2 * countClass(ctx.units, "tank") } : {},
+      has(u, "tank") ? { hp: countClass(ctx.units, "tank") } : {},
   },
   {
     id: "glass-cannon-pact",
@@ -244,7 +244,7 @@ export const AUGMENTS: AugmentDef[] = [
     id: "vanguards-edge",
     icon: "👑",
     name: "Vanguard's edge",
-    description: "Your front-most unit gets +2 attack/+2 health, re-applied each round.",
+    description: "The unit leading your row when each round starts gets +2 attack and +2 health.",
     category: "synergy",
     effect: (_u, index) => (index === 0 ? { atk: 2, hp: 2 } : {}),
   },
@@ -276,18 +276,18 @@ export const AUGMENTS: AugmentDef[] = [
     id: "first-strike",
     icon: "🏹",
     name: "First strike",
-    description: "Strikers strike first (if the blow kills, they take no blow back), but have -1 health.",
+    description:
+      "Each Striker's first swing of the round lands first, even if it steps up later; if it kills, no blow comes back.",
     category: "combat",
-    effect: (u) => (has(u, "striker") ? { hp: -1 } : {}),
     traits: (u) => (has(u, "striker") ? { firstStrike: true } : {}),
   },
   {
     id: "cleave",
     icon: "🪓",
     name: "Cleave",
-    description: "Berserkers carry half their excess damage (up to 3) over to the next enemy in line.",
+    description: "Berserkers' Overflow carries in full: no halving, no cap.",
     category: "combat",
-    traits: (u) => (has(u, "berserker") ? { cleave: true } : {}),
+    traits: (u) => (has(u, "berserker") ? { cleave: true, cleaveFull: true } : {}),
   },
   {
     id: "thorns",
@@ -310,7 +310,8 @@ export const AUGMENTS: AugmentDef[] = [
     icon: "🚧",
     name: "Shield wall",
     units: ["guard", "bulwark"],
-    description: "Your front-most unit takes 1 less damage, plus 1 less per Guard or Bulwark behind it.",
+    description:
+      "The unit leading your row when the round starts takes 1 less damage per hit, plus 1 less per Guard or Bulwark behind it.",
     category: "combat",
     traits: (_u, i, ctx) => {
       if (i !== 0) return {};
@@ -350,7 +351,7 @@ export const AUGMENTS: AugmentDef[] = [
     id: "early-knighthood",
     icon: "⚜️",
     name: "Early knighthood",
-    description: "Squires are knighted after 4 merges instead of 5.",
+    description: `Squires are knighted after ${KNIGHT_AT - 1} merges instead of ${KNIGHT_AT}.`,
     category: "class",
     units: ["squire", "knight"],
   },
@@ -389,7 +390,7 @@ export const AUGMENTS: AugmentDef[] = [
     id: "spearwall",
     icon: "🔱",
     name: "Spearwall",
-    description: "Your front-most unit reflects 3 damage when hit and takes 1 less damage.",
+    description: "The unit leading your row when the round starts reflects 3 damage when hit and takes 1 less damage per hit.",
     category: "combat",
     rarity: "rare",
     traits: (_u, i) => (i === 0 ? { thorns: 3, damageReduction: 1 } : {}),
@@ -410,20 +411,20 @@ export const AUGMENTS: AugmentDef[] = [
     id: "legion",
     icon: "🦅",
     name: "Legion",
-    description: "+1 attack and +2 health to every unit.",
+    description: "+1 attack and +1 health to every unit.",
     category: "global",
     rarity: "epic",
-    effect: () => ({ atk: 1, hp: 2 }),
+    effect: () => ({ atk: 1, hp: 1 }),
   },
   {
     id: "champion",
     icon: "🏆",
     name: "Champion",
-    description: "Your front-most unit gains +5 attack and +10 health.",
+    description: "The unit leading your row when each round starts gains +3 attack and +5 health.",
     category: "global",
     rarity: "epic",
     // No first strike: on the front unit it decided nearly every match (88%).
-    effect: (_u, i) => (i === 0 ? { atk: 5, hp: 10 } : {}),
+    effect: (_u, i) => (i === 0 ? { atk: 3, hp: 5 } : {}),
   },
   {
     id: "unbreakable",
@@ -456,7 +457,7 @@ export const AUGMENTS: AugmentDef[] = [
     id: "fusion",
     icon: "⚗️",
     name: "Fusion",
-    description: "Merges grant 60% of the absorbed unit's stats instead of 50%.",
+    description: "Merges grant 60% of the absorbed unit's stats instead of 50% (Squire merges keep their own escalating gains).",
     category: "strategy",
   },
   {
@@ -558,7 +559,7 @@ export function applyAugments(
     const details: AuraDetail[] = [];
     // Innate keywords first (the Knight's armour), so augments add to them
     // rather than the per-round rebuild wiping them out.
-    const traits: UnitTraits = { ...(UNITS[unit.key]?.traits ?? {}) };
+    const traits: UnitTraits = innateTraits(unit.key, unit.merges);
     for (const def of defs) {
       const d = def.effect?.(unit, index, ctx) ?? {};
       atk += d.atk ?? 0;
@@ -599,6 +600,8 @@ function mergeTraits(into: UnitTraits, t: UnitTraits): void {
   for (const [k, v] of Object.entries(t)) {
     if (v === undefined || v === false) continue;
     if (typeof v === "boolean") out[k] = true;
+    // Structured abilities (death buffs, growth) aren't stacked — the latest wins.
+    else if (typeof v === "object") (out as Record<string, unknown>)[k] = v;
     else if (k === "lifesteal") out[k] = Math.max((out[k] as number) ?? 0, v);
     else out[k] = ((out[k] as number) ?? 0) + v;
   }

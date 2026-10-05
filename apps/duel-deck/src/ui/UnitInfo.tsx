@@ -1,5 +1,5 @@
 import type { Unit, UnitTraits } from "../engine/types";
-import { UNITS } from "../engine/units";
+import { UNITS, innateTraits } from "../engine/units";
 import { getAugment } from "../game/augments";
 
 // Hover card for a unit on the board: its numbers now, its numbers before any
@@ -10,8 +10,25 @@ import { getAugment } from "../game/augments";
 /** Plain-language keyword text. Values mirror engine/combat.ts. */
 function describeTraits(t: UnitTraits): string[] {
   const out: string[] = [];
-  if (t.firstStrike) out.push("strikes first in the opening exchange");
-  if (t.cleave) out.push("half its overkill (max 3) hits the next enemy");
+  if (t.firstStrike) out.push("its first swing each round lands first");
+  if (t.cleave)
+    out.push(
+      t.cleaveFull
+        ? "all its overkill hits the next enemy"
+        : `half its overkill (max ${t.cleaveCap ?? 3}) hits the next enemy`,
+    );
+  if (t.dodges) out.push(t.dodges === 1 ? "dodges the first hit each round" : `dodges the first ${t.dodges} hits each round`);
+  if (t.riposte) out.push(`strikes back for ${t.riposte} when it dodges`);
+  if (t.openingBonus) out.push(`+${t.openingBonus} damage on its first attack each round`);
+  if (t.deathBuff) {
+    const b = t.deathBuff;
+    const what = [b.atk ? `+${b.atk}⚔` : "", b.hp ? `+${b.hp}♥` : ""].filter(Boolean).join(" ");
+    out.push(`on death: ${b.target === "allies" ? "all allies" : "the unit behind"} gain ${what}`);
+  }
+  if (t.growOnSurvive) {
+    const g = t.growOnSurvive;
+    out.push(`+${g.hp ? `${g.hp}♥` : `${g.atk}⚔`} permanently each round it survives`);
+  }
   if (t.thorns) out.push(`reflects ${t.thorns} damage when hit`);
   if (t.lifesteal) out.push(`heals ${Math.round(t.lifesteal * 100)}% of damage dealt`);
   if (t.damageReduction) out.push(`takes ${t.damageReduction} less damage per hit`);
@@ -23,7 +40,9 @@ function describeTraits(t: UnitTraits): string[] {
 const signed = (n: number, glyph: string) => (n ? `${n > 0 ? "+" : ""}${n}${glyph}` : "");
 
 export function UnitInfo({ unit, x, y }: { unit: Unit; x: number; y: number }) {
-  const innate = UNITS[unit.key]?.traits;
+  // Grown by merges: what the ability does for *this* unit right now.
+  const innateRaw = innateTraits(unit.key, unit.merges);
+  const innate = Object.keys(innateRaw).length > 0 ? innateRaw : undefined;
   const details = unit.auraDetails ?? [];
   // Keep the card on screen: flip to the left of the pointer near the right edge.
   const flip = x > window.innerWidth - 300;
@@ -50,7 +69,9 @@ export function UnitInfo({ unit, x, y }: { unit: Unit; x: number; y: number }) {
       </div>
       {innate && (
         <div className="unit-info__line">
-          <span className="unit-info__src">🛡 {unit.name} (innate)</span>
+          <span className="unit-info__src">
+            ✦ {UNITS[unit.key]?.ability?.name ?? unit.name} (innate)
+          </span>
           <span className="unit-info__fx">{describeTraits(innate).join("; ")}</span>
         </div>
       )}
@@ -71,6 +92,43 @@ export function UnitInfo({ unit, x, y }: { unit: Unit; x: number; y: number }) {
         );
       })}
       {details.length === 0 && !innate && <div className="unit-info__none">No upgrades affecting it.</div>}
+    </div>
+  );
+}
+
+/**
+ * Hover card for an offer: the unit's printed stats, role and innate ability,
+ * so its ability is visible before it's picked. Sits above the card, centred.
+ */
+export function OfferInfo({ unitKey, x, y }: { unitKey: string; x: number; y: number }) {
+  const u = UNITS[unitKey];
+  if (!u) return null;
+  const half = 136; // half the card's width, to keep it on screen
+  const left = Math.min(Math.max(x, half + 8), window.innerWidth - half - 8);
+  return (
+    <div
+      className="unit-info unit-info--offer"
+      style={{ left, top: y - 10, transform: "translate(-50%, -100%)" }}
+      role="tooltip"
+    >
+      <div className="unit-info__head">
+        <strong>{u.name}</strong>
+        <span className="unit-info__stats">
+          <span className="stat stat--atk">⚔{u.atk}</span>
+          <span className="stat stat--hp">♥{u.maxHp}</span>
+        </span>
+      </div>
+      <div className="unit-info__base">{u.role}</div>
+      {u.ability && (
+        <div className="unit-info__ability">
+          <div className="unit-info__ability-head">
+            <span className="unit-info__ability-name">✦ {u.ability.name}</span>
+            <span className="unit-info__ability-trigger">{u.ability.trigger}</span>
+          </div>
+          <div className="unit-info__ability-text">{u.ability.text}</div>
+          {u.ability.scaling && <div className="unit-info__ability-scaling">↑ {u.ability.scaling}</div>}
+        </div>
+      )}
     </div>
   );
 }

@@ -643,29 +643,14 @@ function drawDropHints(
       ctx.restore();
     }
 
-    // Split slot: left half merges, right half moves. Mark the halves so the
-    // choice is visible before release.
+    // Split slot (a twin of the unit in hand): left half merges, right half
+    // inserts/moves. Both halves are always tinted and labelled while a unit is
+    // in hand, so the choice is legible the first time, not just once learned.
     const split = kind === "merge-or-move" || kind === "merge-or-add";
     if (split) {
-      const mid = x + w / 2;
-      const left = hovered && drop!.zone !== "right";
-      ctx.save();
-      ctx.fillStyle = left
-        ? "rgba(95, 224, 143, 0.16)"
-        : kind === "merge-or-add"
-          ? "rgba(240, 180, 41, 0.16)"
-          : "rgba(184, 176, 224, 0.16)";
-      if (hovered) ctx.fillRect(left ? x : mid, y, w / 2, h);
-      ctx.strokeStyle = "rgba(230, 226, 245, 0.45)";
-      ctx.setLineDash([3, 3]);
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(mid, y + h * 0.15);
-      ctx.lineTo(mid, y + h * 0.85);
-      ctx.stroke();
-      ctx.restore();
+      drawSplitSlot(ctx, x, y, w, h, kind, hovered ? (drop!.zone === "right" ? "right" : "left") : null, state.dropLabel ?? null, time, animated);
+      continue;
     }
-
     const hoverStyle =
       split && hovered && drop!.zone === "right"
         ? kind === "merge-or-move"
@@ -693,6 +678,95 @@ function drawDropHints(
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(text, bx + bw / 2, by + bob + bh / 2 + 1);
+    ctx.restore();
+  }
+}
+
+/**
+ * One slot split into two labelled halves. `over` is the half under the
+ * pointer (null when not hovered): it brightens and shows the full outcome,
+ * the other half dims but keeps its label.
+ */
+function drawSplitSlot(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  kind: "merge-or-move" | "merge-or-add",
+  over: "left" | "right" | null,
+  outcome: string | null,
+  time: number,
+  animated: boolean,
+): void {
+  const half = w / 2;
+  const right = kind === "merge-or-add" ? KIND_STYLE.insert : KIND_STYLE.reorder;
+  const halves = [
+    { side: "left" as const, x0: x, color: COLORS.merge, rgb: "95, 224, 143", label: "⇪ MERGE" },
+    {
+      side: "right" as const,
+      x0: x + half,
+      color: right.color,
+      rgb: kind === "merge-or-add" ? "240, 180, 41" : "184, 176, 224",
+      label: kind === "merge-or-add" ? "INSERT ↧" : "MOVE ↕",
+    },
+  ];
+  const r = Math.min(w, h) * 0.16;
+  const pulse = animated ? 0.5 + 0.5 * Math.sin(time / 200) : 1;
+  ctx.save();
+  roundRect(ctx, x, y, w, h, r);
+  ctx.clip();
+  for (const hf of halves) {
+    const active = over === hf.side;
+    const dim = over !== null && !active;
+    ctx.fillStyle = `rgba(${hf.rgb}, ${active ? 0.3 + 0.08 * pulse : dim ? 0.07 : 0.16})`;
+    ctx.fillRect(hf.x0, y, half, h);
+    if (active) {
+      ctx.strokeStyle = hf.color;
+      ctx.lineWidth = Math.max(2.5, h * 0.09);
+      ctx.strokeRect(hf.x0 + 1.5, y + 1.5, half - 3, h - 3);
+    }
+  }
+  ctx.restore();
+
+  // Divider.
+  ctx.save();
+  ctx.strokeStyle = "rgba(240, 236, 255, 0.7)";
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  ctx.moveTo(x + half, y + h * 0.1);
+  ctx.lineTo(x + half, y + h * 0.9);
+  ctx.stroke();
+  ctx.restore();
+
+  // A label pill centred in each half; the active one carries the outcome.
+  for (const hf of halves) {
+    const active = over === hf.side;
+    const dim = over !== null && !active;
+    const text = active && outcome ? outcome : hf.label;
+    let fs = Math.round(Math.max(10, h * (active ? 0.3 : 0.26)));
+    ctx.font = `800 ${fs}px system-ui, sans-serif`;
+    // Shrink the outcome to fit its half rather than spill into the other.
+    while (fs > 9 && ctx.measureText(text).width + fs * 1.1 > half - 6) {
+      fs -= 1;
+      ctx.font = `800 ${fs}px system-ui, sans-serif`;
+    }
+    const tw = ctx.measureText(text).width;
+    const bh = fs * 1.5;
+    const bw = tw + fs * 1.1;
+    const bx = hf.x0 + (half - bw) / 2;
+    const by = y + (h - bh) / 2;
+    ctx.save();
+    ctx.globalAlpha = dim ? 0.55 : 0.95;
+    roundRect(ctx, bx, by, bw, bh, bh / 2);
+    ctx.fillStyle = hf.color;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#17131f";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, bx + bw / 2, by + bh / 2 + 1);
     ctx.restore();
   }
 }
@@ -734,6 +808,12 @@ function drawUnit(
       else if (t < 0.45) f = -0.1 + 0.52 * easeOutCubic((t - 0.25) / 0.2);
       else f = 0.42 * (1 - easeInOutSine((t - 0.45) / 0.55));
       bdy = toward * f * l.rowH;
+      break;
+    }
+    case "dodge": {
+      // Evasion: a quick sidestep out of the blow and back.
+      if (reduce) break;
+      bdx = pulse(t) * h * 0.65;
       break;
     }
     case "hit": {
@@ -815,7 +895,7 @@ function drawUnit(
     ctx.fillStyle = COLORS.atkText;
     ctx.fillText(atkLabel, tx, statY);
     ctx.fillStyle = COLORS.hpText;
-    ctx.fillText(`♥${unit.hp}`, tx + ctx.measureText(atkLabel).width + h * 0.28, statY);
+    ctx.fillText(`♥${Math.max(0, unit.hp)}`, tx + ctx.measureText(atkLabel).width + h * 0.28, statY);
 
     const mergeW = h * 0.4;
     const mergeX = x + w - mergeW - pad * 0.5;

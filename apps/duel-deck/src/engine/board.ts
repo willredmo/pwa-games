@@ -1,4 +1,4 @@
-import { KNIGHTING_BONUS, SQUIRE_STEP, UNITS, mergesInto } from "./units";
+import { KNIGHTING_BONUS, KNIGHT_AT, SQUIRE_STEP, UNITS, mergesInto } from "./units";
 import type { Board, Side, Unit } from "./types";
 
 // Board construction and slot access. Generic over `lanes` and `depth`.
@@ -65,12 +65,19 @@ export const MERGE_RATIO = 0.5;
 
 /**
  * What the n-th through (n+count-1)-th merges into a Squire line grant:
- * merge k adds k × SQUIRE_STEP, so each one is bigger than the last.
+ * merge k adds k × SQUIRE_STEP, so each one is bigger than the last — up to
+ * knighthood. After that every merge is worth the KNIGHT_AT-th step: an
+ * uncapped escalation let a long match's Knight reach 30+ attack.
  */
 function squireGain(targetMerges: number, count = 1): { atk: number; hp: number } {
-  let k = 0;
-  for (let i = 1; i <= count; i++) k += targetMerges + i;
-  return { atk: Math.round(k * SQUIRE_STEP.atk), hp: Math.round(k * SQUIRE_STEP.hp) };
+  let atk = 0;
+  let hp = 0;
+  for (let i = 1; i <= count; i++) {
+    const k = Math.min(targetMerges + i, KNIGHT_AT);
+    atk += Math.round(k * SQUIRE_STEP.atk);
+    hp += Math.round(k * SQUIRE_STEP.hp);
+  }
+  return { atk, hp };
 }
 
 /**

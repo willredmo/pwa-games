@@ -40,7 +40,26 @@ export type FxKind =
   /** Damage reduction soaked part of a hit: shield glint. */
   | "block"
   /** Bounty paid: gold coins burst toward the losing side. */
-  | "bounty";
+  | "bounty"
+  // --- Unit abilities ---
+  /** Floating "✦ Ability" name over the unit that triggered it (needs `text`). */
+  | "ability-label"
+  /** Evasion: sidestep afterimages and "DODGE!". */
+  | "dodge"
+  /** Charge: golden wind-up glow gathering on the striker. */
+  | "charge-up"
+  /** Overflow: red shockwave travelling from the kill to `tx,ty`. */
+  | "overflow"
+  /** Bodyguard: shield beam from the fallen Guard to `tx,ty`. */
+  | "bodyguard"
+  /** Pass the torch: flame arcing from the fallen Squire to `tx,ty`. */
+  | "torch"
+  /** Last rally: gold banner burst from the fallen Knight. */
+  | "rally"
+  /** Fortify: stone pulse on a surviving Bulwark and "+N♥ forever". */
+  | "fortify"
+  /** An ability's stat gain on the unit receiving it ("+2⚔", "+3♥"; needs `text`). */
+  | "stat-gain";
 
 export interface FxSpawn {
   kind: FxKind;
@@ -57,9 +76,13 @@ export interface FxSpawn {
   /** For "last-breath": optional target point the wisp travels to. */
   tx?: number;
   ty?: number;
+  /** For "ability-label": the text to float. */
+  text?: string;
 }
 
 const MAX_PARTICLES = 400;
+/** How long ability names and their numbers stay readable. */
+const ABILITY_LABEL_MS = 1800;
 const SHAKE_MS = 300;
 const INK = "#201d30";
 
@@ -123,6 +146,11 @@ const enum ET {
   Shield,
   Wisp,
   WispBurst,
+  Label,
+  Travel,
+  Afterimage,
+  Banner,
+  Stone,
 }
 
 interface Effect {
@@ -142,6 +170,8 @@ interface Effect {
   style: number;
   tx: number;
   ty: number;
+  /** Label text, or the Travel variant ("shock" | "beam" | "flame"). */
+  text: string;
 }
 
 function mkParticle(): Particle {
@@ -264,7 +294,8 @@ export class FxLayer {
         break;
       }
       case "heal": {
-        this.addNumber(fx, now, 1);
+        // No amount: just the sparkle (a "stat-gain" carries the number instead).
+        if (fx.amount !== undefined) this.addNumber(fx, now, 1);
         const n = this.count(7);
         for (let i = 0; i < n; i++) {
           this.emit(PT.Plus, now + i * 45, 650 + Math.random() * 300, x + (Math.random() - 0.5) * s * 0.8, y + (Math.random() - 0.3) * s * 0.3,
@@ -336,6 +367,63 @@ export class FxLayer {
         }
         break;
       }
+      case "ability-label": {
+        const e = this.fx(ET.Label, now, ABILITY_LABEL_MS, x, y - s * 0.55, s, COL.goldLight, INK, 0, false, 0);
+        e.text = fx.text ?? "";
+        break;
+      }
+      case "dodge": {
+        // Afterimages trail the sidestep; the word lands a beat later.
+        for (let i = 0; i < 3; i++) {
+          this.fx(ET.Afterimage, now + i * 45, 320, x, y, s, sideLight(fx.side), "#fff", 0, false, i % 2 ? 1 : -1);
+        }
+        const e = this.fx(ET.Label, now + 60, 800, x, y - s * 0.2, s * 1.15, "#e8f6ff", INK, 0, false, 0);
+        e.text = "DODGE!";
+        break;
+      }
+      case "charge-up": {
+        this.fx(ET.Flash, now, 260, x, y, s * 0.75, COL.goldLight, COL.gold, 0, false, 0);
+        const n = this.count(10);
+        for (let i = 0; i < n; i++) {
+          const p = this.emit(PT.Spiral, now, 300, x, y, 0, 0, 0, s * 0.05, i % 2 ? COL.goldLight : "#fff");
+          if (p) { p.ox = x; p.oy = y; p.rot = (i / n) * Math.PI * 2; p.vr = 9; p.rad = s * 0.9; }
+        }
+        break;
+      }
+      case "overflow":
+      case "bodyguard":
+      case "torch": {
+        const variant = fx.kind === "overflow" ? "shock" : fx.kind === "bodyguard" ? "beam" : "flame";
+        const col = variant === "shock" ? "#ff5a3c" : variant === "beam" ? COL.blueWhite : "#ff9f2e";
+        const e = this.fx(ET.Travel, now, variant === "beam" ? 720 : 640, x, y, s, col, "#fff", 0, false, 0);
+        e.tx = fx.tx ?? x;
+        e.ty = fx.ty ?? y;
+        e.text = variant;
+        // A burst where it lands.
+        const land = this.fx(ET.Ring, now + e.dur, 420, e.tx, e.ty, s * 0.8, col, col, 0, false, 0);
+        land.done = false;
+        if (variant === "beam") this.fx(ET.Shield, now + e.dur, 600, e.tx, e.ty, s, COL.blueWhite, COL.shield, 0, false, 0);
+        break;
+      }
+      case "rally": {
+        this.fx(ET.Banner, now, 1400, x, y, s, COL.gold, COL.goldLight, 0, false, 0);
+        this.fx(ET.Ring, now, 900, x, y, s * 2.2, COL.goldLight, COL.gold, 0, false, 0);
+        break;
+      }
+      case "fortify": {
+        this.fx(ET.Stone, now, 1000, x, y, s, "#b9b3c9", "#6f6a82", 0, false, 0);
+        const e = this.fx(ET.Label, now + 120, ABILITY_LABEL_MS, x, y - s * 0.35, s, "#d6ffe4", INK, 0, false, 0);
+        e.text = `+${fx.amount ?? 1}♥ forever`;
+        break;
+      }
+      case "stat-gain": {
+        // Big enough to read at a glance: gold for attack, green for health.
+        const atk = (fx.text ?? "").includes("⚔");
+        const e = this.fx(ET.Label, now, ABILITY_LABEL_MS, x, y - s * 0.1, s * 1.25,
+          atk ? COL.goldLight : "#b8f5cc", INK, 0, false, 0);
+        e.text = fx.text ?? "";
+        break;
+      }
     }
   }
 
@@ -405,7 +493,7 @@ export class FxLayer {
 
   private fx(type: ET, t0: number, dur: number, x: number, y: number, size: number, color: string, color2: string,
     amount: number, flag: boolean, dir: number): Effect {
-    const e: Effect = { type, t0, dur, x, y, size, color, color2, amount, flag, dir, done: false, style: 0, tx: 0, ty: 0 };
+    const e: Effect = { type, t0, dur, x, y, size, color, color2, amount, flag, dir, done: false, style: 0, tx: 0, ty: 0, text: "" };
     this.effects.push(e);
     return e;
   }
@@ -468,6 +556,21 @@ export class FxLayer {
           break;
         case ET.Wisp:
           this.drawWisp(ctx, e, t);
+          break;
+        case ET.Label:
+          this.drawLabel(ctx, e, t);
+          break;
+        case ET.Travel:
+          this.drawTravel(ctx, e, t);
+          break;
+        case ET.Afterimage:
+          this.drawAfterimage(ctx, e, t);
+          break;
+        case ET.Banner:
+          this.drawBanner(ctx, e, t);
+          break;
+        case ET.Stone:
+          this.drawStone(ctx, e, t);
           break;
         case ET.Ring: {
           const r = e.size * (0.15 + easeOutCubic(t));
@@ -673,6 +776,150 @@ export class FxLayer {
         ctx.fill();
       }
     }
+  }
+
+  /** Floating text: pops in, rises, fades. Ability names and "DODGE!". */
+  private drawLabel(ctx: CanvasRenderingContext2D, e: Effect, t: number): void {
+    const pop = t < 0.18 ? easeOutBack(t / 0.18) : 1;
+    const fs = Math.max(10, e.size * 0.32) * pop;
+    ctx.save();
+    ctx.globalAlpha = t > 0.65 ? 1 - (t - 0.65) / 0.35 : 1;
+    ctx.font = `800 ${Math.round(fs)}px system-ui, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const y = e.y - easeOutCubic(t) * e.size * 0.45;
+    ctx.lineWidth = Math.max(2, fs * 0.22);
+    ctx.strokeStyle = e.color2;
+    ctx.strokeText(e.text, e.x, y);
+    ctx.fillStyle = e.color;
+    ctx.fillText(e.text, e.x, y);
+    ctx.restore();
+  }
+
+  /**
+   * Something crossing from (x,y) to (tx,ty): a red shockwave (Overflow), a
+   * shield beam (Bodyguard) or an arcing flame (Pass the torch).
+   */
+  private drawTravel(ctx: CanvasRenderingContext2D, e: Effect, t: number): void {
+    const k = easeOutCubic(t);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    if (e.text === "beam") {
+      // A beam that draws itself across, then thins out.
+      const ex = lerp(e.x, e.tx, Math.min(1, k * 1.4));
+      const ey = lerp(e.y, e.ty, Math.min(1, k * 1.4));
+      ctx.globalAlpha = 1 - t * 0.7;
+      ctx.strokeStyle = e.color;
+      ctx.lineCap = "round";
+      ctx.lineWidth = e.size * 0.22 * (1 - t * 0.6);
+      ctx.beginPath();
+      ctx.moveTo(e.x, e.y);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth *= 0.35;
+      ctx.stroke();
+    } else {
+      // A projectile: straight for the shockwave, an arc for the flame.
+      const arc = e.text === "flame" ? -e.size * 0.9 * Math.sin(Math.PI * k) : 0;
+      const px = lerp(e.x, e.tx, k) + arc;
+      const py = lerp(e.y, e.ty, k);
+      const r = e.size * (e.text === "shock" ? 0.28 + 0.18 * Math.sin(t * 20) : 0.2);
+      const g = ctx.createRadialGradient(px, py, 0, px, py, r * 2);
+      g.addColorStop(0, "#fff");
+      g.addColorStop(0.35, e.color);
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.globalAlpha = 1 - t * 0.3;
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(px, py, r * 2, 0, 6.2832);
+      ctx.fill();
+      if (e.text === "shock") {
+        // Concentric ripple around the travelling front.
+        ctx.strokeStyle = e.color;
+        ctx.lineWidth = Math.max(1, e.size * 0.06);
+        ctx.globalAlpha = (1 - t) * 0.8;
+        ctx.beginPath();
+        ctx.ellipse(px, py, r * 2.6, r * 1.2, 0, 0, 6.2832);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  /** Evasion: a ghost of the unit slipping sideways. */
+  private drawAfterimage(ctx: CanvasRenderingContext2D, e: Effect, t: number): void {
+    const off = e.dir * e.size * 0.55 * easeOutCubic(t);
+    ctx.save();
+    ctx.globalAlpha = (1 - t) * 0.45;
+    ctx.fillStyle = e.color;
+    ctx.beginPath();
+    ctx.ellipse(e.x + off, e.y, e.size * 0.32, e.size * 0.42, 0, 0, 6.2832);
+    ctx.fill();
+    ctx.strokeStyle = e.color2;
+    ctx.lineWidth = Math.max(1, e.size * 0.04);
+    for (let i = -1; i <= 1; i++) {
+      ctx.beginPath();
+      ctx.moveTo(e.x + off - e.dir * e.size * 0.5, e.y + i * e.size * 0.18);
+      ctx.lineTo(e.x + off - e.dir * e.size * 0.95, e.y + i * e.size * 0.18);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /** Last rally: a gold pennant that unfurls upward and fades. */
+  private drawBanner(ctx: CanvasRenderingContext2D, e: Effect, t: number): void {
+    const rise = easeOutBack(Math.min(1, t * 2)) * e.size * 1.1;
+    const s = e.size;
+    ctx.save();
+    ctx.globalAlpha = t > 0.6 ? 1 - (t - 0.6) / 0.4 : 1;
+    const x = e.x;
+    const top = e.y - rise;
+    ctx.strokeStyle = "#8a6a2a";
+    ctx.lineWidth = Math.max(1.5, s * 0.06);
+    ctx.beginPath();
+    ctx.moveTo(x, e.y);
+    ctx.lineTo(x, top - s * 0.1);
+    ctx.stroke();
+    const wave = Math.sin(t * 14) * s * 0.06;
+    ctx.fillStyle = e.color;
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x + s * 0.7, top + s * 0.12 + wave);
+    ctx.lineTo(x + s * 0.55, top + s * 0.3);
+    ctx.lineTo(x + s * 0.7, top + s * 0.48 + wave);
+    ctx.lineTo(x, top + s * 0.55);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = e.color2;
+    ctx.font = `800 ${Math.round(s * 0.3)}px system-ui, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("⚜", x + s * 0.3, top + s * 0.28);
+    ctx.restore();
+  }
+
+  /** Fortify: a hexagon of stone that settles onto the unit. */
+  private drawStone(ctx: CanvasRenderingContext2D, e: Effect, t: number): void {
+    const r = e.size * (0.9 - 0.25 * easeOutCubic(t));
+    ctx.save();
+    ctx.globalAlpha = (1 - t) * 0.85;
+    ctx.strokeStyle = e.color;
+    ctx.lineWidth = Math.max(2, e.size * 0.1 * (1 - t * 0.5));
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 3) * i - Math.PI / 6;
+      const px = e.x + Math.cos(a) * r;
+      const py = e.y + Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.globalAlpha *= 0.25;
+    ctx.fillStyle = e.color2;
+    ctx.fill();
+    ctx.restore();
   }
 
   private drawSlash(ctx: CanvasRenderingContext2D, e: Effect, t: number): void {

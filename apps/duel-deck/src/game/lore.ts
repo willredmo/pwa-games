@@ -40,7 +40,7 @@ export const UNIT_LORE: Record<string, UnitLore> = {
       "Bulwarks are hexagons, the shape that bees, basalt and fortresses all agree on. " +
       "One was once left alone at a river crossing for three days and was still standing " +
       "when relief arrived; nobody asked it to move, so it hadn't. They barely fight back, " +
-      "but an enemy that has to chip through fourteen layers of patience rarely has much left after.",
+      "but an enemy that has to chip through ten layers of patience rarely has much left after.",
   },
   berserker: {
     title: "The Unbroken Circle",
@@ -59,9 +59,9 @@ export const UNIT_LORE: Record<string, UnitLore> = {
       "than the last. Merge enough of them and one stops being an apprentice.",
   },
   knight: {
-    title: "Sworn of the Fifth Lesson",
+    title: "Sworn of the Sixth Lesson",
     story:
-      "No one recruits a Knight. A Squire becomes one on the day it has absorbed five " +
+      "No one recruits a Knight. A Squire becomes one on the day it has absorbed six " +
       "lessons, when the borrowed pot is swapped for a plumed helm and the wooden sword for " +
       "steel. Knights carry real armour, so every blow lands a little softer, and they keep " +
       "training: a Knight still takes in Squires, and each one makes it stronger than the last.",

@@ -53,3 +53,23 @@ Four roguelike games, PWA-first, built as a pnpm workspace monorepo.
 
 `house-edge` sits outside that order — it needs no backend and shares no
 mechanics with the other three, so it can be picked up whenever.
+
+## Deploying
+All games deploy to one Firebase project, `roguelike-games`, as separate
+Hosting sites (one per game, so each is its own installable PWA). Config is at
+the repo root: `firebase.json` has one `hosting` entry per app, keyed by a
+deploy `target`; `.firebaserc` maps each target to its site.
+
+| App | Target | URL |
+|---|---|---|
+| duel-deck | `duel-deck` | https://duel-deck-game.web.app |
+
+To ship an app: `pnpm run release` in its folder (build + `firebase deploy
+--only hosting:<target>`). Use `pnpm run`, not `pnpm deploy`, which is a pnpm
+built-in. To add a game: `firebase hosting:sites:create <site>`, add a hosting
+entry with its `target` and `public: "apps/<app>/dist"`, map it in
+`.firebaserc`, and give the app a `release` script. Site ids are global across
+Firebase, so the plain name may be taken (`duel-deck` was).
+
+Cache headers keep installs current: HTML, the manifest and the service worker
+are `no-cache`; hashed `/assets/**` are immutable.

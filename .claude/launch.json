@@ -28,6 +28,18 @@
         "--strictPort"
       ],
       "port": 5175
+    },
+    {
+      "name": "duel-deck-hosting",
+      "runtimeExecutable": "firebase",
+      "runtimeArgs": [
+        "emulators:start",
+        "--only",
+        "hosting:duel-deck",
+        "--project",
+        "roguelike-games"
+      ],
+      "port": 5176
     }
   ]
 }

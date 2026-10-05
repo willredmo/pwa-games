@@ -19,8 +19,10 @@ export interface UnitStats {
   /** Tags that augments target, e.g. "striker", "tank". */
   classes: string[];
   role: string;
-  /** Keywords the unit always has, before any augment (the Knight's armour). */
+  /** Keywords the unit always has, before any augment (its ability, armour). */
   traits?: UnitTraits;
+  /** Its innate ability, as shown to the player. */
+  ability?: UnitAbility;
   /** False for units that never appear in the offer (the Knight is earned). */
   offered?: boolean;
 }
@@ -90,6 +92,30 @@ export interface UnitTraits {
   executioner?: number;
   /** On death, deals its ATK once to the enemy front. Only the side's FIRST death each round triggers. */
   lastBreath?: boolean;
+  /** Overflow carries in full (Cleave upgrade), instead of half capped at 3. */
+  cleaveFull?: boolean;
+  /** The first N hits it takes each round are dodged entirely (Skirmisher). */
+  dodges?: number;
+  /** Damage it strikes back with when it dodges (Skirmisher's riposte). */
+  riposte?: number;
+  /** Most a (non-full) overflow can carry; defaults to 3 (Berserker raises it). */
+  cleaveCap?: number;
+  /** Extra damage on its first attack each round (Striker's Charge). */
+  openingBonus?: number;
+  /** On death, buffs allies for the rest of the round (Guard, Squire, Knight). */
+  deathBuff?: { target: "behind" | "allies"; atk?: number; hp?: number };
+  /** If it survives a round, permanently gains this (Bulwark's Fortify). */
+  growOnSurvive?: { atk?: number; hp?: number };
+}
+
+/** A unit's innate ability, for display. Mechanics live in its `traits`. */
+export interface UnitAbility {
+  name: string;
+  /** When it fires: "On death", "Start of round", ... */
+  trigger: string;
+  text: string;
+  /** How it grows with merges, e.g. "+1 health per merge". */
+  scaling?: string;
 }
 
 /** Side-wide modifiers from augments, set on the board each round. */
@@ -124,9 +150,20 @@ export interface AttackEvent {
   target: string;
   damage: number;
   /** Why this blow happened, when it isn't a plain front-vs-front strike. */
-  tag?: "first-strike" | "cleave" | "thorns" | "last-breath" | "executioner";
+  tag?: "first-strike" | "cleave" | "thorns" | "last-breath" | "executioner" | "charge" | "dodge";
   /** Damage soaked by the target's damageReduction (already removed from `damage`). */
   blocked?: number;
+  /** Charge bonus included in `damage` (set even when tagged first-strike). */
+  opening?: number;
+}
+/** A death-triggered buff landing on an ally, for the rest of the round. */
+export interface BuffEvent {
+  type: "buff";
+  unit: string;
+  /** The unit whose death caused it. */
+  source: string;
+  atk: number;
+  hp: number;
 }
 export interface HealEvent {
   type: "heal";
@@ -141,7 +178,7 @@ export interface DeathEvent {
   side: Side;
 }
 
-export type BattleEvent = AttackEvent | DeathEvent | HealEvent;
+export type BattleEvent = AttackEvent | DeathEvent | HealEvent | BuffEvent;
 
 /** One tick's events plus the board state after they're applied. */
 export interface Tick {

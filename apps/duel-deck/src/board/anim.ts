@@ -8,7 +8,7 @@
  * What a unit is doing right now. `idle` is the resting loop; every other pose
  * is a one-shot that runs for its duration and then falls back to idle.
  */
-export type Pose = "idle" | "spawn" | "attack" | "hit" | "dying" | "merge" | "selected";
+export type Pose = "idle" | "spawn" | "attack" | "hit" | "dying" | "merge" | "selected" | "dodge";
 
 /** A pose as App records it: started at `start` (ms, performance.now clock). */
 export interface PoseState {
@@ -20,10 +20,11 @@ export interface PoseState {
 /** Default one-shot lengths (ms) at normal speed; App divides by fast-mode factor. */
 export const POSE_MS: Record<Exclude<Pose, "idle" | "selected">, number> = {
   spawn: 420,
-  attack: 380,
-  hit: 320,
-  dying: 520,
+  attack: 480,
+  hit: 400,
+  dying: 680,
   merge: 600,
+  dodge: 300,
 };
 
 /** 0..1 progress through a pose; 1 once it has finished. */

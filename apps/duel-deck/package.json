@@ -1,14 +1,15 @@
 {
   "name": "duel-deck",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "sim": "esbuild scripts/sim.ts --bundle --platform=node --format=cjs --log-level=error --outfile=node_modules/.cache/sim.cjs && node node_modules/.cache/sim.cjs"
+    "sim": "esbuild scripts/sim.ts --bundle --platform=node --format=cjs --log-level=error --outfile=node_modules/.cache/sim.cjs && node node_modules/.cache/sim.cjs",
+    "release": "pnpm build && firebase deploy --only hosting:duel-deck"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -21,6 +22,7 @@
     "esbuild": "0.21.5",
     "typescript": "^5.6.3",
     "vite": "^5.4.11",
-    "vite-plugin-pwa": "^0.21.1"
+    "vite-plugin-pwa": "^0.21.1",
+    "workbox-window": "7.4.1"
   }
 }

@@ -45,6 +45,18 @@ export function settleRound(
     }
   }
 
+  // Fortify (Bulwark): units that came through the round alive grow
+  // permanently — on the committed roster, which the next round is built from.
+  const alive = new Set(result.board.slots[side].flat().filter((u) => u).map((u) => u!.id));
+  for (const lane of committed.slots[side]) {
+    for (const u of lane) {
+      const grow = u?.traits?.growOnSurvive;
+      if (!u || !grow || !alive.has(u.id)) continue;
+      u.baseAtk += grow.atk ?? 0;
+      u.baseMaxHp += grow.hp ?? 0;
+    }
+  }
+
   // Heal-on-win (Field medic, War chest): winning a round patches the side's
   // own pool back up. Applied to the round result's HP, which is what the next
   // round carries forward.

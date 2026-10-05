@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "roguelike-games"
+  },
+  "targets": {
+    "roguelike-games": {
+      "hosting": {
+        "duel-deck": [
+          "duel-deck-game"
+        ]
+      }
+    }
+  }
+}

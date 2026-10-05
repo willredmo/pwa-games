@@ -179,6 +179,29 @@ grows the board to 6 rows, and an implicit default would hand the other side
 the extra slot too. Round-end bookkeeping (Momentum, Rally, kills for Overwhelm,
 Veteran growth) lives in `game/roundEnd.ts`, shared by the app and `pnpm sim`.
 
+First strike and Charge are both "first swing of the round" effects, tracked
+per unit in `RoundState.opened` — so a Striker that steps up mid-round gets
+them too, not just the one leading at tick 0 (that was a bug). The front-slot
+augments (Vanguard's edge, Champion, Shield wall, Spearwall) are different: they
+apply to the unit leading the row when the round starts, recomputed each round,
+and their descriptions say so.
+
+### Unit abilities
+Every unit has an innate ability (`UnitStats.ability` for display;
+`innateTraits(key, merges)` for the mechanics, seeded into `unit.traits` before
+augments each round). Abilities grow with merges (`ability.scaling`), and that
+one function feeds combat, the hover breakdown and the Units screen alike.
+Evasion stays at one dodge — a second made merged Skirmishers near-untouchable
+(63–84%) — so its merges add a riposte instead. Abilities: Guard
+Bodyguard and Squire Pass the torch (`deathBuff` on the unit behind), Knight
+Armour + Last rally (`deathBuff` on all allies), Striker Charge
+(`openingBonus`), Skirmisher Evasion (`dodgeFirst`), Bulwark Fortify
+(`growOnSurvive`, applied in `settleRound`), Berserker Overflow (`cleave`; the
+Cleave upgrade adds `cleaveFull`). Stats were scaled down ~⅓ alongside, and
+units were tuned with a round-robin of single-unit builds (every one within
+~44–56% of the others). The stalemate guard counts swings, not landed damage,
+so two dodging fronts don't end a round as a draw.
+
 ### Squire → Knight
 The late-game unit. A Squire is the weakest body in the offer (2/4), but its
 merges don't use `MERGE_RATIO`: the n-th merge into a Squire line adds
@@ -209,6 +232,46 @@ fielding two or three bodies, and with survivor damage empty slots are lost
 damage. Hovering a unit shows `UnitInfo`, built from `unit.auraDetails`, which
 `applyAugments` rebuilds with the stats.
 
+### Ability beats
+Charge and death buffs (Bodyguard, Pass the torch, Last rally) get their own
+`"ability"` frame (`ABILITY_MS`) — Charge before the lunge, death buffs after
+the clash — so the beam/flame/banner, the named label ("Bodyguard +3♥") and the
+recipient's stat gain (`"stat-gain"` fx, "+2⚔") can be read before the battle
+moves on. In-swing abilities (dodge, Overflow, Riposte) extend the clash hold
+by `ABILITY_HOLD_MS` instead. Labels carry the actual numbers applied.
+
+Unit stats on the board change in step with the beats, not at the tick's end:
+`applyEvents`/`applyEvent` in App.tsx replay a tick's events (hits, heals,
+buffs) onto the shown board, and `liveBoard` applies delayed ones (a cleave, a
+buff arriving) the moment their number appears. So a hit's health loss shows
+before any ability fires, and a buff's gain shows when it lands. The tick's
+engine snapshot is still authoritative at settle (the replay matches it exactly).
+
+### Side-hit sequencing and the end screen
+Side hits (Overflow, Thorns, Riposte, Last breath) play one at a time after the
+main blows (`EXTRA_GAP_MS`, `EXTRA_STEP_MS`): Overflow's shockwave sets off from
+the unit it killed only once that unit's damage is up, and its own damage lands
+on arrival (`OVERFLOW_TRAVEL_MS`). The clash holds until the sequence is done.
+
+`game/stats.ts` keeps match tallies (`recordRound`, called in playback's
+`finish`), saved with the match. `ResultPanel` shows them full-window over a
+continuous backdrop (confetti rain and rays for a win, embers for a loss),
+with an MVP (most damage) and the upgrades taken.
+
+### AI difficulty
+Header selector. Choosable only before the first commit; it then locks
+(disabled, 🔒) until a new match, and is saved with the match so a reload keeps
+it. The last choice is remembered (`duel-deck:difficulty`) for the next match. `aiCommit(..., { difficulty, oppAug, scout })`:
+- **Easy** — two random cards, no rerolls, no arranging; random upgrade.
+- **Normal** — the value-table AI described above.
+- **Hard** — searches every ordered pair of offer cards × two ways of adding
+  (fill-first, or merge into its most-merged match) × four formations,
+  simulates each with `resolveRound` against `scout` (your row as it stood at
+  the start of the round — never this round's picks) and keeps the best. It
+  rerolls when even the best line loses, and gets one extra upgrade reroll
+  with a higher reroll bar.
+Sim (`--player=` / `--enemy=`): Normal beats Easy ~92%; Hard beats Normal ~68%.
+
 ### Save and resume
 The match is saved to `localStorage` (`duel-deck:match`) at the start of every
 pick phase — never mid-battle — so a reload lands back at the start of the
@@ -218,7 +281,7 @@ restored ids; without that, new units would alias restored ones (ids key drags,
 playback and augment grants).
 
 ### Balance simulation
-`pnpm sim [matches] [--draw=…] [--cap=…]` (`scripts/sim.ts`) plays AI-vs-AI
+`pnpm sim [matches] [--draw=…] [--cap=…] [--player=…] [--enemy=…]` (`scripts/sim.ts`) plays AI-vs-AI
 matches headlessly through the real engine and reports match length, draw rate
 and damage by round, and per-augment holder win rate. It's how the merge
 question was settled: merging first beats placing ~59% of the time, because one
@@ -248,3 +311,24 @@ concentrated front unit wastes less damage to overkill.
   undo. If it bites in playtesting, an explicit confirm on replacing a merged
   unit is the obvious next step.
 - Whether augment offers should scale in power over a long match.
+
+### Deploy and updates
+Live at https://duel-deck-game.web.app (Firebase project `roguelike-games`;
+see the root CLAUDE.md). `pnpm run release` builds and deploys. The service
+worker is in `prompt` mode: a new deploy downloads in the background and
+`ui/UpdatePrompt.tsx` shows an Update toast (checked on launch, on returning to
+the foreground and hourly), so a build never swaps mid-battle and iOS installs
+that are never fully closed still update. Bump `version` in package.json for
+releases. The build writes `/version.json` (version + deploy time; no-cache,
+never precached). The ☰ menu's About section (`ui/MenuPanel.tsx`) shows this
+build's version and deploy time beside the latest deploy's, and offers Check
+for updates / Update now. Update state is shared via `src/pwa.ts`.
+`duel-deck-hosting` in `.claude/launch.json` serves `dist` through the Hosting
+emulator (port 5176) to test the service worker and headers locally.
+
+### Layout
+Phones (≤480px, `COMPACT_QUERY` in App.tsx matches App.css) get a one-row HUD
+(Commit, speed, Undo, ⬆ upgrades), five offer cards across with smaller
+portraits, and a board sized so the pick phase fits a 375×667 screen without
+scrolling. Units, rules, AI difficulty and New match (with a confirm) live in
+the ☰ menu.

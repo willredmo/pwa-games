@@ -28,6 +28,8 @@ import {
   START_HP,
   aiCommit,
   aiTakeAugment,
+  DIFFICULTIES,
+  type Difficulty,
   isAugmentRound,
   knightAt,
   unitRerollsFor,
@@ -58,7 +60,7 @@ import { FxLayer, type FxKind } from "./board/fx";
 import { HpBar } from "./ui/HpBar";
 import { RoundBanner, type BannerTone } from "./ui/RoundBanner";
 import { UnitPortrait } from "./ui/UnitPortrait";
-import { UnitInfo } from "./ui/UnitInfo";
+import { OfferInfo, UnitInfo } from "./ui/UnitInfo";
 import {
   AugmentPanel,
   AugmentsView,
@@ -67,28 +69,48 @@ import {
   ResultPanel,
   UnitsView,
 } from "./ui/Overlays";
+import { emptyStats, recordRound, type MatchStats } from "./game/stats";
+import { UpdatePrompt } from "./ui/UpdatePrompt";
+import { MenuPanel } from "./ui/MenuPanel";
 import "./App.css";
 
 // Battle playback pacing. Each tick is three beats: wind-up (lunge toward the
 // clash), clash (impact, damage, hold), settle (survivors step forward).
-const REVEAL_MS = 450;
+const REVEAL_MS = 650;
 /** Wind-up ends at this fraction of the attack pose — where the lunge connects. */
 const CLASH_AT = 0.55;
 const WINDUP_MS = POSE_MS.attack * CLASH_AT;
-const HOLD_MS = 340;
-const HOLD_KILL_MS = 480;
-const SETTLE_MS = 380;
+const HOLD_MS = 520;
+const HOLD_KILL_MS = 720;
+const SETTLE_MS = 520;
 /** Extra freeze on a big blow (ms, before speed scaling). */
 const HIT_STOP_MS = 70;
 const BIG_HIT = 7;
+/**
+ * An ability beat: playback pauses on death buffs and Charge so the beam,
+ * the name and the numbers can be read before the battle moves on.
+ */
+const ABILITY_MS = 1100;
+/** After the main blows, before the first side hit (Overflow, Thorns…) plays. */
+const EXTRA_GAP_MS = 450;
+/** Overflow's shockwave travel: its damage lands on the second target on arrival. */
+const OVERFLOW_TRAVEL_MS = 620;
+/** Between consecutive side hits. */
+const EXTRA_STEP_MS = 380;
+/** Extra hold on a clash with an in-swing ability (dodge, Overflow, Riposte). */
+const ABILITY_HOLD_MS = 650;
 /** Pause on the round-result banner before the next round deals. */
-const RESULT_MS = 1100;
+const RESULT_MS = 1500;
 /** How much fast mode compresses battle playback. */
 const FAST_FACTOR = 3;
 const FAST_KEY = "duel-deck:fast";
+const DIFFICULTY_KEY = "duel-deck:difficulty";
+/** Matches the phone breakpoint in App.css. */
+const COMPACT_QUERY = "(max-width: 480px)";
+const DIFFICULTY_LABEL: Record<Difficulty, string> = { easy: "Easy", normal: "Normal", hard: "Hard" };
 const MATCH_KEY = "duel-deck:match";
 /** Bump when the saved shape changes — older saves are then ignored. */
-const SAVE_VERSION = 5;
+const SAVE_VERSION = 6;
 /** Pointer travel before a press becomes a drag rather than a click. */
 const DRAG_THRESHOLD_PX = 4;
 
@@ -104,6 +126,10 @@ interface SavedMatch {
    * a reload lands back on the choice instead of skipping it.
    */
   augmentPending?: boolean;
+  /** Enemy AI difficulty, fixed once the first round is committed. */
+  difficulty?: Difficulty;
+  /** Running tallies for the end-of-match screen. */
+  stats?: MatchStats;
 }
 
 function loadMatch(): SavedMatch | null {
@@ -164,17 +190,48 @@ type Grab =
 type UnitGrab = Extract<Grab, { kind: "unit" }>;
 
 interface Frame {
-  kind: "windup" | "clash" | "settle";
+  kind: "windup" | "clash" | "settle" | "ability";
   /** Board to show during the beat (pre-blow for windup/clash, snapshot for settle). */
   board: Board;
   events: BattleEvent[];
   duration: number;
 }
 
+/**
+ * The board after some of a tick's events, before the dead are removed: hits
+ * take health off, heals and death buffs add it. Mirrors what combat.ts did,
+ * so each beat can show its own changes instead of waiting for the tick's
+ * end snapshot — damage lands before any ability fires.
+ */
+function applyEvents(board: Board, events: BattleEvent[]): Board {
+  const next = cloneBoard(board);
+  for (const ev of events) applyEvent(next, ev);
+  return next;
+}
+
+/** Apply one event's stat change to `board` in place. */
+function applyEvent(board: Board, ev: BattleEvent): void {
+  const id = ev.type === "attack" ? ev.target : ev.type === "heal" || ev.type === "buff" ? ev.unit : null;
+  const cell = id ? findUnitCell(board, id) : null;
+  const u = cell ? board.slots[cell.side][cell.lane][cell.spot] : null;
+  if (!u) return;
+  if (ev.type === "attack") u.hp -= ev.damage;
+  else if (ev.type === "heal") u.hp += ev.amount;
+  else if (ev.type === "buff") {
+    u.atk += ev.atk;
+    u.maxHp += ev.hp;
+    u.hp += ev.hp;
+  }
+}
+
 function buildFrames(committed: Board, ticks: Tick[]): Frame[] {
   const frames: Frame[] = [];
   let prev = committed;
   for (const tick of ticks) {
+    // Charge gets its own beat before any lunge — ahead of a first strike too,
+    // since a Striker's first swing can be both.
+    const charges = tick.events.filter((e) => e.type === "attack" && (e.opening ?? 0) > 0);
+    if (charges.length > 0) frames.push({ kind: "ability", board: prev, events: charges, duration: ABILITY_MS * 0.7 });
     // First strikes get their own quick beat ahead of the main clash. Deaths
     // they cause belong to that beat, so the clash doesn't replay them.
     const strikes = tick.events.filter((e): e is AttackEvent => e.type === "attack" && e.tag === "first-strike");
@@ -187,7 +244,11 @@ function buildFrames(committed: Board, ticks: Tick[]): Frame[] {
       events = tick.events.filter((e) => !strikeEvents.includes(e));
       frames.push({ kind: "windup", board: prev, events: strikeEvents, duration: WINDUP_MS * 0.7 });
       frames.push({ kind: "clash", board: prev, events: strikeEvents, duration: HOLD_MS * 0.6 });
+      prev = applyEvents(prev, strikeEvents);
     }
+    // Death buffs get their own beat after the blows, so they aren't lost in the clash.
+    const buffs = events.filter((e) => e.type === "buff");
+    events = events.filter((e) => e.type !== "buff");
     const killed = events.some((e) => e.type === "death");
     frames.push({ kind: "windup", board: prev, events, duration: WINDUP_MS });
     frames.push({
@@ -196,6 +257,9 @@ function buildFrames(committed: Board, ticks: Tick[]): Frame[] {
       events,
       duration: killed ? HOLD_KILL_MS : HOLD_MS,
     });
+    // The ability beat opens on the board with this tick's hits already taken.
+    const struck = applyEvents(prev, events);
+    if (buffs.length > 0) frames.push({ kind: "ability", board: struck, events: buffs, duration: ABILITY_MS });
     frames.push({ kind: "settle", board: tick.snapshot, events: [], duration: SETTLE_MS });
     prev = tick.snapshot;
   }
@@ -224,6 +288,15 @@ export default function App() {
     nonce: 0,
   });
   const [showHelp, setShowHelp] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  /** Phone-width layout: smaller card portraits so five cards fit on one line. */
+  const [compact, setCompact] = useState(() => window.matchMedia(COMPACT_QUERY).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(COMPACT_QUERY);
+    const on = () => setCompact(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
   const [showUnits, setShowUnits] = useState(false);
   /** Commit was pressed with picks still unspent; waiting on "commit anyway?". */
   const [confirmCommit, setConfirmCommit] = useState(false);
@@ -238,6 +311,33 @@ export default function App() {
       return false; // private mode / storage disabled — just default to normal
     }
   });
+  /**
+   * Enemy AI difficulty. Chosen before the first commit and then locked for the
+   * match (saved with it); the last choice is remembered for the next match.
+   */
+  const [difficulty, setDifficulty] = useState<Difficulty>(() => {
+    // A match past its first round keeps the difficulty it was started on.
+    if (saved && saved.round > 1 && saved.difficulty) return saved.difficulty;
+    try {
+      const v = localStorage.getItem(DIFFICULTY_KEY) as Difficulty | null;
+      return v && DIFFICULTIES.includes(v) ? v : "normal";
+    } catch {
+      return "normal";
+    }
+  });
+  const difficultyRef = useRef(difficulty);
+  /** Locked from the first commit until a new match starts. */
+  const difficultyLocked = round > 1 || phase === "battle";
+  const changeDifficulty = (d: Difficulty) => {
+    if (difficultyLocked) return;
+    setDifficulty(d);
+    difficultyRef.current = d;
+    try {
+      localStorage.setItem(DIFFICULTY_KEY, d);
+    } catch {
+      /* fine — applies this session */
+    }
+  };
   const [augOffers, setAugOffers] = useState<AugmentDef[]>(() =>
     saved?.augmentPending
       ? offerAugments(saved.player, AUGMENT_OFFER_COUNT, upgradeTier(saved.round))
@@ -267,6 +367,8 @@ export default function App() {
    * ghost follows the pointer for a click-then-click move exactly as for a drag.
    */
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
+  /** Offer card under the pointer, for its unit's ability card. */
+  const [offerInfo, setOfferInfo] = useState<{ key: string; x: number; y: number } | null>(null);
   /** Unit under the pointer while nothing is in hand, for the stat breakdown. */
   const [info, setInfo] = useState<{ unit: Unit; x: number; y: number } | null>(null);
   const [dropCell, setDropCell] = useState<Cell | null>(null);
@@ -301,11 +403,31 @@ export default function App() {
     b: Board,
     cell: Cell,
     kind: FxKind,
-    extra: { amount?: number; lethal?: boolean } = {},
+    extra: { amount?: number; lethal?: boolean; text?: string } = {},
   ) => {
     const canvas = canvasRef.current;
     const c = canvas && cellCenter(canvas, b, cell);
     if (c) fxRef.current.add({ kind, x: c.x, y: c.y, size: c.size, side: cell.side, ...extra }, performance.now());
+  };
+
+  /** An effect that travels from one cell to another (beam, flame, shockwave). */
+  const fxBetween = (b: Board, from: Cell, to: Cell, kind: FxKind) => {
+    const canvas = canvasRef.current;
+    const a = canvas && cellCenter(canvas, b, from);
+    const c = canvas && cellCenter(canvas, b, to);
+    if (a && c) {
+      fxRef.current.add({ kind, x: a.x, y: a.y, size: a.size, side: from.side, tx: c.x, ty: c.y }, performance.now());
+    }
+  };
+
+  /** Float an ability's name over the unit that used it, so players learn what fired. */
+  const abilityLabel = (b: Board, cell: Cell, name: string) =>
+    fxAt(b, cell, "ability-label", { text: `✦ ${name}` });
+
+  /** The unit (and its cell) with this id on a board, if it's there. */
+  const unitAt = (b: Board, id: string) => {
+    const cell = findUnitCell(b, id);
+    return cell ? { cell, unit: b.slots[cell.side][cell.lane][cell.spot]! } : null;
   };
 
   /**
@@ -332,6 +454,13 @@ export default function App() {
    * (not the post-combat board) is what the next round is built from.
    */
   const committedRef = useRef<Board | null>(null);
+  /**
+   * Your row as it stood when the round began. Hard simulates against this —
+   * what a player could see too — not the picks you're committing now.
+   */
+  const scoutRef = useRef<Board | null>(saved?.board ?? null);
+  /** Match tallies for the end screen; saved with the match. */
+  const statsRef = useRef<MatchStats>(saved?.stats ?? emptyStats());
 
   const boardFull = emptySpotCount(board, PLAYER) === 0;
 
@@ -461,7 +590,7 @@ export default function App() {
       const gain = knighted
         ? { atk: base.atk + KNIGHTING_BONUS.atk, hp: base.hp + KNIGHTING_BONUS.hp }
         : base;
-      return `MERGE ⚔${target.atk}→${target.atk + gain.atk} ♥${target.maxHp}→${target.maxHp + gain.hp}${knighted ? " ⚜ KNIGHT!" : ""}`;
+      return `MERGE ⚔${target.atk} ♥${target.maxHp} → ⚔${target.atk + gain.atk} ♥${target.maxHp + gain.hp}${knighted ? " ⚜ KNIGHT!" : ""}`;
     }
     if (kind === "replace" && target) {
       return `REPLACE ${target.name}${target.merges > 0 ? ` (+${target.merges} lost)` : ""}`;
@@ -525,13 +654,14 @@ export default function App() {
 
   // Fresh load with no save: persist the opening pick phase too.
   useEffect(() => {
-    if (!saved) saveMatch({ board, round, offer, player: playerAug.current, enemy: enemyAug.current });
+    if (!saved) saveMatch({ board, round, offer, player: playerAug.current, enemy: enemyAug.current, difficulty: difficultyRef.current, stats: statsRef.current });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const startRound = useCallback(
     (base: Board, roundNum: number) => {
       const next = refreshed(base);
+      scoutRef.current = next;
       const nextOffer = rollOffer();
       // Fallen units respawn with the same ids, so a held `dying` pose (its last
       // frame is fully faded) would leave them invisible. Replay their entrance.
@@ -557,6 +687,8 @@ export default function App() {
         player: playerAug.current,
         enemy: enemyAug.current,
         augmentPending: augs.length > 0,
+        difficulty: difficultyRef.current,
+        stats: statsRef.current,
       });
       setAugOffers(augs);
       setAugRerolls(AUGMENT_REROLLS);
@@ -579,7 +711,11 @@ export default function App() {
 
   const commit = useCallback((current: Board) => {
     const committed = cloneBoard(current);
-    aiCommit(committed, ENEMY, enemyAug.current);
+    aiCommit(committed, ENEMY, enemyAug.current, {
+      difficulty: difficultyRef.current,
+      oppAug: playerAug.current,
+      scout: scoutRef.current ?? current,
+    });
     refreshForRound(committed, playerAug.current, enemyAug.current);
     // resolveRound clones its input, so `committed` keeps the full roster.
     const res = resolveRound(committed);
@@ -894,11 +1030,11 @@ export default function App() {
     if (cost) next.hp.player = Math.max(1, next.hp.player - cost);
 
     // Same tiered offer and reroll allowance as the player, picked for its row.
-    aiTakeAugment(next, ENEMY, enemyAug.current, round);
+    aiTakeAugment(next, ENEMY, enemyAug.current, round, difficultyRef.current);
     refreshForRound(next, playerAug.current, enemyAug.current);
     // The upgrade is locked in: re-save without the pending flag, so a reload
     // now resumes in this round's picks rather than offering it again.
-    saveMatch({ board: next, round, offer, player: playerAug.current, enemy: enemyAug.current });
+    saveMatch({ board: next, round, offer, player: playerAug.current, enemy: enemyAug.current, difficulty: difficultyRef.current, stats: statsRef.current });
     setBoard(next);
     setPeeking(false);
     // Scout taken just now applies to this round's picks.
@@ -930,8 +1066,24 @@ export default function App() {
     const finish = () => {
       // Momentum, rally, Veteran etc. — before the respawn snapshot is used.
       const committed = committedRef.current ?? result.board;
+      // Fortify: surviving Bulwarks visibly harden before the next round.
+      for (const side of [PLAYER, ENEMY]) {
+        for (const u of sideUnits(result.board, side)) {
+          const grow = u.traits?.growOnSurvive?.hp ?? 0;
+          const cell = grow > 0 ? findUnitCell(result.board, u.id) : null;
+          if (cell) {
+            fxAt(result.board, cell, "fortify", { amount: grow });
+            abilityLabel(result.board, cell, `Fortify +${grow}♥`);
+          }
+        }
+      }
       const healed = settleRound(result, PLAYER, playerAug.current, committed);
       const enemyHealed = settleRound(result, ENEMY, enemyAug.current, committed);
+      recordRound(statsRef.current, result, committed, PLAYER, healed);
+      // The HP bars read the shown board, which still holds the pre-round
+      // pools — show the hit as the banner lands. (On the final round there is
+      // no next round to carry it, so the loser's bar stayed above zero.)
+      setBoard((b) => ({ ...b, hp: { ...result.board.hp } }));
       const { damageDealt: dealt, roundWinner: winner } = result;
       const bountyAmt = result.bounty ?? 0;
       const bounty = bountyAmt > 0 ? ` · +${bountyAmt} bounty` : "";
@@ -977,16 +1129,91 @@ export default function App() {
       }
     };
 
+    /**
+     * A working copy of the beat's board that its delayed changes (a cleave
+     * landing, a buff arriving) are applied to as they happen, so each unit's
+     * health and attack change exactly when its number appears. A late timer
+     * from a beat that has already moved on is ignored — the next beat's board
+     * is authoritative.
+     */
+    const liveBoard = (f: Frame) => {
+      const shown = cloneBoard(f.board);
+      const beat = i;
+      return (ev: BattleEvent) => {
+        applyEvent(shown, ev);
+        if (i === beat) setBoard(cloneBoard(shown));
+      };
+    };
+
+    /**
+     * An ability beat, with the numbers it applies: Charge winding up, or a
+     * fallen unit's death buff travelling to whoever receives it. Returns the
+     * extra hold (ms) needed for every gain to land.
+     */
+    const ability = (f: Frame): number => {
+      /** Fallen units whose ability has been named this beat. */
+      const named = new Set<string>();
+      const apply = liveBoard(f);
+      let n = 0;
+      let last = 0;
+      for (const ev of f.events) {
+        if (ev.type === "attack" && (ev.opening ?? 0) > 0) {
+          const src = unitAt(f.board, ev.attacker);
+          if (!src) continue;
+          fxAt(f.board, src.cell, "charge-up");
+          // Pulse the glow again so the wind-up reads across the whole beat.
+          later(350, () => fxAt(f.board, src.cell, "charge-up"));
+          abilityLabel(f.board, src.cell, `Charge +${ev.opening} dmg`);
+          continue;
+        }
+        if (ev.type !== "buff") continue;
+        const cell = findUnitCell(f.board, ev.unit);
+        const src = unitAt(f.board, ev.source);
+        if (!cell || !src) continue;
+        const key = src.unit.key;
+        if (!named.has(ev.source)) {
+          named.add(ev.source);
+          const gain = [ev.atk > 0 ? `+${ev.atk}⚔` : "", ev.hp > 0 ? `+${ev.hp}♥` : ""].filter(Boolean).join(" ");
+          const name = key === "guard" ? "Bodyguard" : key === "squire" ? "Pass the torch" : "Last rally";
+          const scope = key === "knight" ? " all" : "";
+          if (key === "knight") fxAt(f.board, src.cell, "rally");
+          abilityLabel(f.board, src.cell, `${name} ${gain}${scope}`);
+        }
+        // Allies receive one after another, so a Last rally can be followed.
+        const at = 300 + n++ * 140;
+        later(at, () => {
+          if (key === "guard") fxBetween(f.board, src.cell, cell, "bodyguard");
+          else if (key === "squire") fxBetween(f.board, src.cell, cell, "torch");
+        });
+        const lands = at + (key === "knight" ? 0 : 520);
+        last = Math.max(last, lands);
+        later(lands, () => {
+          apply(ev);
+          if (ev.hp > 0) fxAt(f.board, cell, "heal");
+          if (ev.atk > 0) fxAt(f.board, cell, "merge");
+          const gain = [ev.atk > 0 ? `+${ev.atk}⚔` : "", ev.hp > 0 ? `+${ev.hp}♥` : ""].filter(Boolean).join(" ");
+          fxAt(f.board, cell, "stat-gain", { text: gain });
+        });
+      }
+      // Leave the last gain on screen long enough to read before moving on.
+      return Math.max(0, last + 500 - ABILITY_MS);
+    };
+
     /** The blows land: impact, slashes, numbers, hit/death poses, shake. Returns extra hold (ms). */
     const clash = (f: Frame): number => {
       const all = f.events.filter((e): e is AttackEvent => e.type === "attack");
       const isExtra = (e: AttackEvent) =>
         e.tag === "cleave" || e.tag === "thorns" || e.tag === "last-breath";
       const attacks = all.filter((e) => !isExtra(e));
+      /** An in-swing ability fired, so hold the beat long enough to read it. */
+      let abilityFired = false;
       const extras = all.filter(isExtra);
       const dying = new Set(f.events.flatMap((e) => (e.type === "death" ? [e.unit] : [])));
       const dmg = new Map<string, number>();
       let biggest = 0;
+      // Health comes off as the blows land — before any ability beat that follows.
+      const apply = liveBoard(f);
+      for (const ev of attacks) apply(ev);
       for (const ev of all) {
         if (ev.blocked && ev.blocked > 0) {
           const at = findUnitCell(f.board, ev.target);
@@ -994,7 +1221,16 @@ export default function App() {
         }
       }
       for (const ev of attacks) {
-        if (ev.tag === "first-strike") {
+        // Evasion: the target sidesteps — afterimages and "DODGE!", no slash,
+        // number or flinch for a miss.
+        if (ev.tag === "dodge") {
+          const at = findUnitCell(f.board, ev.target);
+          if (at) fxAt(f.board, at, "dodge");
+          setPose(ev.target, "dodge", POSE_MS.dodge);
+          abilityFired = true;
+          continue;
+        }
+        if (ev.tag === "first-strike" || ev.tag === "charge") {
           const at = findUnitCell(f.board, ev.attacker);
           if (at) fxAt(f.board, at, "first-strike");
         }
@@ -1022,33 +1258,62 @@ export default function App() {
         }
         setPose(id, lethal ? "dying" : "hit", lethal ? POSE_MS.dying : POSE_MS.hit);
       }
-      // Side-effect hits, nudged later so their numbers don't stack on one frame.
-      extras.forEach((ev, n) => {
-        const kind = ev.tag as "cleave" | "thorns" | "last-breath";
-        const lethal = dying.has(ev.target);
-        const src = findUnitCell(f.board, ev.attacker);
+      // Side hits (Overflow, Thorns, Riposte, Last breath) play one after
+      // another once the main blows have registered, so each target's damage is
+      // readable on its own: the Overflow shockwave only sets off after the
+      // first target's number is up, and its damage lands when it arrives.
+      let t = EXTRA_GAP_MS;
+      for (const ev of extras) {
+        const src = unitAt(f.board, ev.attacker);
         const cell = findUnitCell(f.board, ev.target);
-        const fxCell = kind === "last-breath" ? src : cell;
-        if (fxCell) fxAt(f.board, fxCell, kind);
-        if (!cell) return;
-        if (!dmg.has(ev.target)) setPose(ev.target, lethal ? "dying" : "hit", lethal ? POSE_MS.dying : POSE_MS.hit);
-        later(120 + n * 70, () => {
+        if (!src || !cell) continue;
+        const lethal = dying.has(ev.target);
+        const overflow = ev.tag === "cleave" && src.unit.key === "berserker";
+        const riposte = ev.tag === "thorns" && src.unit.key === "skirmisher" && (src.unit.traits?.riposte ?? 0) > 0;
+        if (overflow || riposte) abilityFired = true;
+        const start = t;
+        const lands = overflow ? start + OVERFLOW_TRAVEL_MS : start;
+        later(start, () => {
+          if (overflow) {
+            // The shockwave carries on from the unit it just killed.
+            const first = attacks.find((a) => a.attacker === ev.attacker)?.target;
+            const from = (first && findUnitCell(f.board, first)) || src.cell;
+            fxBetween(f.board, from, cell, "overflow");
+            abilityLabel(f.board, src.cell, `Overflow ${ev.damage} carries on`);
+          } else if (riposte) abilityLabel(f.board, src.cell, `Riposte ${ev.damage} dmg`);
+        });
+        later(lands, () => {
+          apply(ev);
+          const kind = ev.tag as "cleave" | "thorns" | "last-breath";
+          fxAt(f.board, kind === "last-breath" ? src.cell : cell, kind);
+          if (!dmg.has(ev.target) || overflow) setPose(ev.target, lethal ? "dying" : "hit", lethal ? POSE_MS.dying : POSE_MS.hit);
           fxAt(f.board, cell, "damage", { amount: ev.damage, lethal });
           if (lethal) fxAt(f.board, cell, "death");
+          if (overflow && !prefersReducedMotion()) fxRef.current.shake(0.35, performance.now());
         });
-      });
-      f.events.forEach((ev, n) => {
-        if (ev.type !== "heal") return;
+        t = lands + EXTRA_STEP_MS;
+      }
+      let healAt = extras.length > 0 ? t : 160;
+      for (const ev of f.events) {
+        if (ev.type !== "heal") continue;
         const cell = findUnitCell(f.board, ev.unit);
-        if (cell) later(160 + n * 50, () => fxAt(f.board, cell, "heal", { amount: ev.amount }));
-      });
+        if (!cell) continue;
+        later(healAt, () => {
+          apply(ev);
+          fxAt(f.board, cell, "heal", { amount: ev.amount });
+        });
+        healAt += 120;
+      }
+      /** Hold the beat until the last side hit or heal has been on screen a moment. */
+      const sequenceHold = Math.max(0, Math.max(t, healAt) + 350 - f.duration);
       const total = [...dmg.values()].reduce((x, y) => x + y, 0);
       if (!prefersReducedMotion() && total > 0) {
         const intensity = Math.min(1, 0.2 + total / 18 + (dying.size > 0 ? 0.3 : 0));
         fxRef.current.shake(intensity, performance.now());
       }
       const big = biggest >= BIG_HIT || dying.size > 0;
-      return big && !prefersReducedMotion() ? HIT_STOP_MS : 0;
+      const stop = big && !prefersReducedMotion() ? HIT_STOP_MS : 0;
+      return Math.max(stop + (abilityFired ? ABILITY_HOLD_MS : 0), sequenceHold);
     };
 
     // Frames are chained rather than all scheduled up front at absolute
@@ -1061,6 +1326,7 @@ export default function App() {
       let wait = scaled(frame.duration);
       if (frame.kind === "windup") windup(frame);
       else if (frame.kind === "clash") wait += scaled(clash(frame));
+      else if (frame.kind === "ability") wait += scaled(ability(frame));
       timer = window.setTimeout(step, wait);
     };
 
@@ -1075,6 +1341,7 @@ export default function App() {
   const newMatch = () => {
     playerAug.current = createAugmentState();
     enemyAug.current = createAugmentState();
+    statsRef.current = emptyStats();
     committedRef.current = null;
     posesRef.current = {};
     fxRef.current.clear();
@@ -1115,9 +1382,10 @@ export default function App() {
       if (action === "merge" && source && target) {
         const gain = unitMergeGain(source, mergeRatioFor(playerAug.current), target.merges);
         const knighted = knightsIt(target, source) ? " — knights it!" : "";
+        const after = `⚔${target.atk} ♥${target.maxHp} → ⚔${target.atk + gain.atk} ♥${target.maxHp + gain.hp}`;
         return source.key === target.key
-          ? `Merge the two ${source.name}s → +${gain.atk}⚔ +${gain.hp}♥ (one fewer body)${knighted}`
-          : `Merge ${source.name} into ${target.name} → +${gain.atk}⚔ +${gain.hp}♥ (one fewer body)`;
+          ? `Merge the two ${source.name}s: ${after} (one fewer body)${knighted}`
+          : `Merge ${source.name} into ${target.name}: ${after} (one fewer body)`;
       }
       // moveUnit re-inserts at exactly this index, so the slot number is honest
       // in both directions (position 1 is the front, the only one that fights).
@@ -1129,7 +1397,9 @@ export default function App() {
     const gain = mergeGain(g.key, mergeRatioFor(playerAug.current), target?.merges ?? 0);
     switch (action) {
       case "merge":
-        return `Merge into ${target?.name} → +${gain.atk}⚔ +${gain.hp}♥${target && knightsIt(target, null) ? " — knights it!" : ""}`;
+        return target
+          ? `Merge into ${target.name}: ⚔${target.atk} ♥${target.maxHp} → ⚔${target.atk + gain.atk} ♥${target.maxHp + gain.hp}${knightsIt(target, null) ? " — knights it!" : ""}`
+          : null;
       case "replace":
         return `⚠ Replace ${target?.name}${target && target.merges > 0 ? ` (+${target.merges} merged)` : ""} with ${UNITS[g.key].name}`;
       case "place":
@@ -1163,14 +1433,18 @@ export default function App() {
 
   return (
     <div className="app">
+      <UpdatePrompt />
       <header className="app__header">
+        <button className="menu-btn" onClick={() => setShowMenu(true)} aria-label="Menu" title="Menu">
+          ☰
+        </button>
         <h1>Duel Deck</h1>
         <p className="app__subtitle">
           Round {round} · {phaseLabel}
           {playerAug.current.active.length > 0 &&
             ` · ${playerAug.current.active.length} upgrade${playerAug.current.active.length === 1 ? "" : "s"}`}
         </p>
-        {upgradeIn !== null && upgradeIn > 0 && (
+        {upgradeIn !== null && upgradeIn > 0 && phase !== "over" && (
           <p className={`next-upgrade${upgradeIn === 1 ? " next-upgrade--soon" : ""}`}>
             <span className="next-upgrade__pips" aria-hidden="true">
               {Array.from({ length: AUGMENT_EVERY }, (_, i) => (
@@ -1209,7 +1483,37 @@ export default function App() {
           />
         )}
         {phase === "over" && result?.matchWinner && (
-          <ResultPanel winner={result.matchWinner} round={round} onNewMatch={newMatch} />
+          <ResultPanel
+            winner={result.matchWinner}
+            round={round}
+            stats={statsRef.current}
+            hp={result.board.hp}
+            upgrades={playerAug.current.active}
+            difficulty={DIFFICULTY_LABEL[difficulty]}
+            onNewMatch={newMatch}
+          />
+        )}
+        {showMenu && (
+          <MenuPanel
+            onClose={() => setShowMenu(false)}
+            onUnits={() => {
+              setShowMenu(false);
+              setShowUnits(true);
+            }}
+            onHelp={() => {
+              setShowMenu(false);
+              setShowHelp(true);
+            }}
+            onNewMatch={() => {
+              setShowMenu(false);
+              newMatch();
+            }}
+            difficulty={difficulty}
+            difficulties={DIFFICULTIES}
+            difficultyLabel={DIFFICULTY_LABEL}
+            difficultyLocked={difficultyLocked}
+            onDifficulty={changeDifficulty}
+          />
         )}
         {showHelp && <HelpPanel onClose={() => setShowHelp(false)} />}
         {showUnits && <UnitsView onClose={() => setShowUnits(false)} />}
@@ -1264,12 +1568,11 @@ export default function App() {
         >
           ↶ Undo
         </button>
-        <button className="ghost-btn" onClick={() => setShowAugments(true)}>
-          Upgrades {playerAug.current.active.length}/{enemyAug.current.active.length}
+        <button className="ghost-btn" onClick={() => setShowAugments(true)} title="Upgrades: yours / the enemy's">
+          <span className="hud__long">Upgrades </span>
+          <span className="hud__short" aria-hidden="true">⬆ </span>
+          {playerAug.current.active.length}/{enemyAug.current.active.length}
         </button>
-        <button className="ghost-btn" onClick={() => setShowUnits(true)}>📖 Units</button>
-        <button className="ghost-btn" onClick={() => setShowHelp(true)}>?</button>
-        <button className="ghost-btn" onClick={newMatch}>New match</button>
       </div>
 
       {phase === "pick" && (
@@ -1311,11 +1614,16 @@ export default function App() {
                 }
                 disabled={spent}
                 onPointerDown={(e) => !spent && beginPress({ kind: "offer", index: i, key }, e)}
+                onPointerEnter={(e) => {
+                  const r = e.currentTarget.getBoundingClientRect();
+                  setOfferInfo({ key, x: r.left + r.width / 2, y: r.top });
+                }}
+                onPointerLeave={() => setOfferInfo(null)}
                 onClick={() =>
                   !spent && setSelected(isSelected ? null : { kind: "offer", index: i, key })
                 }
               >
-                <UnitPortrait unitKey={key} side="player" size={58} />
+                <UnitPortrait unitKey={key} side="player" size={compact ? 44 : 58} />
                 <span className="card__name">{u.name}</span>
                 {taken ? (
                   <span className="card__stats">taken</span>
@@ -1345,6 +1653,11 @@ export default function App() {
                 ? "Row full — merge an offer into a unit of the same type"
                 : "Drag or click: empty slot to place, matching unit to merge"}
         </p>
+      )}
+
+      {/* A hovered offer card's unit: stats and its innate ability. */}
+      {offerInfo && !drag && phase === "pick" && (
+        <OfferInfo unitKey={offerInfo.key} x={offerInfo.x} y={offerInfo.y} />
       )}
 
       {/* What's making a hovered unit's numbers what they are. */}
