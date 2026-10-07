@@ -1,5 +1,6 @@
 import type { Board, Shape, Side } from "../engine/types";
 import { capacityOf } from "../engine/board";
+import { levelOf } from "../engine/units";
 import {
   activePose,
   clamp01,
@@ -897,24 +898,26 @@ function drawUnit(
     ctx.fillStyle = COLORS.hpText;
     ctx.fillText(`♥${Math.max(0, unit.hp)}`, tx + ctx.measureText(atkLabel).width + h * 0.28, statY);
 
-    const mergeW = h * 0.4;
+    // Level badge: every unit starts at Lv1; merged units get the gold fill.
+    ctx.font = `800 ${Math.round(h * 0.22)}px system-ui, sans-serif`;
+    const levelLabel = `Lv${levelOf(unit.merges)}`;
+    const mergeW = Math.max(h * 0.4, ctx.measureText(levelLabel).width + h * 0.16);
     const mergeX = x + w - mergeW - pad * 0.5;
-    if (unit.merges > 0) {
+    {
       const by = y + h * 0.12;
       roundRect(ctx, mergeX, by, mergeW, h * 0.3, h * 0.1);
-      ctx.fillStyle = COLORS.target;
+      ctx.fillStyle = unit.merges > 0 ? COLORS.target : "rgba(255, 255, 255, 0.14)";
       ctx.fill();
-      ctx.fillStyle = "#2a1f05";
+      ctx.fillStyle = unit.merges > 0 ? "#2a1f05" : COLORS.name;
       ctx.textAlign = "center";
-      ctx.font = `800 ${Math.round(h * 0.22)}px system-ui, sans-serif`;
-      ctx.fillText(`+${unit.merges}`, mergeX + mergeW / 2, by + h * 0.16);
+      ctx.fillText(levelLabel, mergeX + mergeW / 2, by + h * 0.16);
       ctx.textAlign = "left";
     }
 
     if (unit.auras.length > 0 && state.auraIcon) {
       const size = h * 0.26;
       const gap = h * 0.08;
-      const right = (unit.merges > 0 ? mergeX : x + w) - pad * 0.8;
+      const right = mergeX - pad * 0.8;
       ctx.font = `${Math.round(size)}px system-ui, sans-serif`;
       const nameRight = tx + ctx.measureText(unit.name).width;
       const room = Math.max(0, right - nameRight - gap);

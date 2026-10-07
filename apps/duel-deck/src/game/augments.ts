@@ -1,5 +1,5 @@
 import type { AuraDetail, SideMods, Side, Unit, UnitTraits } from "../engine/types";
-import { KNIGHT_AT, UNITS, UNIT_KEYS, innateTraits } from "../engine/units";
+import { KNIGHT_LEVEL, UNITS, UNIT_KEYS, innateTraits } from "../engine/units";
 
 // Persistent upgrades ("augments") — the tracker doc's separate offer track.
 //
@@ -124,9 +124,9 @@ export const AUGMENTS: AugmentDef[] = [
     id: "steady-footing",
     icon: "🥾",
     name: "Steady footing",
-    description: "+2 health to all Skirmishers.",
+    description: "+1 attack and +2 health to all Skirmishers.",
     category: "class",
-    effect: (u) => (has(u, "skirmisher") ? { hp: 2 } : {}),
+    effect: (u) => (has(u, "skirmisher") ? { atk: 1, hp: 2 } : {}),
   },
   {
     id: "adrenaline",
@@ -148,9 +148,9 @@ export const AUGMENTS: AugmentDef[] = [
     id: "precision-strikes",
     icon: "🎯",
     name: "Precision strikes",
-    description: "+1 attack and +1 health to all Strikers.",
+    description: "+2 attack and +1 health to all Strikers.",
     category: "class",
-    effect: (u) => (has(u, "striker") ? { atk: 1, hp: 1 } : {}),
+    effect: (u) => (has(u, "striker") ? { atk: 2, hp: 1 } : {}),
   },
 
   // --- Global ---
@@ -301,9 +301,9 @@ export const AUGMENTS: AugmentDef[] = [
     id: "lifesteal",
     icon: "🦇",
     name: "Lifesteal",
-    description: "Skirmishers heal for half the damage they deal.",
+    description: "Skirmishers heal for all the damage they deal.",
     category: "combat",
-    traits: (u) => (has(u, "skirmisher") ? { lifesteal: 0.5 } : {}),
+    traits: (u) => (has(u, "skirmisher") ? { lifesteal: 1 } : {}),
   },
   {
     id: "shield-wall",
@@ -351,7 +351,7 @@ export const AUGMENTS: AugmentDef[] = [
     id: "early-knighthood",
     icon: "⚜️",
     name: "Early knighthood",
-    description: `Squires are knighted after ${KNIGHT_AT - 1} merges instead of ${KNIGHT_AT}.`,
+    description: `Squires are knighted at level ${KNIGHT_LEVEL - 1} instead of ${KNIGHT_LEVEL}.`,
     category: "class",
     units: ["squire", "knight"],
   },
@@ -471,9 +471,9 @@ export const AUGMENTS: AugmentDef[] = [
     id: "field-medic",
     icon: "🩹",
     name: "Field medic",
-    description: "Each round you win, recover 8 HP (up to your starting HP).",
+    description: "Each round you win, recover 14 HP (up to your starting HP).",
     category: "strategy",
-    healOnWin: 8,
+    healOnWin: 14,
   },
   {
     id: "bounty",

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import "./overlays.css";
 import type { AugmentDef, AugmentState } from "../game/augments";
 import { AUGMENTS, RALLY_CAP, getAugment, rarityOf, unitsAffectedBy, type Rarity } from "../game/augments";
-import { KNIGHT_AT, UNITS, UNIT_KEYS } from "../engine/units";
+import { KNIGHT_LEVEL, UNITS, UNIT_KEYS } from "../engine/units";
 import { AUGMENT_EVERY, PICK_COUNT, START_HP } from "../game/match";
 import { mvpOf, type MatchStats } from "../game/stats";
 import { prefersReducedMotion } from "../board/anim";
@@ -488,7 +488,7 @@ export function UnitsView({ onClose }: { onClose: () => void }) {
                   )}
                   {u.offered === false && (
                     <p className="unit-entry__earned">
-                      Never offered: a Squire is knighted after {KNIGHT_AT} merges. Stats shown are at
+                      Never offered: a Squire is knighted when it reaches level {KNIGHT_LEVEL}. Stats shown are at
                       the moment of knighting, before upgrades.
                     </p>
                   )}
@@ -585,16 +585,16 @@ export function HelpPanel({ onClose }: HelpPanelProps) {
           <li>Pick {PICK_COUNT} of {5} offered units each round. Picks are free — there's no economy. Each offer can only be taken once, so your {PICK_COUNT} picks are always different cards.</li>
           <li>Drag an offer onto an <em>empty slot</em> to add it as a new unit, or onto <em>one of your units of the same type</em> to merge. Only like merges with like.</li>
           <li><strong>Clicking works everywhere dragging does.</strong> Click an offer or one of your units to pick it up, then click where it should go. Click it again to put it back down. Dashed outlines show the legal destinations.</li>
-          <li>A merged unit gives <strong>half</strong> its attack and health to the target, permanently (shown as a +N badge). You lose stats overall versus placing it separately — what you gain is concentration: a tougher unit holding the front instead of another body behind it.</li>
+          <li>A merged unit gives <strong>half</strong> its attack and health to the target, permanently, and raises its level by one (every unit starts at <strong>Lv1</strong>). You lose stats overall versus placing it separately — what you gain is concentration: a tougher unit holding the front instead of another body behind it.</li>
           <li>When your row is <strong>full</strong>, you can also drop an offer onto a unit of a <em>different</em> type to <strong>replace</strong> it. The old unit is discarded, along with anything merged into it — the slot outlines orange to warn you.</li>
           <li>Move placed units to reorder the queue — only the front one fights, so position matters.</li>
-          <li>Putting a placed unit onto <em>another of the same type</em> merges the two instead: the one you moved is absorbed for half its stats and leaves the board. Free — it costs a body, not a pick.</li>
+          <li>Putting a placed unit onto <em>another of the same type</em> merges the two instead: the one you moved is absorbed for half its stats and leaves the board, and the two levels add together. Free — it costs a body, not a pick.</li>
           <li>Only the front-most unit on each side fights. Both strike at once, so a unit that dies still deals its damage.</li>
           <li>When a front unit dies, the next in your queue steps up.</li>
           <li>The round ends when one side's row is empty. Each of the winner's <em>surviving units</em> then hits the loser's HP for its attack — so keeping units alive matters, not just winning.</li>
           <li>Nothing is lost: fallen units respawn at the end of the round, and everyone returns to full health. Your row only ever grows.</li>
           <li>Every {AUGMENT_EVERY} rounds, before you pick units, you choose a persistent upgrade — a separate track from unit picks. They last this match only. The header shows when the next one is due.</li>
-          <li>Units show a small icon for each upgrade currently boosting them, so you can see where their numbers come from. Conditional upgrades (Overwhelm, Desperate measures) only show while they're actually firing. Open <strong>Upgrades</strong> to match an icon to its name — the enemy's units are badged too.</li>
+          <li><strong>Long-press</strong> (or hover with a mouse) any unit or offer card to see its ability and what is changing its numbers. Units also show a small icon for each upgrade currently boosting them, so you can see where their numbers come from. Conditional upgrades (Overwhelm, Desperate measures) only show while they're actually firing. Open <strong>Upgrades</strong> to match an icon to its name — the enemy's units are badged too.</li>
           <li>First player to 0 HP loses.</li>
         </ul>
       </div>

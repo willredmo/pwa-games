@@ -17,7 +17,7 @@ import {
   upgradeUnit,
 } from "./engine/board";
 import { resolveRound } from "./engine/combat";
-import { KNIGHTING_BONUS, UNITS, mergesInto } from "./engine/units";
+import { KNIGHTING_BONUS, UNITS, levelOf, mergesInto } from "./engine/units";
 import type { AttackEvent, BattleEvent, Board, RoundResult, Tick, Unit } from "./engine/types";
 import {
   AUGMENT_EVERY,
@@ -113,6 +113,8 @@ const MATCH_KEY = "duel-deck:match";
 const SAVE_VERSION = 6;
 /** Pointer travel before a press becomes a drag rather than a click. */
 const DRAG_THRESHOLD_PX = 4;
+/** Touch has no hover: holding this long on a unit or offer card opens its info card. */
+const LONG_PRESS_MS = 450;
 
 interface SavedMatch {
   version: number;
@@ -375,6 +377,23 @@ export default function App() {
   const pending = useRef<{ drag: Grab; x: number; y: number } | null>(null);
 
   /**
+   * Touch stand-in for hover: an info card opened by a long-press (or a tap
+   * that has nothing else to do), held open until the next tap anywhere. A
+   * unit is kept by id and looked up on the live board, so the card follows
+   * its numbers through merges and battle rather than freezing a snapshot.
+   */
+  const [pinned, setPinned] = useState<
+    { kind: "unit"; id: string; x: number; y: number } | { kind: "offer"; key: string; x: number; y: number } | null
+  >(null);
+  const pinnedRef = useRef(pinned);
+  pinnedRef.current = pinned;
+  const longPress = useRef<{ timer: number; x: number; y: number } | null>(null);
+  /** Set when a press opened or closed a card, so its trailing click does nothing else. */
+  const swallowClick = useRef(false);
+  /** How the last board press was made (a click isn't a PointerEvent in older Safari). */
+  const boardPointerType = useRef("mouse");
+
+  /**
    * Read by the playback loop at each frame boundary. A ref, not the state
    * value: the playback effect must not re-run when the speed changes, or the
    * round would restart from the first blow.
@@ -593,7 +612,7 @@ export default function App() {
       return `MERGE ⚔${target.atk} ♥${target.maxHp} → ⚔${target.atk + gain.atk} ♥${target.maxHp + gain.hp}${knighted ? " ⚜ KNIGHT!" : ""}`;
     }
     if (kind === "replace" && target) {
-      return `REPLACE ${target.name}${target.merges > 0 ? ` (+${target.merges} lost)` : ""}`;
+      return `REPLACE ${target.name}${target.merges > 0 ? ` (Lv${levelOf(target.merges)} lost)` : ""}`;
     }
     if (kind === "place" && target) return `↧ INSERT ${UNITS[grab.key].name} at #${dropCell.spot + 1}`;
     if (kind === "place") return `＋ ADD ${UNITS[grab.key].name}`;
@@ -869,6 +888,67 @@ export default function App() {
     [board],
   );
 
+  /** The unit under client coords on either side, for the info card. */
+  const unitUnder = (clientX: number, clientY: number): Unit | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const cell = pixelToCell(canvas, board, clientX - rect.left, clientY - rect.top);
+    return cell ? (board.slots[cell.side][cell.lane]?.[cell.spot] ?? null) : null;
+  };
+
+  // --- Touch info cards -----------------------------------------------------
+
+  const cancelLongPress = () => {
+    if (longPress.current) window.clearTimeout(longPress.current.timer);
+    longPress.current = null;
+  };
+
+  /** Arm a long-press (touch and pen only — a mouse has hover). */
+  const armLongPress = (e: React.PointerEvent, open: () => void) => {
+    cancelLongPress();
+    if (e.pointerType === "mouse") return;
+    const timer = window.setTimeout(() => {
+      longPress.current = null;
+      pending.current = null; // a hold is a look, not the start of a drag
+      swallowClick.current = true;
+      open();
+      navigator.vibrate?.(10);
+    }, LONG_PRESS_MS);
+    longPress.current = { timer, x: e.clientX, y: e.clientY };
+  };
+
+  // Any press closes an open card (and that press's click does nothing else);
+  // moving or lifting the finger cancels a long-press that hasn't fired yet.
+  useEffect(() => {
+    const onDown = () => {
+      swallowClick.current = !!pinnedRef.current;
+      if (pinnedRef.current) setPinned(null);
+    };
+    const onMove = (e: PointerEvent) => {
+      const lp = longPress.current;
+      if (lp && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) >= DRAG_THRESHOLD_PX * 2) cancelLongPress();
+    };
+    window.addEventListener("pointerdown", onDown, true);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", cancelLongPress);
+    window.addEventListener("pointercancel", cancelLongPress);
+    return () => {
+      window.removeEventListener("pointerdown", onDown, true);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", cancelLongPress);
+      window.removeEventListener("pointercancel", cancelLongPress);
+    };
+  }, []);
+
+  /** The pinned unit as it stands on the current board, or null once it's gone. */
+  const pinnedUnit = useMemo(() => {
+    if (pinned?.kind !== "unit") return null;
+    for (const side of [PLAYER, ENEMY] as const)
+      for (const lane of board.slots[side]) for (const u of lane) if (u?.id === pinned.id) return u;
+    return null;
+  }, [pinned, board]);
+
   // --- Drag lifecycle -------------------------------------------------------
 
   const beginPress = (d: Grab, e: React.PointerEvent) => {
@@ -924,7 +1004,8 @@ export default function App() {
    */
   const onBoardPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     // Nothing in hand: hovering a unit (either side) explains its numbers.
-    if (!drag && !pending.current && !selected) {
+    // Mouse only — touch has no hover, and gets the long-press card instead.
+    if (e.pointerType === "mouse" && !drag && !pending.current && !selected) {
       const canvas = canvasRef.current;
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
@@ -952,6 +1033,12 @@ export default function App() {
 
   /** Press on the board: start dragging one of your placed units. */
   const onBoardPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    boardPointerType.current = e.pointerType;
+    const pressed = unitUnder(e.clientX, e.clientY);
+    if (pressed) {
+      const { clientX: x, clientY: y } = e;
+      armLongPress(e, () => setPinned({ kind: "unit", id: pressed.id, x, y }));
+    }
     if (phase !== "pick") return;
     const cell = cellAt(e.clientX, e.clientY);
     if (!cell) return;
@@ -970,6 +1057,18 @@ export default function App() {
    * matters on touch where a precise drag over small slots is fiddly.
    */
   const onBoardClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (swallowClick.current) {
+      swallowClick.current = false;
+      return;
+    }
+    // A touch tap that can't act on anything (an enemy unit, or any unit
+    // outside the pick phase) opens the info card instead of doing nothing.
+    const touch = boardPointerType.current !== "mouse";
+    const tapped = touch ? unitUnder(e.clientX, e.clientY) : null;
+    if (tapped && (phase !== "pick" || tapped.side === ENEMY)) {
+      setPinned({ kind: "unit", id: tapped.id, x: e.clientX, y: e.clientY });
+      return;
+    }
     if (phase !== "pick") return;
     const cell = cellAt(e.clientX, e.clientY);
     if (!cell) {
@@ -1382,7 +1481,8 @@ export default function App() {
       if (action === "merge" && source && target) {
         const gain = unitMergeGain(source, mergeRatioFor(playerAug.current), target.merges);
         const knighted = knightsIt(target, source) ? " — knights it!" : "";
-        const after = `⚔${target.atk} ♥${target.maxHp} → ⚔${target.atk + gain.atk} ♥${target.maxHp + gain.hp}`;
+        const lv = `Lv${levelOf(target.merges)} → Lv${levelOf(target.merges + source.merges + 1)}`;
+        const after = `${lv}, ⚔${target.atk} ♥${target.maxHp} → ⚔${target.atk + gain.atk} ♥${target.maxHp + gain.hp}`;
         return source.key === target.key
           ? `Merge the two ${source.name}s: ${after} (one fewer body)${knighted}`
           : `Merge ${source.name} into ${target.name}: ${after} (one fewer body)`;
@@ -1398,10 +1498,10 @@ export default function App() {
     switch (action) {
       case "merge":
         return target
-          ? `Merge into ${target.name}: ⚔${target.atk} ♥${target.maxHp} → ⚔${target.atk + gain.atk} ♥${target.maxHp + gain.hp}${knightsIt(target, null) ? " — knights it!" : ""}`
+          ? `Merge into ${target.name}: Lv${levelOf(target.merges)} → Lv${levelOf(target.merges + 1)}, ⚔${target.atk} ♥${target.maxHp} → ⚔${target.atk + gain.atk} ♥${target.maxHp + gain.hp}${knightsIt(target, null) ? " — knights it!" : ""}`
           : null;
       case "replace":
-        return `⚠ Replace ${target?.name}${target && target.merges > 0 ? ` (+${target.merges} merged)` : ""} with ${UNITS[g.key].name}`;
+        return `⚠ Replace ${target?.name}${target && target.merges > 0 ? ` (level ${levelOf(target.merges)})` : ""} with ${UNITS[g.key].name}`;
       case "place":
         return target
           ? `Insert ${UNITS[g.key].name} at position ${dropCell!.spot + 1}, pushing the rest back`
@@ -1469,6 +1569,7 @@ export default function App() {
           onPointerMove={onBoardPointerMove}
           onPointerLeave={onBoardPointerLeave}
           onClick={onBoardClick}
+          onContextMenu={(e) => e.preventDefault()}
         />
         <RoundBanner message={banner.message} tone={banner.tone} nonce={banner.nonce} />
         {phase === "augment" && (
@@ -1541,7 +1642,9 @@ export default function App() {
 
       <HpBar side={PLAYER} label="You" hp={Math.max(0, board.hp.player)} max={START_HP} />
 
-      {lastRound && <p className="app__log">{lastRound}</p>}
+      {/* Always rendered: the board fills the space left over, so rows that came
+          and went would resize it between phases. */}
+      <p className="app__log">{lastRound ?? ""}</p>
 
       <div className="hud">
         <button
@@ -1575,28 +1678,26 @@ export default function App() {
         </button>
       </div>
 
-      {phase === "pick" && (
-        <div className="pick-row">
-          <p
-            key={picksLeft}
-            className={`pick-label${picksLeft > 0 ? " pick-label--open" : " pick-label--done"}`}
+      <div className={`pick-row${phase === "pick" ? "" : " pick-row--idle"}`}>
+        <p
+          key={picksLeft}
+          className={`pick-label${picksLeft > 0 ? " pick-label--open" : " pick-label--done"}`}
+        >
+          {picksLeft > 0
+            ? `Pick ${picksLeft}${boardFull ? " — row full: merge or replace" : ""}`
+            : "✓ Picks done — arrange your row, then commit"}
+        </p>
+        {picksLeft > 0 && (
+          <button
+            className="ghost-btn ghost-btn--sm reroll-btn"
+            onClick={rerollOffer}
+            disabled={unitRerolls <= 0}
+            title="Swap the cards you haven't taken for new ones"
           >
-            {picksLeft > 0
-              ? `Pick ${picksLeft}${boardFull ? " — row full: merge or replace" : ""}`
-              : "✓ Picks done — arrange your row, then commit"}
-          </p>
-          {picksLeft > 0 && (
-            <button
-              className="ghost-btn ghost-btn--sm reroll-btn"
-              onClick={rerollOffer}
-              disabled={unitRerolls <= 0}
-              title="Swap the cards you haven't taken for new ones"
-            >
-              🎲 Reroll ({unitRerolls})
-            </button>
-          )}
-        </div>
-      )}
+            🎲 Reroll ({unitRerolls})
+          </button>
+        )}
+      </div>
       <div className="hand">
         {phase === "pick" ? (
           offer.map((key, i) => {
@@ -1613,15 +1714,27 @@ export default function App() {
                   `${isDragging ? " card--dragging" : ""}${taken ? " card--taken" : ""}`
                 }
                 disabled={spent}
-                onPointerDown={(e) => !spent && beginPress({ kind: "offer", index: i, key }, e)}
+                onPointerDown={(e) => {
+                  const r = e.currentTarget.getBoundingClientRect();
+                  armLongPress(e, () =>
+                    setPinned({ kind: "offer", key, x: r.left + r.width / 2, y: r.top }),
+                  );
+                  if (!spent) beginPress({ kind: "offer", index: i, key }, e);
+                }}
                 onPointerEnter={(e) => {
+                  if (e.pointerType !== "mouse") return;
                   const r = e.currentTarget.getBoundingClientRect();
                   setOfferInfo({ key, x: r.left + r.width / 2, y: r.top });
                 }}
                 onPointerLeave={() => setOfferInfo(null)}
-                onClick={() =>
-                  !spent && setSelected(isSelected ? null : { kind: "offer", index: i, key })
-                }
+                onContextMenu={(e) => e.preventDefault()}
+                onClick={() => {
+                  if (swallowClick.current) {
+                    swallowClick.current = false;
+                    return;
+                  }
+                  if (!spent) setSelected(isSelected ? null : { kind: "offer", index: i, key });
+                }}
               >
                 <UnitPortrait unitKey={key} side="player" size={compact ? 44 : 58} />
                 <span className="card__name">{u.name}</span>
@@ -1643,17 +1756,17 @@ export default function App() {
         )}
       </div>
 
-      {phase === "pick" && (
-        <p className="app__hint">
-          {grab
+      <p className="app__hint">
+        {phase !== "pick"
+          ? ""
+          : grab
             ? grabHint
             : picksLeft <= 0
               ? "Drag or click your units to reorder — onto a matching unit's left half to merge"
               : boardFull
                 ? "Row full — merge an offer into a unit of the same type"
                 : "Drag or click: empty slot to place, matching unit to merge"}
-        </p>
-      )}
+      </p>
 
       {/* A hovered offer card's unit: stats and its innate ability. */}
       {offerInfo && !drag && phase === "pick" && (
@@ -1662,6 +1775,12 @@ export default function App() {
 
       {/* What's making a hovered unit's numbers what they are. */}
       {info && !grab && <UnitInfo unit={info.unit} x={info.x} y={info.y} />}
+
+      {/* Touch: the long-pressed (or tapped) unit or offer, until the next tap. */}
+      {pinnedUnit && pinned && <UnitInfo unit={pinnedUnit} x={pinned.x} y={pinned.y} pinned />}
+      {pinned?.kind === "offer" && phase === "pick" && (
+        <OfferInfo unitKey={pinned.key} x={pinned.x} y={pinned.y} />
+      )}
 
       {/* Ghost of the unit in hand, following the pointer. */}
       {ghostKey && ghostPos && ghostUnit && (

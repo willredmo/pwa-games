@@ -17,7 +17,7 @@ export const UNITS: Record<string, UnitStats> = {
     shape: "square",
     classes: ["guard", "tank"],
     role: "Tanky, absorbs hits, low output",
-    ability: { name: "Bodyguard", trigger: "On death", text: "The unit behind it gains +2 health for the rest of the round.", scaling: "+1 health every 2 merges" },
+    ability: { name: "Bodyguard", trigger: "On death", text: "The unit behind it gains +2 health for the rest of the round.", scaling: "+1 health every 2 levels" },
   },
   striker: {
     name: "Striker",
@@ -26,7 +26,7 @@ export const UNITS: Record<string, UnitStats> = {
     shape: "triangle",
     classes: ["striker", "aggro"],
     role: "Glass cannon",
-    ability: { name: "Charge", trigger: "First attack", text: "Its first attack each round deals +3 damage.", scaling: "+1 damage per merge" },
+    ability: { name: "Charge", trigger: "First attack", text: "Its first attack each round deals +3 damage.", scaling: "+1 damage per level" },
   },
   skirmisher: {
     name: "Skirmisher",
@@ -35,7 +35,7 @@ export const UNITS: Record<string, UnitStats> = {
     shape: "diamond",
     classes: ["skirmisher"],
     role: "Balanced all-rounder",
-    ability: { name: "Evasion", trigger: "Start of round", text: "Dodges the first hit it takes each round.", scaling: "When it dodges, strikes back for +1 damage every 2 merges" },
+    ability: { name: "Evasion", trigger: "Start of round", text: "Dodges the first hit it takes each round.", scaling: "When it dodges, strikes back for +1 damage every 2 levels" },
   },
   bulwark: {
     name: "Bulwark",
@@ -44,7 +44,7 @@ export const UNITS: Record<string, UnitStats> = {
     shape: "hexagon",
     classes: ["bulwark", "tank"],
     role: "Max tank, meant to stall",
-    ability: { name: "Fortify", trigger: "End of round", text: "If it survived the round, it permanently gains +1 health.", scaling: "+1 health every 2 merges" },
+    ability: { name: "Fortify", trigger: "End of round", text: "If it survived the round, it permanently gains +1 health.", scaling: "+1 health every 2 levels" },
   },
   berserker: {
     name: "Berserker",
@@ -53,7 +53,7 @@ export const UNITS: Record<string, UnitStats> = {
     shape: "circle",
     classes: ["berserker", "aggro"],
     role: "Highest attack, very fragile",
-    ability: { name: "Overflow", trigger: "On kill", text: "Half the damage beyond a kill (up to 3) carries into the next enemy.", scaling: "Carry-over cap +1 per merge" },
+    ability: { name: "Overflow", trigger: "On kill", text: "Half the damage beyond a kill (up to 3) carries into the next enemy.", scaling: "Carry-over cap +1 per level" },
   },
   // The late-game unit: the weakest body in the pool, but its merges escalate
   // (see SQUIRE_STEP) and at KNIGHT_AT merges it is promoted to a Knight.
@@ -63,8 +63,8 @@ export const UNITS: Record<string, UnitStats> = {
     maxHp: 3,
     shape: "shield",
     classes: ["squire"],
-    role: "Weak now; every merge is bigger than the last, and 6 make a Knight",
-    ability: { name: "Pass the torch", trigger: "On death", text: "The unit behind it gains +1 attack for the rest of the round.", scaling: "+1 attack every 2 merges" },
+    role: "Weak now; every level is bigger than the last, and level 7 makes a Knight",
+    ability: { name: "Pass the torch", trigger: "On death", text: "The unit behind it gains +1 attack for the rest of the round.", scaling: "+1 attack every 2 levels" },
   },
   knight: {
     name: "Knight",
@@ -72,8 +72,8 @@ export const UNITS: Record<string, UnitStats> = {
     maxHp: 0,
     shape: "shield",
     classes: ["knight"],
-    role: "Promoted Squire: armoured, and still growing with every merge",
-    ability: { name: "Armour · Last rally", trigger: "Always · On death", text: "Takes 1 less damage per hit. When it falls, all your units gain +1 attack for the rest of the round.", scaling: "Last rally +1 attack every 2 merges past knighthood" },
+    role: "Promoted Squire: armoured, and still growing with every level",
+    ability: { name: "Armour · Last rally", trigger: "Always · On death", text: "Takes 1 less damage per hit. When it falls, all your units gain +1 attack for the rest of the round.", scaling: "Last rally +1 attack every 2 levels past knighthood" },
     offered: false,
   },
 };
@@ -91,6 +91,15 @@ export const OFFER_KEYS = UNIT_KEYS.filter((k) => UNITS[k].offered !== false);
 export const SQUIRE_STEP = { atk: 0.45, hp: 0.65 };
 /** Merges at which a Squire is knighted (Early knighthood lowers it). */
 export const KNIGHT_AT = 6;
+
+/**
+ * A unit's level as the player sees it: every unit starts at level 1 and each
+ * body merged in adds one, so merging two placed units adds their levels. The
+ * engine keeps counting `merges`; this is the only conversion.
+ */
+export const levelOf = (merges: number) => merges + 1;
+/** The level at which a Squire is knighted (7 by default). */
+export const KNIGHT_LEVEL = levelOf(KNIGHT_AT);
 /** One-off stats a Squire gains on being knighted, on top of its merges. */
 export const KNIGHTING_BONUS = { atk: 1, hp: 2 };
 

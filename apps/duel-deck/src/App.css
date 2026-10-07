@@ -1,5 +1,8 @@
 .app {
-  min-height: 100dvh;
+  /* Exactly one screen: the board (.app__stage) takes whatever height the
+     chrome leaves, so nothing scrolls and nothing needs zooming. */
+  height: 100dvh;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -42,11 +45,27 @@
 }
 .app__log {
   margin: 0;
+  /* One reserved line, so the board doesn't resize when it first appears. */
+  min-height: 1.2em;
+  line-height: 1.2;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 0.85rem;
   color: #c8c2e2;
 }
 .app__hint {
   margin: 0;
+  /* Two reserved lines, clamped, for the same reason. */
+  min-height: 2.4em;
+  line-height: 1.2;
+  max-width: min(94vw, 30rem);
+  text-align: center;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
   font-size: 0.82rem;
   color: #f0b429;
 }
@@ -96,12 +115,12 @@
 .app__stage {
   position: relative;
   width: min(96vw, 22rem);
+  flex: 1 1 0;
+  min-height: 0;
 }
 .app__board {
   width: 100%;
-  /* Fill whatever height the chrome around the board leaves (~340px with the
-     card portraits), never below 52dvh — taller rows mean bigger characters. */
-  height: max(52dvh, calc(100dvh - 340px));
+  height: 100%;
   display: block;
   /* `none` so a touch-drag on the board doesn't scroll the page instead. */
   touch-action: none;
@@ -145,7 +164,8 @@
   justify-content: center;
   gap: 0.45rem;
   width: min(94vw, 34rem);
-  min-height: 3.6rem;
+  /* One row of cards, held in battle too, so the board never resizes. */
+  min-height: 118px;
 }
 .hand__empty {
   color: var(--muted);
@@ -682,7 +702,9 @@ body { background-color: #12101c; }
 }
 
 /* --- Pick counter + unit reroll --- */
-.pick-row { display: flex; align-items: center; justify-content: center; gap: 0.6rem; }
+.pick-row { display: flex; align-items: center; justify-content: center; gap: 0.6rem; min-height: 2.1rem; }
+/* Outside the pick phase the row keeps its space (so the board doesn't jump) but shows nothing. */
+.pick-row--idle { visibility: hidden; }
 .pick-row .pick-label { margin: 0.35rem 0 0.15rem; }
 
 /* --- Unit hover breakdown --- */
@@ -714,6 +736,9 @@ body { background-color: #12101c; }
 .unit-info__none { color: #9d97b8; font-style: italic; border-top: 1px solid #2f2a45; padding-top: 0.3rem; }
 .reroll-btn { white-space: nowrap; }
 .unit-info--offer { width: 17rem; max-width: calc(100vw - 16px); }
+.unit-info--pinned { width: 17rem; max-width: calc(100vw - 24px); }
+/* Long-press opens info cards: stop the OS menu / text selection on the game. */
+.app__board, .hand .card { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 .unit-info__ability {
   margin-top: 0.15rem;
   padding: 0.35rem 0.45rem;
@@ -841,15 +866,14 @@ button.menu-item:hover { border-color: #5a5180; }
   .menu-btn { width: 2.25rem; height: 2.25rem; font-size: 1.1rem; }
   .hpbar { width: 100%; font-size: 0.8rem; }
   .app__stage { width: 100%; }
-  /* Chrome above and below the board is ~330px on a phone. */
-  .app__board { height: max(44dvh, calc(100dvh - 332px)); }
   .hud { flex-wrap: nowrap; gap: 0.4rem; width: 100%; }
   .hud .primary-btn, .hud .ghost-btn { padding: 0.5rem 0.7rem; white-space: nowrap; }
   .hud .primary-btn { flex: 1; }
   .hud__long { display: none; }
   .hud__short { display: inline; }
   /* Five cards across, shrinking to fit. */
-  .hand { flex-wrap: nowrap; width: 100%; gap: 0.3rem; }
+  /* min-height = one row of cards, so the board keeps its size in battle. */
+  .hand { flex-wrap: nowrap; width: 100%; gap: 0.3rem; min-height: 96px; }
   .hand .card { flex: 1 1 0; min-width: 0; width: auto; padding: 0.3rem 0.15rem; }
   .card__name { font-size: 0.68rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
   .card__stats { font-size: 0.72rem; }

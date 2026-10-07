@@ -17,11 +17,12 @@ the code maps onto it and where the two intentionally differ.
 - **Pick 2 of 5 each round**, drawn from the flat pool. **No economy** — picks
   are free. The offer samples *with replacement*, so a round can offer duplicates
   (otherwise, with only five unit types, every round would offer the whole pool).
-- **Win condition.** Both players hold a 100 HP pool (`START_HP`). The side
+- **Win condition.** Both players hold a 200 HP pool (`START_HP`). The side
   left holding the row wins the round, and each of its *surviving* units hits
-  the loser's pool for its attack (plus Bounty). First to 0 loses. (Deviation:
-  the tracker charged the winner's total damage dealt; survivor damage rewards
-  keeping units alive and puts the median match at ~11-13 rounds.)
+  the loser's pool for its attack (plus Bounty). First to 0 loses. (Deviations:
+  the tracker's pool is 100 HP, and it charged the winner's total damage dealt;
+  survivor damage rewards keeping units alive. The median match is ~18-19
+  rounds under `pnpm sim`.)
 - **Persistent upgrades ("augments")** — `game/augments.ts`. The 18 from the
   tracker plus 12 added in session (see "Combat keywords" below), 30 in all. A **separate offer track**, offered **every 3rd round**, and
   **match-scoped**: `AugmentState` is recreated per match and never carried over.
@@ -80,7 +81,8 @@ round (`applyAugments`), rather than mutated into units once. Stacking counters
   (`MERGE_RATIO`, halves round up) — e.g. a Bulwark grants +1 ⚔ / +7 ♥. So
   merging *loses* total stats versus placing the unit separately; what it buys
   is concentration, a tougher unit holding the front rather than another body
-  behind it. Merges stack (+N badge). The gain raises `baseAtk`/`baseMaxHp`, so
+  behind it. Merges stack, shown as the unit's **level** (every unit starts at Lv1;
+  each body merged in adds one — `levelOf` in `engine/units.ts`). The gain raises `baseAtk`/`baseMaxHp`, so
   it survives both respawn and the per-round augment recomputation.
 - **Replacing, only when the row is full.** Dropping an offer onto a unit of a
   *different* type swaps it out; the old unit and any merges baked into it are
@@ -109,9 +111,14 @@ round (`applyAugments`), rather than mutated into units once. Stacking counters
   — it's the only way to concentrate a row you've already filled without
   spending a pick. The gain is 50% of the source's *current* base stats, so a
   unit that has itself absorbed merges carries that value forward rather than
-  reverting to printed stats, and the `+N` badge counts every body absorbed
+  reverting to printed stats, and the level counts every body absorbed
   transitively. Same-type units are interchangeable in the queue, so nothing is
   lost by spending that gesture on merge instead of reorder.
+
+Replace is recoverable: like every pick-phase action it pushes an undo
+snapshot (board with merges, used offers, picks, grants) first, so ↶ Undo /
+Ctrl/⌘+Z restores the discarded unit until Commit or a unit reroll. No confirm
+dialog is needed on top of the colour coding and hint.
 
 ### Click and drag are the same code path
 Every board action — place, merge, replace, reorder, merge-placed — is reachable
@@ -137,6 +144,18 @@ the dashed outline of a drop target and the faded treatment of a dragged unit �
 a drag has a ghost following the pointer to show what's in hand, and a click
 selection needs its own way to say so.
 
+### Touch: long-press is hover
+Touch has no hover, so on touch and pen (never mouse) a **long-press**
+(`LONG_PRESS_MS`) on any unit, either side, or on an offer card opens its info
+card (`pinned` in App.tsx). A plain tap does the same where a tap has no other
+job: an enemy unit, or any unit outside the pick phase. The card stays open
+until the next press anywhere, and that press's click is swallowed
+(`swallowClick`) so closing a card never also places or selects. A pinned unit
+is held by id and read from the live board, so it tracks merges and battle.
+`UnitInfo pinned` centres the card and opens it away from the finger. Mouse
+hover is unchanged and is gated on `pointerType === "mouse"`, so a touch drag no
+longer flashes hover cards.
+
 ### Augment badges are derived, never stored
 Each augment carries a unique `icon`, and every unit shows the icons of the
 augments currently changing its numbers (`Unit.auras`, augment ids in pick
@@ -155,7 +174,7 @@ at 10 rows on a phone they're only a few pixels across. The renderer takes an
 `auraIcon` resolver in `RenderState` rather than importing the augment catalogue,
 keeping `board/render.ts` generic over the game layer, and lays badges out
 right-to-left with a `+N` overflow that adapts to the space the unit's name and
-merge badge leave free.
+level badge leave free.
 
 ### Battle playback is chained, not pre-scheduled
 The `⏩` HUD button toggles a 3× playback speed (`FAST_FACTOR`), persisted to
@@ -203,7 +222,9 @@ units were tuned with a round-robin of single-unit builds (every one within
 so two dodging fronts don't end a round as a draw.
 
 ### Squire → Knight
-The late-game unit. A Squire is the weakest body in the offer (2/4), but its
+The late-game unit. Player-facing rule: **a Squire is knighted at level 7**
+(`KNIGHT_LEVEL`; level 6 with Early knighthood). Internally that is `KNIGHT_AT`
+= 6 merges. A Squire is the weakest body in the offer (2/4), but its
 merges don't use `MERGE_RATIO`: the n-th merge into a Squire line adds
 n × `SQUIRE_STEP` (`engine/units.ts`), so each is bigger than the last. At
 `KNIGHT_AT` merges (`knightAt` — Early knighthood lowers it by one) it is
@@ -227,7 +248,10 @@ upgrade round, rares from the second, epics from the third (`RARITY_UNLOCK`) —
 and the round a rarity unlocks guarantees one card of it. Each upgrade choice
 has `AUGMENT_REROLLS` (2); unit picking has `UNIT_REROLLS` (1) per round, plus
 one with Scout, rerolling only the cards not yet taken (undo can't cross it).
-The AI fills its row before merging (`deployToBack`): merging first left it
+This rarity ladder is the answer to "should offers scale over a long match"
+(settled): with upgrades every 3rd round, rares arrive at round 6 and epics at
+round 9. Nothing unlocks after that, so a median 18-round match spends its
+second half at full power. The AI fills its row before merging (`deployToBack`): merging first left it
 fielding two or three bodies, and with survivor damage empty slots are lost
 damage. Hovering a unit shows `UnitInfo`, built from `unit.auraDetails`, which
 `applyAugments` rebuilds with the stats.
@@ -287,6 +311,13 @@ and damage by round, and per-augment holder win rate. It's how the merge
 question was settled: merging first beats placing ~59% of the time, because one
 concentrated front unit wastes less damage to overkill.
 
+### Draws (settled: no tiebreak rule)
+A round where both rows die in the same tick deals no damage. After the
+abilities/rescale pass this is 3.9% of rounds overall (`pnpm sim 5000`,
+Normal vs Normal): 21% of round 1, 9% of round 2, then 2-4% from round 3 on.
+Early-round draws are accepted as fine, so the `--draw=more-damage|both` rules
+in the sim are not used in the game. Revisit only if late-round draws climb.
+
 ## Deferred (not v1)
 
 - Real 1v1 over Supabase/Firebase — the reason this app exists long-term.
@@ -296,21 +327,21 @@ concentrated front unit wastes less damage to overkill.
 
 ## Open questions
 
-- **Draws.** A round where both rows die in the same tick deals no damage:
-  ~32% of rounds, and over half of round 1, with the current AI on both sides.
-  `pnpm sim --draw=none|more-damage|both` compares candidate rules; a rule
-  hasn't been chosen yet.
 - **Augment balance.** After the balance pass every augment's holder win rate
-  sits at 46-56% under `pnpm sim 60000 --aug=random` (was 41-95%). Always
+  sat at 46-56% under `pnpm sim 60000 --aug=random` (was 41-95%). Since the
+  abilities pass it has drifted to 44-57% across 41 augments: Bloodpact top at
+  57% (accepted — the 80 HP cost is 40% of the pool), Legion/Champion 56%;
+  Precision strikes, First strike, Field medic, Scout, Lifesteal and Steady
+  footing bottom at 44%. Four were then buffed (Steady footing +1⚔/+2♥,
+  Precision strikes +2⚔/+1♥, Lifesteal 100%, Field medic 14 HP) but the sim
+  can't confirm the unit-specific ones: the AI never builds toward its
+  augments, so even +10/+10 Steady footing only reached 47%. Field medic barely
+  responds to heal size (8→26 HP moved it 44→46%). Re-measure once the AI
+  picks units to suit its augments, or judge these in playtesting. Always
   balance with `--aug=random`: the default score-based picking leaves weak
   augments nearly unsampled. Tank augments (Iron will, Shield wall, Tank wall)
   and Scout read low partly because of the AI, which always fronts its highest-
   ATK units and only rerolls when stuck — a human may get more from them.
-- **Accidental replaces.** Replace discards a unit outright, including merges.
-  The colour coding and the "⚠ Replace X" hint are the only guards — there's no
-  undo. If it bites in playtesting, an explicit confirm on replacing a merged
-  unit is the obvious next step.
-- Whether augment offers should scale in power over a long match.
 
 ### Deploy and updates
 Live at https://duel-deck-game.web.app (Firebase project `roguelike-games`;
@@ -327,6 +358,14 @@ for updates / Update now. Update state is shared via `src/pwa.ts`.
 emulator (port 5176) to test the service worker and headers locally.
 
 ### Layout
+The app is exactly one screen (`height: 100dvh`, no page scroll): the board's
+stage is `flex: 1` and takes whatever height the chrome leaves, and the canvas
+reads its client size each frame. The rows that come and go between phases (round
+log, pick label, hint, offer cards) always reserve their space, so the board
+keeps one size from picks through battle. Pinch and double-tap zoom are off
+(viewport meta, `touch-action: manipulation`, and iOS gesture events blocked in
+`main.tsx`, since Safari ignores `user-scalable=no`).
+
 Phones (≤480px, `COMPACT_QUERY` in App.tsx matches App.css) get a one-row HUD
 (Commit, speed, Undo, ⬆ upgrades), five offer cards across with smaller
 portraits, and a board sized so the pick phase fits a 375×667 screen without

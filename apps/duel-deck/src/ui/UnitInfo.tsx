@@ -1,5 +1,5 @@
 import type { Unit, UnitTraits } from "../engine/types";
-import { UNITS, innateTraits } from "../engine/units";
+import { UNITS, innateTraits, levelOf } from "../engine/units";
 import { getAugment } from "../game/augments";
 
 // Hover card for a unit on the board: its numbers now, its numbers before any
@@ -39,20 +39,30 @@ function describeTraits(t: UnitTraits): string[] {
 
 const signed = (n: number, glyph: string) => (n ? `${n > 0 ? "+" : ""}${n}${glyph}` : "");
 
-export function UnitInfo({ unit, x, y }: { unit: Unit; x: number; y: number }) {
+export function UnitInfo({ unit, x, y, pinned = false }: { unit: Unit; x: number; y: number; pinned?: boolean }) {
   // Grown by merges: what the ability does for *this* unit right now.
   const innateRaw = innateTraits(unit.key, unit.merges);
   const innate = Object.keys(innateRaw).length > 0 ? innateRaw : undefined;
   const details = unit.auraDetails ?? [];
   // Keep the card on screen: flip to the left of the pointer near the right edge.
   const flip = x > window.innerWidth - 300;
-  const style = {
-    left: flip ? x - 14 : x + 14,
-    top: Math.min(y + 14, window.innerHeight - 40),
-    transform: flip ? "translateX(-100%)" : undefined,
-  };
+  // Pinned (touch): a finger covers whatever is under it and a phone is too
+  // narrow to sit beside it, so centre the card and open it away from the
+  // finger, on whichever side of the screen has more room.
+  const above = y > window.innerHeight / 2;
+  const style = pinned
+    ? {
+        left: "50%",
+        top: above ? y - 28 : y + 28,
+        transform: `translate(-50%, ${above ? "-100%" : "0"})`,
+      }
+    : {
+        left: flip ? x - 14 : x + 14,
+        top: Math.min(y + 14, window.innerHeight - 40),
+        transform: flip ? "translateX(-100%)" : undefined,
+      };
   return (
-    <div className="unit-info" style={style} role="tooltip">
+    <div className={`unit-info${pinned ? " unit-info--pinned" : ""}`} style={style} role="tooltip">
       <div className="unit-info__head">
         <strong>
           {unit.side === "enemy" ? "Enemy " : ""}
@@ -64,8 +74,7 @@ export function UnitInfo({ unit, x, y }: { unit: Unit; x: number; y: number }) {
         </span>
       </div>
       <div className="unit-info__base">
-        Base ⚔{unit.baseAtk} ♥{unit.baseMaxHp}
-        {unit.merges > 0 && ` · ${unit.merges} merge${unit.merges === 1 ? "" : "s"}`}
+        Level {levelOf(unit.merges)} · Base ⚔{unit.baseAtk} ♥{unit.baseMaxHp}
       </div>
       {innate && (
         <div className="unit-info__line">

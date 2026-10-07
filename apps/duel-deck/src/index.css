@@ -10,13 +10,20 @@
   box-sizing: border-box;
 }
 
+/* The game is one fixed screen: no page scroll, no rubber-band bounce, no
+   double-tap zoom. Panels that need it scroll inside themselves. */
 html,
 body {
   margin: 0;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
   background: var(--bg);
   color: var(--fg);
 }
 
 #root {
-  min-height: 100dvh;
+  height: 100dvh;
 }
