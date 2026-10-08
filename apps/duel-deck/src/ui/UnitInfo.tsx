@@ -34,12 +34,38 @@ function describeTraits(t: UnitTraits): string[] {
   if (t.damageReduction) out.push(`takes ${t.damageReduction} less damage per hit`);
   if (t.executioner) out.push(`+${t.executioner} damage vs targets below half health`);
   if (t.lastBreath) out.push("parting blow of 2 if it's your first to fall");
+  if (t.pierce) out.push(`each blow it lands also hits the unit behind the front for ${t.pierce}`);
+  if (t.mend) out.push(`from behind the front: heals your front unit ${t.mend}♥ after each exchange (3 times a round)`);
+  if (t.rally) out.push(`from behind the front: your front unit gets +${t.rally}⚔`);
   return out;
 }
 
 const signed = (n: number, glyph: string) => (n ? `${n > 0 ? "+" : ""}${n}${glyph}` : "");
 
-export function UnitInfo({ unit, x, y, pinned = false }: { unit: Unit; x: number; y: number; pinned?: boolean }) {
+/**
+ * Docked: centred, with its bottom edge this many px above the window's
+ * bottom. For a click-selection, where the card must stay clear of the board
+ * the player is about to tap.
+ */
+const dockedStyle = (bottom: number) =>
+  ({ left: "50%", top: "auto", bottom, transform: "translateX(-50%)" }) as const;
+
+export function UnitInfo({
+  unit,
+  x = 0,
+  y = 0,
+  pinned = false,
+  dockBottom,
+  toKnight,
+}: {
+  unit: Unit;
+  x?: number;
+  y?: number;
+  pinned?: boolean;
+  dockBottom?: number;
+  /** Merges this Squire still needs to be knighted (null/undefined if not a Squire). */
+  toKnight?: number | null;
+}) {
   // Grown by merges: what the ability does for *this* unit right now.
   const innateRaw = innateTraits(unit.key, unit.merges);
   const innate = Object.keys(innateRaw).length > 0 ? innateRaw : undefined;
@@ -50,7 +76,9 @@ export function UnitInfo({ unit, x, y, pinned = false }: { unit: Unit; x: number
   // narrow to sit beside it, so centre the card and open it away from the
   // finger, on whichever side of the screen has more room.
   const above = y > window.innerHeight / 2;
-  const style = pinned
+  const style = dockBottom !== undefined
+    ? dockedStyle(dockBottom)
+    : pinned
     ? {
         left: "50%",
         top: above ? y - 28 : y + 28,
@@ -62,7 +90,7 @@ export function UnitInfo({ unit, x, y, pinned = false }: { unit: Unit; x: number
         transform: flip ? "translateX(-100%)" : undefined,
       };
   return (
-    <div className={`unit-info${pinned ? " unit-info--pinned" : ""}`} style={style} role="tooltip">
+    <div className={`unit-info${pinned || dockBottom !== undefined ? " unit-info--pinned" : ""}`} style={style} role="tooltip">
       <div className="unit-info__head">
         <strong>
           {unit.side === "enemy" ? "Enemy " : ""}
@@ -76,6 +104,11 @@ export function UnitInfo({ unit, x, y, pinned = false }: { unit: Unit; x: number
       <div className="unit-info__base">
         Level {levelOf(unit.merges)} · Base ⚔{unit.baseAtk} ♥{unit.baseMaxHp}
       </div>
+      {toKnight != null && toKnight > 0 && (
+        <div className="unit-info__knight">
+          ⚜ {toKnight} more merge{toKnight === 1 ? "" : "s"} to Knight (level {levelOf(unit.merges + toKnight)})
+        </div>
+      )}
       {innate && (
         <div className="unit-info__line">
           <span className="unit-info__src">
@@ -87,9 +120,10 @@ export function UnitInfo({ unit, x, y, pinned = false }: { unit: Unit; x: number
       {details.map((d, i) => {
         // Grants (Last stand) carry their source ids joined with "+".
         const defs = d.id.split("+").map(getAugment).filter((a) => !!a);
-        const label = defs.length
-          ? defs.map((a) => `${a!.icon} ${a!.name}`).join(", ")
-          : "Bonus";
+        const label = d.label
+          ?? (defs.length
+            ? defs.map((a) => `${a!.icon} ${a!.name}`).join(", ")
+            : "Bonus");
         const fx = [signed(d.atk, "⚔"), signed(d.hp, "♥"), ...(d.traits ? describeTraits(d.traits) : [])]
           .filter(Boolean)
           .join(" · ");
@@ -109,7 +143,17 @@ export function UnitInfo({ unit, x, y, pinned = false }: { unit: Unit; x: number
  * Hover card for an offer: the unit's printed stats, role and innate ability,
  * so its ability is visible before it's picked. Sits above the card, centred.
  */
-export function OfferInfo({ unitKey, x, y }: { unitKey: string; x: number; y: number }) {
+export function OfferInfo({
+  unitKey,
+  x = 0,
+  y = 0,
+  dockBottom,
+}: {
+  unitKey: string;
+  x?: number;
+  y?: number;
+  dockBottom?: number;
+}) {
   const u = UNITS[unitKey];
   if (!u) return null;
   const half = 136; // half the card's width, to keep it on screen
@@ -117,7 +161,11 @@ export function OfferInfo({ unitKey, x, y }: { unitKey: string; x: number; y: nu
   return (
     <div
       className="unit-info unit-info--offer"
-      style={{ left, top: y - 10, transform: "translate(-50%, -100%)" }}
+      style={
+        dockBottom !== undefined
+          ? dockedStyle(dockBottom)
+          : { left, top: y - 10, transform: "translate(-50%, -100%)" }
+      }
       role="tooltip"
     >
       <div className="unit-info__head">

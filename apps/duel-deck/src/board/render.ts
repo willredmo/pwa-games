@@ -1,4 +1,4 @@
-import type { Board, Shape, Side } from "../engine/types";
+import type { Board, Shape, Side, Unit } from "../engine/types";
 import { capacityOf } from "../engine/board";
 import { levelOf } from "../engine/units";
 import {
@@ -122,6 +122,17 @@ export interface RenderState {
    * the renderer stays generic over the game layer.
    */
   auraIcon?: (id: string) => string;
+  /**
+   * Merges a unit still needs to promote (a Squire to a Knight), or null if it
+   * isn't on such a path. Injected for the same reason: the threshold depends
+   * on that side's augments (Early knighthood).
+   */
+  promoteIn?: (unit: Unit) => number | null;
+  /**
+   * A battle is playing: light the clash zone, halo each side's front unit
+   * (the only one that fights) and dim the queue behind it.
+   */
+  battle?: boolean;
   /** Animation clock (ms, performance.now). Drawn once per frame by App's rAF loop. */
   time?: number;
   /** Per-unit one-shot poses keyed by unit id, set by App (see board/anim.ts). */
@@ -284,6 +295,17 @@ let energy = 0;
 const DASH_TARGET = [5, 4];
 const DASH_MID = [12, 9];
 const NO_DASH: number[] = [];
+/**
+ * Character box as a share of the slot height. Body plus legs span about
+ * 2.3 body radii (R = 0.72 x size), so 0.58 keeps them inside the row; at the
+ * old 0.78 the feet and heads spilled into the neighbouring rows.
+ */
+const CHAR_SIZE = 0.58;
+/** Character centre and text column, from the slot's left edge, in slot heights. */
+const CHAR_X = 0.56;
+const TEXT_X = 1.12;
+/** Empty slots: a fine dotted edge, distinct from the bolder animated target dash. */
+const DASH_EMPTY = [2, 4];
 
 function hashId(id: string): number {
   let h = 2166136261;
@@ -453,11 +475,22 @@ export function draw(canvas: HTMLCanvasElement, state: RenderState): void {
           : COLORS.target;
       const r = Math.min(w, h) * 0.16;
 
+      // Empty (and unlocked) slots recede: a faint wash with a dotted edge and
+      // their queue position, so filled slots stand out and the room left reads.
+      const empty = !unit && spot < capacityOf(board, side);
       roundRect(ctx, x, y, w, h, r);
-      ctx.fillStyle = COLORS.slot;
+      ctx.fillStyle = empty ? "rgba(42, 38, 64, 0.35)" : COLORS.slot;
       ctx.fill();
       ctx.fillStyle = side === "player" ? "rgba(58,134,214,0.07)" : "rgba(209,72,58,0.07)";
       ctx.fill();
+      if (empty) {
+        ctx.font = `700 ${Math.round(Math.max(10, h * 0.3))}px system-ui, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = side === "player" ? "rgba(125, 184, 255, 0.28)" : "rgba(255, 133, 119, 0.24)";
+        ctx.fillText(`${spot + 1}`, x + h * CHAR_X, y + h / 2);
+        ctx.textAlign = "left";
+      }
 
       if (isDrop || isTarget) {
         ctx.lineWidth = isDrop ? Math.max(3, h * 0.1) * (0.8 + 0.3 * pulse1) : Math.max(2, h * 0.05);
@@ -473,6 +506,12 @@ export function draw(canvas: HTMLCanvasElement, state: RenderState): void {
         ctx.shadowBlur = 0;
         ctx.setLineDash(NO_DASH);
         ctx.lineDashOffset = 0;
+      } else if (empty) {
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = "rgba(90, 81, 128, 0.45)";
+        ctx.setLineDash(DASH_EMPTY);
+        ctx.stroke();
+        ctx.setLineDash(NO_DASH);
       } else {
         ctx.lineWidth = 1;
         ctx.strokeStyle = COLORS.slotEdge;
@@ -514,6 +553,51 @@ export function draw(canvas: HTMLCanvasElement, state: RenderState): void {
         ctx.arc(cx, cy - s * 0.25, s * 0.38, Math.PI, 0);
         ctx.stroke();
         ctx.fillRect(cx - s * 0.55, cy - s * 0.25, s * 1.1, s * 0.85);
+        ctx.restore();
+      }
+    }
+  }
+
+  // Battle focus: the front unit on each side is the only one that fights.
+  // Its index is the first living unit in the lane (the queue is contiguous).
+  const frontOf = (side: Side, lane: number) =>
+    board.slots[side][lane].findIndex((u) => !!u && u.hp > 0);
+  if (state.battle) {
+    const e = energy;
+    const breathe = 0.5 + 0.5 * Math.sin(time / 260);
+    // Clash zone: each side's colour glowing toward the centre line.
+    const band = l.rowH * (0.9 + 0.3 * e);
+    const za = ctx.createLinearGradient(0, midY - band, 0, midY);
+    za.addColorStop(0, "rgba(209, 72, 58, 0)");
+    za.addColorStop(1, `rgba(209, 72, 58, ${0.16 + 0.22 * e})`);
+    ctx.fillStyle = za;
+    ctx.fillRect(bx, midY - band, bwid, band);
+    const zb = ctx.createLinearGradient(0, midY, 0, midY + band);
+    zb.addColorStop(0, `rgba(58, 134, 214, ${0.16 + 0.22 * e})`);
+    zb.addColorStop(1, "rgba(58, 134, 214, 0)");
+    ctx.fillStyle = zb;
+    ctx.fillRect(bx, midY, bwid, band);
+    // Halo behind each front unit, in its side's colour.
+    for (let lane = 0; lane < board.lanes; lane++) {
+      for (const side of ["enemy", "player"] as const) {
+        const spot = frontOf(side, lane);
+        if (spot < 0) continue;
+        const row = sideSpotToRow(board, side, spot);
+        const x = l.ox + lane * l.laneW + pad;
+        const y = l.oy + row * l.rowH + pad;
+        const w = l.laneW - pad * 2;
+        const h = l.rowH - pad * 2;
+        const col = side === "player" ? "58, 134, 214" : "209, 72, 58";
+        ctx.save();
+        roundRect(ctx, x, y, w, h, Math.min(w, h) * 0.16);
+        ctx.fillStyle = `rgba(${col}, ${0.08 + 0.05 * breathe + 0.08 * e})`;
+        ctx.shadowColor = `rgba(${col}, 0.9)`;
+        ctx.shadowBlur = 8 + 6 * breathe + 10 * e;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.lineWidth = Math.max(1.5, h * 0.05);
+        ctx.strokeStyle = `rgba(${col}, ${0.55 + 0.3 * breathe})`;
+        ctx.stroke();
         ctx.restore();
       }
     }
@@ -568,7 +652,10 @@ export function draw(canvas: HTMLCanvasElement, state: RenderState): void {
           const v = vis.get(unit.id);
           if (!v) continue;
           if ((v.pose === "attack" ? 1 : 0) !== passIdx) continue;
-          drawUnit(ctx, state, unit, side, lane, v, l, pad, time, animated, reduce);
+          // In battle the queue waits in the half-light; dying units keep
+          // full strength so their fall still reads.
+          const waiting = !!state.battle && unit.hp > 0 && spot !== frontOf(side, lane);
+          drawUnit(ctx, state, unit, side, lane, v, l, pad, time, animated, reduce, waiting);
         }
       }
     }
@@ -632,9 +719,9 @@ function drawDropHints(
       drawCharacter(ctx, {
         key: state.heldKey,
         side: "player",
-        cx: x + h * 0.65,
+        cx: x + h * CHAR_X,
         cy: landY + h / 2,
-        size: h * 0.78,
+        size: h * CHAR_SIZE,
         time,
         pose: "idle",
         t: 0,
@@ -772,6 +859,22 @@ function drawSplitSlot(
   }
 }
 
+/**
+ * Level badge colours, rarity-style. Thresholds come from `pnpm sim`: the
+ * median unit ends a match at level 5, a row's strongest typically reaches 13
+ * (p90 19, p99 26), so purple is a row's star, gold a strong one, red rare.
+ */
+export const LEVEL_TIERS: { from: number; fill: string; ink: string; glow?: string }[] = [
+  { from: 1, fill: "rgba(255, 255, 255, 0.10)", ink: "rgba(236, 232, 245, 0.55)" },
+  { from: 2, fill: "#3fae6a", ink: "#06240f" },
+  { from: 5, fill: "#3a86d6", ink: "#04182c" },
+  { from: 10, fill: "#9a5cf0", ink: "#fff", glow: "rgba(200, 160, 255, 0.9)" },
+  { from: 15, fill: "#f0b429", ink: "#2a1f05", glow: "rgba(255, 226, 122, 0.95)" },
+  { from: 20, fill: "#e5483a", ink: "#fff", glow: "rgba(255, 150, 120, 0.95)" },
+];
+export const levelTier = (level: number) =>
+  [...LEVEL_TIERS].reverse().find((t) => level >= t.from) ?? LEVEL_TIERS[0];
+
 function drawUnit(
   ctx: CanvasRenderingContext2D,
   state: RenderState,
@@ -784,6 +887,7 @@ function drawUnit(
   time: number,
   animated: boolean,
   reduce: boolean,
+  waiting = false,
 ): void {
   const w = l.laneW - pad * 2;
   const h = l.rowH - pad * 2;
@@ -844,7 +948,7 @@ function drawUnit(
   const ccx = x + w / 2;
   const ccy = y + h / 2;
   ctx.save();
-  ctx.globalAlpha = alpha * (lifted ? 0.3 : 1);
+  ctx.globalAlpha = alpha * (lifted ? 0.3 : 1) * (waiting ? 0.5 : 1);
   ctx.translate(ccx + dx, ccy + dy);
   if (scale !== 1) ctx.scale(scale, scale);
   ctx.translate(-ccx, -ccy);
@@ -861,10 +965,9 @@ function drawUnit(
     ctx.shadowBlur = 0;
   }
 
-  // Character. Deliberately a little taller than its slot so it stands out of
-  // the row rather than sitting inside it — at ~35px rows anything smaller
-  // loses the faces and weapons the combat animation relies on.
-  const cx = x + h * 0.65;
+  // Character, sized so body and legs fit inside the row (weapons may still
+  // reach past it). See CHAR_SIZE.
+  const cx = x + h * CHAR_X;
   const cy = y + h / 2;
   ctx.save();
   ctx.translate(bdx, bdy);
@@ -873,7 +976,7 @@ function drawUnit(
     side,
     cx,
     cy,
-    size: h * 0.78,
+    size: h * CHAR_SIZE,
     time,
     pose: v.pose,
     t,
@@ -883,7 +986,7 @@ function drawUnit(
   ctx.restore();
 
     // Name, stats.
-    const tx = x + h * 1.35;
+    const tx = x + h * TEXT_X;
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
     ctx.fillStyle = COLORS.name;
@@ -896,9 +999,29 @@ function drawUnit(
     ctx.fillStyle = COLORS.atkText;
     ctx.fillText(atkLabel, tx, statY);
     ctx.fillStyle = COLORS.hpText;
-    ctx.fillText(`♥${Math.max(0, unit.hp)}`, tx + ctx.measureText(atkLabel).width + h * 0.28, statY);
+    const hpX = tx + ctx.measureText(atkLabel).width + h * 0.28;
+    const hpLabel = `♥${Math.max(0, unit.hp)}`;
+    ctx.fillText(hpLabel, hpX, statY);
+    const statsRight = hpX + ctx.measureText(hpLabel).width;
 
-    // Level badge: every unit starts at Lv1; merged units get the gold fill.
+    // Squire countdown: merges left until knighthood, right-aligned on the
+    // stats line. Shortened, then dropped, when the stats leave no room.
+    const promote = state.promoteIn?.(unit) ?? null;
+    if (promote !== null && promote > 0) {
+      ctx.font = `700 ${Math.round(Math.max(9, h * 0.22))}px system-ui, sans-serif`;
+      const full = `⚜ ${promote} more to Knight`;
+      const short = `⚜ ${promote}`;
+      const room = x + w - pad * 1.5 - statsRight - h * 0.2;
+      const label = ctx.measureText(full).width <= room ? full : ctx.measureText(short).width <= room ? short : null;
+      if (label) {
+        ctx.textAlign = "right";
+        ctx.fillStyle = COLORS.target;
+        ctx.fillText(label, x + w - pad * 1.5, statY);
+        ctx.textAlign = "left";
+      }
+    }
+
+    // Level badge, coloured by tier (LEVEL_TIERS): every unit starts at a faint Lv1.
     ctx.font = `800 ${Math.round(h * 0.22)}px system-ui, sans-serif`;
     const levelLabel = `Lv${levelOf(unit.merges)}`;
     const mergeW = Math.max(h * 0.4, ctx.measureText(levelLabel).width + h * 0.16);
@@ -906,9 +1029,15 @@ function drawUnit(
     {
       const by = y + h * 0.12;
       roundRect(ctx, mergeX, by, mergeW, h * 0.3, h * 0.1);
-      ctx.fillStyle = unit.merges > 0 ? COLORS.target : "rgba(255, 255, 255, 0.14)";
+      const tier = levelTier(levelOf(unit.merges));
+      ctx.fillStyle = tier.fill;
       ctx.fill();
-      ctx.fillStyle = unit.merges > 0 ? "#2a1f05" : COLORS.name;
+      if (tier.glow) {
+        ctx.strokeStyle = tier.glow;
+        ctx.lineWidth = Math.max(1, h * 0.04);
+        ctx.stroke();
+      }
+      ctx.fillStyle = tier.ink;
       ctx.textAlign = "center";
       ctx.fillText(levelLabel, mergeX + mergeW / 2, by + h * 0.16);
       ctx.textAlign = "left";
@@ -964,7 +1093,7 @@ function drawUnit(
         ctx.fillStyle = "#ff4a3a";
         roundRect(ctx, tx, barY, Math.max(barH, barW * frac), barH, r);
         ctx.fill();
-        ctx.globalAlpha = alpha * (lifted ? 0.3 : 1);
+        ctx.globalAlpha = alpha * (lifted ? 0.3 : 1) * (waiting ? 0.5 : 1);
       }
       if (v.flash > 0.01) {
         ctx.globalAlpha *= v.flash;

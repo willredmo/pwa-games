@@ -55,6 +55,37 @@ export const UNITS: Record<string, UnitStats> = {
     role: "Highest attack, very fragile",
     ability: { name: "Overflow", trigger: "On kill", text: "Half the damage beyond a kill (up to 3) carries into the next enemy.", scaling: "Carry-over cap +1 per level" },
   },
+  // The first unit that wants to stand at the back: it never fights well, but
+  // from behind the front it lifts whoever is fighting.
+  herald: {
+    name: "Herald",
+    atk: 1,
+    maxHp: 5,
+    shape: "star",
+    classes: ["herald", "support"],
+    role: "Support: useless in front, lifts the front from behind",
+    ability: { name: "Rally", trigger: "Start of round", text: "If it isn't your front unit, your front unit gains +3 attack for the round.", scaling: "+1 attack every 2 levels" },
+  },
+  // Reaches past the front: every blow it lands also stabs the unit behind.
+  lancer: {
+    name: "Lancer",
+    atk: 3,
+    maxHp: 5,
+    shape: "kite",
+    classes: ["lancer"],
+    role: "Reach: hits the front and the unit behind it",
+    ability: { name: "Impale", trigger: "On hit", text: "Each blow it lands also hits the enemy unit behind the front for 1.", scaling: "+1 pierce damage every 2 levels" },
+  },
+  // Back-row sustain: keeps the front standing from behind.
+  medic: {
+    name: "Medic",
+    atk: 1,
+    maxHp: 6,
+    shape: "cross",
+    classes: ["medic", "support"],
+    role: "Support: heals your front unit from behind",
+    ability: { name: "Mend", trigger: "After each exchange", text: "If it isn't your front unit, your front unit heals 3 (up to 3 times a round).", scaling: "+1 healing every 2 levels" },
+  },
   // The late-game unit: the weakest body in the pool, but its merges escalate
   // (see SQUIRE_STEP) and at KNIGHT_AT merges it is promoted to a Knight.
   squire: {
@@ -158,6 +189,14 @@ export function innateTraits(key: string, merges = 0): UnitTraits {
       return { growOnSurvive: { hp: 1 + Math.floor(m / 2) } };
     case "berserker":
       return { cleave: true, cleaveCap: 3 + m };
+    case "lancer":
+      return { pierce: 1 + Math.floor(m / 2) };
+    case "medic":
+      // Read by combat, which only heals from behind the front.
+      return { mend: 3 + Math.floor(m / 2) };
+    case "herald":
+      // Read by applyAugments, which only credits Heralds behind the front.
+      return { rally: 3 + Math.floor(m / 2) };
     case "squire":
       return { deathBuff: { target: "behind", atk: 1 + Math.floor(m / 2) } };
     case "knight": {

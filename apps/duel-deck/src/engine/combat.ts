@@ -32,6 +32,11 @@ const DEFAULT_TICK_CAP = 200;
 const CLEAVE_MAX = 3;
 /** Damage of a Last Breath parting blow. */
 const LAST_BREATH_DAMAGE = 2;
+/**
+ * Mends per Medic per round. Uncapped, a Medic out-healed a low-attack front's
+ * damage every exchange and the round ran to the tick cap as a draw.
+ */
+const MEND_USES = 3;
 
 /** Round-wide tallies that persist across ticks. */
 interface RoundState {
@@ -43,6 +48,12 @@ interface RoundState {
   dodged: Map<string, number>;
   /** Units that have made their first attack this round (Charge). */
   opened: Set<string>;
+  /** Units each side has lost so far this round (Last light). */
+  fallen: Record<Side, number>;
+  /** Last light attack already granted to each unit this round. */
+  lit: Map<string, number>;
+  /** Mends each Medic has spent this round (capped at MEND_USES). */
+  mends: Map<string, number>;
 }
 
 /** Everything one tick's blows read and write. */
@@ -90,9 +101,19 @@ function livingFront(board: Board, side: Side, lane: number): Unit | null {
   return occupants(board, side, lane).find((u) => u.hp > 0) ?? null;
 }
 
+/** Living units a side has left, across every lane. */
+function livingCount(board: Board, side: Side): number {
+  let n = 0;
+  for (const lane of board.slots[side]) for (const u of lane) if (u && u.hp > 0) n++;
+  return n;
+}
+
 /** Raw damage after the target's reduction (a hit still deals at least 1). */
-function reduced(raw: number, target: Unit): number {
-  const dr = target.traits?.damageReduction ?? 0;
+function reduced(raw: number, target: Unit, board: Board): number {
+  // Holdout: a side's last unit standing shrugs off a little more.
+  const holdout = board.mods?.[target.side]?.holdout ?? 0;
+  const last = holdout > 0 && livingCount(board, target.side) === 1 ? holdout : 0;
+  const dr = (target.traits?.damageReduction ?? 0) + last;
   return dr > 0 && raw > 0 ? Math.max(1, raw - dr) : raw;
 }
 
@@ -126,7 +147,7 @@ function strike(
     }
     return;
   }
-  const damage = reduced(raw, target);
+  const damage = reduced(raw, target, ctx.board);
   const blocked = raw - damage;
   const hpBefore = target.hp;
   target.hp -= damage;
@@ -153,6 +174,17 @@ function strike(
     ctx.after.push(() => {
       const next = nextBehind(ctx.board, target, lane);
       if (next && excess > 0) strike(ctx, lane, attacker, next, excess, "cleave");
+    });
+  }
+
+  // Impale (Lancer): a landed main blow also hits the unit behind the target.
+  // Queued like cleave, so it plays after the main blows; a dodge returned
+  // above, so a miss doesn't impale.
+  const pierce = attacker.traits?.pierce ?? 0;
+  if (isMain && pierce > 0) {
+    ctx.after.push(() => {
+      const next = nextBehind(ctx.board, target, lane);
+      if (next) strike(ctx, lane, attacker, next, pierce, "pierce");
     });
   }
 
@@ -281,8 +313,51 @@ function lifestealHeals(ctx: TickCtx): void {
   }
 }
 
-/** One tick across all contested lanes. Adds to the round tallies in place. */
-function combatTick(
+/**
+ * Last light: once a side is down to one unit, that unit gains attack for
+ * every ally that has fallen this round. Topped up as more fall, never twice
+ * for the same loss. A buff event, so playback shows it like a death buff.
+ */
+function lastLight(board: Board, round: RoundState, events: BattleEvent[]): void {
+  for (const side of SIDES) {
+    const per = board.mods?.[side]?.lastLight ?? 0;
+    if (per <= 0 || livingCount(board, side) !== 1) continue;
+    const u = allUnits(board).find((x) => x.side === side && x.hp > 0);
+    if (!u) continue;
+    const owed = per * round.fallen[side] - (round.lit.get(u.id) ?? 0);
+    if (owed <= 0) continue;
+    round.lit.set(u.id, (round.lit.get(u.id) ?? 0) + owed);
+    u.atk += owed;
+    events.push({ type: "buff", unit: u.id, source: u.id, atk: owed, hp: 0, label: "Last light" });
+  }
+}
+
+/**
+ * Mend (Medic): each living Medic behind its lane's front heals that front,
+ * up to its max HP. After lifesteal, so the front's own healing comes first.
+ */
+function mendHeals(ctx: TickCtx): void {
+  const { board, events } = ctx;
+  for (const side of SIDES) {
+    for (let lane = 0; lane < board.lanes; lane++) {
+      const front = livingFront(board, side, lane);
+      if (!front) continue;
+      for (const u of occupants(board, side, lane)) {
+        const mend = u.traits?.mend ?? 0;
+        if (u === front || u.hp <= 0 || mend <= 0) continue;
+        const used = ctx.round.mends.get(u.id) ?? 0;
+        if (used >= MEND_USES) continue;
+        const gain = Math.min(mend, front.maxHp - front.hp);
+        if (gain <= 0) continue;
+        ctx.round.mends.set(u.id, used + 1);
+        front.hp += gain;
+        events.push({ type: "heal", unit: front.id, amount: gain, source: u.id });
+      }
+    }
+  }
+}
+
+/** One tick across all contested lanes. Adds to the round tallies in place. */function combatTick(
   board: Board,
   lanes: number[],
   events: BattleEvent[],
@@ -306,12 +381,14 @@ function combatTick(
   lastBreaths(ctx);
   flushAfter(ctx); // thorns off last-breath blows
   lifestealHeals(ctx);
+  mendHeals(ctx);
   deathBuffs(ctx);
 
   for (const u of allUnits(board)) {
     if (u.hp <= 0) events.push({ type: "death", unit: u.id, key: u.key, side: u.side });
   }
   // Remove the dead, then slide survivors forward so the next steps up.
+  for (const u of allUnits(board)) if (u.hp <= 0) round.fallen[u.side]++;
   for (const side of SIDES) {
     for (let lane = 0; lane < board.lanes; lane++) {
       const laneArr = board.slots[side][lane];
@@ -321,6 +398,7 @@ function combatTick(
       compactLane(board, side, lane);
     }
   }
+  lastLight(board, round, events);
   return ctx.attempted;
 }
 
@@ -334,6 +412,9 @@ export function resolveRound(input: Board, opts?: { tickCap?: number }): RoundRe
     firstDeathSeen: { player: false, enemy: false },
     dodged: new Map(),
     opened: new Set(),
+    fallen: { player: 0, enemy: 0 },
+    lit: new Map(),
+    mends: new Map(),
   };
   const { damageDealt, kills } = round;
 

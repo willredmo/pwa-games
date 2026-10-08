@@ -167,6 +167,45 @@
   /* One row of cards, held in battle too, so the board never resizes. */
   min-height: 118px;
 }
+/* --- Battle feed: replaces the offer row while a round plays --- */
+.feed {
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem 0.6rem;
+  width: min(100%, 26rem);
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 0.12rem;
+  overflow: hidden;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(20, 18, 31, 0) 0%, rgba(20, 18, 31, 0.7) 100%);
+  border: 1px solid #2c2744;
+  font-size: 0.8rem;
+  line-height: 1.25;
+  color: #c8c2e2;
+}
+.feed__line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity 0.3s;
+}
+.feed__line--idle { color: var(--muted); font-style: italic; }
+.feed__line--death { color: #ff8a7a; font-weight: 700; }
+.feed__line--ability { color: #ffe27a; }
+.feed__line--dodge { color: #9fd8ff; }
+.feed__name { font-weight: 700; }
+.feed__name--player { color: #7db8ff; }
+.feed__name--enemy { color: #ff8577; }
+@media (prefers-reduced-motion: no-preference) {
+  .feed__line:last-child { animation: feed-in 0.25s ease-out; }
+}
+@keyframes feed-in {
+  from { transform: translateY(6px); opacity: 0; }
+}
+
 .hand__empty {
   color: var(--muted);
   font-size: 0.9rem;
@@ -560,16 +599,22 @@
 /* Page background: soft drifting glow behind everything. */
 body { background-color: #12101c; }
 .app { position: relative; isolation: isolate; }
+/* Arena backdrop: the enemy's red light from above and yours from below (the
+   board's own orientation), a faint woven floor, and a vignette to the edges.
+   All gradients, so no image assets. */
 .app::before {
   content: "";
   position: fixed;
-  inset: -20%;
+  inset: 0;
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(40% 35% at 25% 25%, rgba(58, 134, 214, 0.18), transparent 70%),
-    radial-gradient(40% 35% at 78% 70%, rgba(209, 72, 58, 0.14), transparent 70%),
-    radial-gradient(30% 30% at 60% 15%, rgba(240, 180, 41, 0.08), transparent 70%);
+    radial-gradient(70% 40% at 50% -6%, rgba(209, 72, 58, 0.22), transparent 70%),
+    radial-gradient(70% 40% at 50% 106%, rgba(58, 134, 214, 0.24), transparent 70%),
+    radial-gradient(35% 25% at 50% 50%, rgba(141, 123, 255, 0.07), transparent 70%),
+    radial-gradient(130% 95% at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.55) 100%),
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 16px);
 }
 .app__log, .app__hint { overflow-wrap: anywhere; text-align: center; max-width: 94vw; }
 
@@ -589,12 +634,12 @@ body { background-color: #12101c; }
   .app__log, .app__hint { animation: slide-in 0.4s ease-out both; }
 
   .hand .card { animation: deal-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; transition: transform 0.18s, box-shadow 0.18s, opacity 0.3s, filter 0.3s, border-color 0.18s; }
-  .hand .card:nth-child(1) { animation-delay: 0s; }
-  .hand .card:nth-child(2) { animation-delay: 0.07s; }
-  .hand .card:nth-child(3) { animation-delay: 0.14s; }
-  .hand .card:nth-child(4) { animation-delay: 0.21s; }
-  .hand .card:nth-child(5) { animation-delay: 0.28s; }
-  .hand .card:nth-child(n + 6) { animation-delay: 0.35s; }
+  .hand .card-wrap:nth-child(1) .card { animation-delay: 0s; }
+  .hand .card-wrap:nth-child(2) .card { animation-delay: 0.07s; }
+  .hand .card-wrap:nth-child(3) .card { animation-delay: 0.14s; }
+  .hand .card-wrap:nth-child(4) .card { animation-delay: 0.21s; }
+  .hand .card-wrap:nth-child(5) .card { animation-delay: 0.28s; }
+  .hand .card-wrap:nth-child(n + 6) .card { animation-delay: 0.35s; }
   .hand .card:hover:not(:disabled):not(.card--taken):not(.card--selected) {
     transform: translateY(-5px) rotate(-2deg) scale(1.04);
     box-shadow: 0 8px 18px rgba(0, 0, 0, 0.45), 0 0 14px rgba(158, 203, 245, 0.45);
@@ -736,6 +781,7 @@ body { background-color: #12101c; }
 .unit-info__none { color: #9d97b8; font-style: italic; border-top: 1px solid #2f2a45; padding-top: 0.3rem; }
 .reroll-btn { white-space: nowrap; }
 .unit-info--offer { width: 17rem; max-width: calc(100vw - 16px); }
+.unit-info__knight { margin-top: 0.15rem; font-weight: 700; color: #ffd666; }
 .unit-info--pinned { width: 17rem; max-width: calc(100vw - 24px); }
 /* Long-press opens info cards: stop the OS menu / text selection on the game. */
 .app__board, .hand .card { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
@@ -874,8 +920,116 @@ button.menu-item:hover { border-color: #5a5180; }
   /* Five cards across, shrinking to fit. */
   /* min-height = one row of cards, so the board keeps its size in battle. */
   .hand { flex-wrap: nowrap; width: 100%; gap: 0.3rem; min-height: 96px; }
-  .hand .card { flex: 1 1 0; min-width: 0; width: auto; padding: 0.3rem 0.15rem; }
+  .hand .card-wrap { flex: 1 1 0; min-width: 0; }
+  .hand .card { width: 100%; padding: 0.3rem 0.15rem; }
+  .freeze-btn { width: 1.45rem; height: 1.45rem; font-size: 0.75rem; top: -0.4rem; right: -0.3rem; }
   .card__name { font-size: 0.68rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
   .card__stats { font-size: 0.72rem; }
   .pick-row .pick-label { margin: 0.1rem 0; }
+}
+
+/* --- Desktop side panels (#7): only where there's room beside the board --- */
+.side-panel { display: none; }
+@media (min-width: 1100px) {
+  .side-panel {
+    display: block;
+    position: fixed;
+    top: 6.5rem;
+    width: 15rem;
+    max-height: calc(100dvh - 9rem);
+    overflow-y: auto;
+    padding: 0.8rem 0.9rem;
+    border-radius: 12px;
+    background: rgba(24, 21, 36, 0.72);
+    border: 1px solid #2c2744;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    font-size: 0.8rem;
+    text-align: left;
+  }
+  /* Centre column is at most 34rem wide; sit 1rem clear of it. */
+  .side-panel--player { left: calc(50% - 33rem); border-top: 3px solid #3a86d6; }
+  .side-panel--enemy { right: calc(50% - 33rem); border-top: 3px solid #d1483a; }
+}
+.side-panel__title { margin: 0 0 0.4rem; font-size: 1rem; }
+.side-panel--player .side-panel__title { color: #7db8ff; }
+.side-panel--enemy .side-panel__title { color: #ff8577; }
+.side-panel__heading {
+  margin: 0.7rem 0 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.side-panel__empty { margin: 0; color: var(--muted); font-style: italic; }
+.side-panel__upgrades { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; }
+.side-upgrade {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border-left: 3px solid #6b6585;
+}
+.side-upgrade--rare { border-left-color: #3a86d6; }
+.side-upgrade--epic { border-left-color: #9a5cf0; }
+.side-upgrade__head { font-weight: 700; color: var(--fg); }
+.side-upgrade__desc { color: #b4aecb; font-size: 0.74rem; line-height: 1.3; }
+.side-panel__stats { margin: 0; display: grid; gap: 0.25rem; }
+.side-panel__stats div { display: flex; justify-content: space-between; gap: 0.5rem; }
+.side-panel__stats dt { color: var(--muted); }
+.side-panel__stats dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+/* --- Freeze (units and upgrades) --- */
+.card-wrap { position: relative; display: flex; }
+.card-row-wrap { position: relative; }
+.card-row-wrap > .card-row { width: 100%; }
+.freeze-btn {
+  position: absolute;
+  top: -0.45rem;
+  right: -0.4rem;
+  z-index: 2;
+  width: 1.7rem;
+  height: 1.7rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font-size: 0.85rem;
+  line-height: 1;
+  color: #cfe9ff;
+  background: #1c2236;
+  border: 1px solid #3a4a70;
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity 0.15s, transform 0.15s, background 0.15s, box-shadow 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.freeze-btn:hover { opacity: 1; transform: scale(1.08); }
+.freeze-btn:disabled { opacity: 0.3; cursor: default; transform: none; }
+.freeze-btn--on {
+  opacity: 1;
+  color: #06203a;
+  background: radial-gradient(circle at 35% 30%, #e8f7ff, #7cc8ff);
+  border-color: #bfe6ff;
+  box-shadow: 0 0 10px rgba(124, 200, 255, 0.75);
+}
+.freeze-btn--row { top: 0.45rem; right: auto; left: -0.55rem; }
+/* A frozen card: icy rim, frost wash, and a slow shimmer. */
+.card--frozen {
+  border-color: #8fd3ff !important;
+  box-shadow: 0 0 0 1px rgba(143, 211, 255, 0.5), 0 0 14px rgba(124, 200, 255, 0.35);
+  background-image:
+    linear-gradient(160deg, rgba(200, 235, 255, 0.16), rgba(124, 200, 255, 0.04) 55%, rgba(200, 235, 255, 0.12)),
+    repeating-linear-gradient(60deg, rgba(255, 255, 255, 0.05) 0 2px, transparent 2px 9px);
+}
+.card-row--frozen {
+  border-color: #8fd3ff !important;
+  box-shadow: 0 0 0 1px rgba(143, 211, 255, 0.45), 0 0 16px rgba(124, 200, 255, 0.3);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .card--frozen, .card-row--frozen { animation: frost-shimmer 3.2s ease-in-out infinite; }
+}
+@keyframes frost-shimmer {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(143, 211, 255, 0.45), 0 0 10px rgba(124, 200, 255, 0.25); }
+  50% { box-shadow: 0 0 0 1px rgba(191, 230, 255, 0.8), 0 0 18px rgba(124, 200, 255, 0.5); }
 }

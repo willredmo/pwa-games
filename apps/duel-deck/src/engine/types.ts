@@ -8,7 +8,7 @@ export function otherSide(side: Side): Side {
   return side === "player" ? "enemy" : "player";
 }
 
-export type Shape = "circle" | "square" | "triangle" | "diamond" | "hexagon" | "shield";
+export type Shape = "circle" | "square" | "triangle" | "diamond" | "hexagon" | "shield" | "star" | "kite" | "cross";
 
 /** A unit definition (the pool-level template). */
 export interface UnitStats {
@@ -71,6 +71,8 @@ export interface Unit {
 /** One augment's contribution to one unit. */
 export interface AuraDetail {
   id: string;
+  /** Display name when the source isn't an augment (a Herald's rally). */
+  label?: string;
   atk: number;
   hp: number;
   traits?: UnitTraits;
@@ -106,6 +108,15 @@ export interface UnitTraits {
   deathBuff?: { target: "behind" | "allies"; atk?: number; hp?: number };
   /** If it survives a round, permanently gains this (Bulwark's Fortify). */
   growOnSurvive?: { atk?: number; hp?: number };
+  /**
+   * Start of round: the front unit gains this much attack for the round, if
+   * this unit isn't the front itself (Herald's Rally). Several stack.
+   */
+  rally?: number;
+  /** Each landed main blow also hits the enemy unit behind the front for this much (Lancer's Impale). */
+  pierce?: number;
+  /** After each exchange, if this unit isn't the front, it heals the front for this much (Medic's Mend). */
+  mend?: number;
 }
 
 /** A unit's innate ability, for display. Mechanics live in its `traits`. */
@@ -124,6 +135,10 @@ export interface SideMods {
   bounty?: number;
   /** Queue slots this side may use (defaults to board.depth). */
   capacity?: number;
+  /** Last light: attack the side's last unit standing gains per ally fallen this round. */
+  lastLight?: number;
+  /** Holdout: extra damage reduction for the side's last unit standing. */
+  holdout?: number;
 }
 
 /**
@@ -150,7 +165,7 @@ export interface AttackEvent {
   target: string;
   damage: number;
   /** Why this blow happened, when it isn't a plain front-vs-front strike. */
-  tag?: "first-strike" | "cleave" | "thorns" | "last-breath" | "executioner" | "charge" | "dodge";
+  tag?: "first-strike" | "cleave" | "thorns" | "last-breath" | "executioner" | "charge" | "dodge" | "pierce";
   /** Damage soaked by the target's damageReduction (already removed from `damage`). */
   blocked?: number;
   /** Charge bonus included in `damage` (set even when tagged first-strike). */
@@ -160,8 +175,10 @@ export interface AttackEvent {
 export interface BuffEvent {
   type: "buff";
   unit: string;
-  /** The unit whose death caused it. */
+  /** The unit whose death caused it (or, for Last light, the unit itself). */
   source: string;
+  /** Ability name for playback when it isn't a death buff ("Last light"). */
+  label?: string;
   atk: number;
   hp: number;
 }
@@ -169,6 +186,8 @@ export interface HealEvent {
   type: "heal";
   unit: string;
   amount: number;
+  /** Who healed it, when it wasn't its own lifesteal (a Medic's Mend). */
+  source?: string;
 }
 export interface DeathEvent {
   type: "death";

@@ -1087,7 +1087,9 @@ export class FxLayer {
       const big = e.flag;
       const pop = easeOutBack(clamp01(age / (big ? 240 : 180)));
       const st = e.style;
-      const px = e.size * (big ? 0.78 : st === 2 ? 0.3 : 0.52) * Math.max(0.01, pop);
+      // Damage reads at a glance: big enough to see on a phone row, red, with
+      // a heavy outline. Heals, blocks and bounty stay smaller beside it.
+      const px = e.size * (big ? 1.0 : st === 2 ? 0.34 : st === 0 ? 0.78 : 0.56) * Math.max(0.01, pop);
       const rise = easeOutCubic(t) * e.size * (big ? 0.9 : 1.0);
       let x = e.x;
       if (big && t < 0.5) x += Math.sin(age * 0.09) * e.size * 0.05 * (1 - t * 2); // shaky
@@ -1095,17 +1097,28 @@ export class FxLayer {
       ctx.globalAlpha = t < 0.65 ? 1 : 1 - (t - 0.65) / 0.35;
       ctx.font = `900 ${px.toFixed(1)}px system-ui, -apple-system, sans-serif`;
       const text = big ? `☠ −${e.amount}` : st === 1 || st === 3 ? `+${e.amount}` : st === 2 ? `−${e.amount} blocked` : `−${e.amount}`;
-      ctx.lineWidth = Math.max(2, px * 0.2);
-      ctx.strokeStyle = big ? "#4a0f0a" : e.color2;
-      if (st === 0) ctx.strokeStyle = INK;
+      ctx.lineWidth = Math.max(2.5, px * (st === 0 || big ? 0.26 : 0.2));
+      ctx.strokeStyle = big ? "#4a0f0a" : st === 0 ? "#2a0705" : e.color2;
+      // A short red glow as the number pops, fading before it rises away.
+      if ((st === 0 || big) && t < 0.4) {
+        ctx.shadowColor = "rgba(255, 60, 40, 0.9)";
+        ctx.shadowBlur = px * 0.5 * (1 - t / 0.4);
+      }
       ctx.strokeText(text, x, y);
+      ctx.shadowBlur = 0;
       if (big) {
         const g = ctx.createLinearGradient(0, y - px * 0.5, 0, y + px * 0.5);
         g.addColorStop(0, COL.goldLight);
         g.addColorStop(1, "#ff5a43");
         ctx.fillStyle = g;
+      } else if (st === 0) {
+        const g = ctx.createLinearGradient(0, y - px * 0.5, 0, y + px * 0.5);
+        g.addColorStop(0, "#ffd2c9");
+        g.addColorStop(0.45, "#ff5a43");
+        g.addColorStop(1, "#d8261a");
+        ctx.fillStyle = g;
       } else {
-        ctx.fillStyle = st === 0 ? "#fff" : st === 1 ? COL.green : e.color;
+        ctx.fillStyle = st === 1 ? COL.green : e.color;
       }
       ctx.fillText(text, x, y);
     }

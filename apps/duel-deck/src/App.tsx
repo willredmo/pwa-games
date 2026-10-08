@@ -18,11 +18,12 @@ import {
 } from "./engine/board";
 import { resolveRound } from "./engine/combat";
 import { KNIGHTING_BONUS, UNITS, levelOf, mergesInto } from "./engine/units";
-import type { AttackEvent, BattleEvent, Board, RoundResult, Tick, Unit } from "./engine/types";
+import type { AttackEvent, BattleEvent, Board, RoundResult, Side, Tick, Unit } from "./engine/types";
 import {
   AUGMENT_EVERY,
-  AUGMENT_OFFER_COUNT,
+  augmentOfferCount,
   ENEMY,
+  OFFER_COUNT,
   PICK_COUNT,
   PLAYER,
   START_HP,
@@ -53,7 +54,7 @@ import {
 import { settleRound } from "./game/roundEnd";
 
 /** Badge glyph for an augment id — "✦" if an id ever outlives its definition. */
-const auraIcon = (id: string) => getAugment(id)?.icon ?? "✦";
+const auraIcon = (id: string) => getAugment(id)?.icon ?? (id === "herald" ? "📯" : "✦");
 import { cellCenter, draw, pixelToCell, type Cell, type TargetKind } from "./board/render";
 import { POSE_MS, prefersReducedMotion, type Pose, type PoseState } from "./board/anim";
 import { FxLayer, type FxKind } from "./board/fx";
@@ -72,6 +73,7 @@ import {
 import { emptyStats, recordRound, type MatchStats } from "./game/stats";
 import { UpdatePrompt } from "./ui/UpdatePrompt";
 import { MenuPanel } from "./ui/MenuPanel";
+import { SidePanels } from "./ui/SidePanels";
 import "./App.css";
 
 // Battle playback pacing. Each tick is three beats: wind-up (lunge toward the
@@ -113,6 +115,16 @@ const MATCH_KEY = "duel-deck:match";
 const SAVE_VERSION = 6;
 /** Pointer travel before a press becomes a drag rather than a click. */
 const DRAG_THRESHOLD_PX = 4;
+/** Lines kept in the battle feed (the oldest fade out as new ones arrive). */
+const FEED_MAX = 4;
+/** A piece of a feed line: plain text, or a unit name coloured by its side. */
+type FeedPart = string | { text: string; side: Side };
+interface FeedItem {
+  id: number;
+  tone: "hit" | "death" | "ability" | "dodge";
+  parts: FeedPart[];
+}
+
 /** Touch has no hover: holding this long on a unit or offer card opens its info card. */
 const LONG_PRESS_MS = 450;
 
@@ -132,6 +144,8 @@ interface SavedMatch {
   difficulty?: Difficulty;
   /** Running tallies for the end-of-match screen. */
   stats?: MatchStats;
+  /** Unit-offer slots frozen to carry into the next round. */
+  frozen?: number[];
 }
 
 function loadMatch(): SavedMatch | null {
@@ -170,6 +184,8 @@ type Phase = "pick" | "augment" | "battle" | "over";
 interface UndoEntry {
   board: Board;
   usedOffers: number[];
+  /** Taking a frozen card unfreezes it, so undo must put that back. */
+  frozen: number[];
   picksLeft: number;
   /**
    * Merges move augment grants (Last Stand) between unit ids by mutating the
@@ -275,12 +291,29 @@ export default function App() {
   const [saved] = useState(loadMatch);
   const [board, setBoard] = useState<Board>(() => saved?.board ?? newBoard());
   const [round, setRound] = useState(saved?.round ?? 1);
-  const [offer, setOffer] = useState<string[]>(() => saved?.offer ?? rollOffer());
+  const [offer, setOffer] = useState<string[]>(() => saved?.offer ?? rollOffer(OFFER_COUNT, saved?.player));
   const [picksLeft, setPicksLeft] = useState(PICK_COUNT);
   /** Click-selected and awaiting a destination click. Mirrors `drag`. */
   const [selected, setSelected] = useState<Grab | null>(null);
   /** Offer slots already taken this round — each of the 5 is single-use. */
   const [usedOffers, setUsedOffers] = useState<number[]>([]);
+  /**
+   * Freeze: offer slots the player has locked. A frozen card survives rerolls
+   * and carries into the next round's offer in the same slot, until it's taken
+   * (which unfreezes it) or unfrozen. Refs, because startRound is a callback
+   * created once and must read the latest.
+   */
+  const [frozen, setFrozen] = useState<number[]>(() => saved?.frozen ?? []);
+  const frozenRef = useRef(frozen);
+  frozenRef.current = frozen;
+  const offerRef = useRef(offer);
+  offerRef.current = offer;
+  /** The last save, so a freeze toggle can re-save it with the change. */
+  const lastSave = useRef<Omit<SavedMatch, "version"> | null>(null);
+  const save = (s: Omit<SavedMatch, "version">) => {
+    lastSave.current = s;
+    saveMatch(s);
+  };
   const [phase, setPhase] = useState<Phase>(saved?.augmentPending ? "augment" : "pick");
   const [result, setResult] = useState<RoundResult | null>(null);
   const [frames, setFrames] = useState<Frame[]>([]);
@@ -342,7 +375,7 @@ export default function App() {
   };
   const [augOffers, setAugOffers] = useState<AugmentDef[]>(() =>
     saved?.augmentPending
-      ? offerAugments(saved.player, AUGMENT_OFFER_COUNT, upgradeTier(saved.round))
+      ? offerAugments(saved.player, augmentOfferCount(saved.player), upgradeTier(saved.round))
       : [],
   );
   const [lastRound, setLastRound] = useState<string | null>(null);
@@ -385,6 +418,19 @@ export default function App() {
   const [pinned, setPinned] = useState<
     { kind: "unit"; id: string; x: number; y: number } | { kind: "offer"; key: string; x: number; y: number } | null
   >(null);
+  /**
+   * Battle feed: a running account of the round, shown where the offer cards
+   * sit while they're away. Unit names are coloured by side, so "Guard hits
+   * Guard" still reads. Cleared as each battle starts; newest last.
+   */
+  const [feed, setFeed] = useState<FeedItem[]>([]);
+  const feedId = useRef(0);
+  const pushFeed = (tone: FeedItem["tone"], parts: FeedItem["parts"]) =>
+    setFeed((f) => [...f.slice(-(FEED_MAX - 1)), { id: feedId.current++, tone, parts }]);
+  const nameOf = (u: Unit): FeedPart => ({ text: u.name, side: u.side });
+
+  /** The hint line: a click-selection's details card docks just above it. */
+  const hintRef = useRef<HTMLParagraphElement>(null);
   const pinnedRef = useRef(pinned);
   pinnedRef.current = pinned;
   const longPress = useRef<{ timer: number; x: number; y: number } | null>(null);
@@ -440,8 +486,11 @@ export default function App() {
   };
 
   /** Float an ability's name over the unit that used it, so players learn what fired. */
-  const abilityLabel = (b: Board, cell: Cell, name: string) =>
+  const abilityLabel = (b: Board, cell: Cell, name: string) => {
     fxAt(b, cell, "ability-label", { text: `✦ ${name}` });
+    const u = b.slots[cell.side][cell.lane][cell.spot];
+    if (u) pushFeed("ability", [nameOf(u), ` ✦ ${name}`]);
+  };
 
   /** The unit (and its cell) with this id on a board, if it's there. */
   const unitAt = (b: Board, id: string) => {
@@ -620,6 +669,10 @@ export default function App() {
     return null;
   })();
 
+  /** Merges a Squire still needs to be knighted, by its own side's threshold. */
+  const squireToGo = (u: Unit): number | null =>
+    u.key === "squire" ? knightAt(u.side === PLAYER ? playerAug.current : enemyAug.current) - u.merges : null;
+
   viewRef.current = {
     board,
     validTargets,
@@ -634,6 +687,8 @@ export default function App() {
     draggingId: drag?.kind === "unit" ? drag.unitId : null,
     selectedId: !drag && selected?.kind === "unit" ? selected.unitId : null,
     auraIcon,
+    promoteIn: squireToGo,
+    battle: phase === "battle",
   };
 
   // Render loop: draws every frame (also covers resizes, since draw sizes the canvas).
@@ -673,7 +728,9 @@ export default function App() {
 
   // Fresh load with no save: persist the opening pick phase too.
   useEffect(() => {
-    if (!saved) saveMatch({ board, round, offer, player: playerAug.current, enemy: enemyAug.current, difficulty: difficultyRef.current, stats: statsRef.current });
+    const opening = { board, round, offer, player: playerAug.current, enemy: enemyAug.current, difficulty: difficultyRef.current, stats: statsRef.current, frozen, augmentPending: saved?.augmentPending };
+    if (!saved) save(opening);
+    else lastSave.current = opening;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -681,7 +738,10 @@ export default function App() {
     (base: Board, roundNum: number) => {
       const next = refreshed(base);
       scoutRef.current = next;
-      const nextOffer = rollOffer();
+      // Frozen cards keep their slot; the rest are dealt fresh.
+      const keep = frozenRef.current;
+      const prevOffer = offerRef.current;
+      const nextOffer = rollOffer(OFFER_COUNT, playerAug.current).map((k, i) => (keep.includes(i) && prevOffer[i] ? prevOffer[i] : k));
       // Fallen units respawn with the same ids, so a held `dying` pose (its last
       // frame is fully faded) would leave them invisible. Replay their entrance.
       const now = performance.now();
@@ -697,9 +757,9 @@ export default function App() {
       // Upgrade rounds open with the upgrade, so it can shape this round's picks.
       // The pool is never refilled, so an exhausted one just skips the choice.
       const augs = isAugmentRound(roundNum)
-        ? offerAugments(playerAug.current, AUGMENT_OFFER_COUNT, upgradeTier(roundNum))
+        ? offerAugments(playerAug.current, augmentOfferCount(playerAug.current), upgradeTier(roundNum))
         : [];
-      saveMatch({
+      save({
         board: next,
         round: roundNum,
         offer: nextOffer,
@@ -708,6 +768,7 @@ export default function App() {
         augmentPending: augs.length > 0,
         difficulty: difficultyRef.current,
         stats: statsRef.current,
+        frozen: keep,
       });
       setAugOffers(augs);
       setAugRerolls(AUGMENT_REROLLS);
@@ -756,6 +817,7 @@ export default function App() {
   const snapshot = (): UndoEntry => ({
     board,
     usedOffers,
+    frozen,
     picksLeft,
     grants: JSON.parse(JSON.stringify(playerAug.current.grants)),
   });
@@ -772,6 +834,7 @@ export default function App() {
     playerAug.current.grants = prev.grants;
     setBoard(prev.board);
     setUsedOffers(prev.usedOffers);
+    setFrozen(prev.frozen);
     setPicksLeft(prev.picksLeft);
     setSelected(null);
   };
@@ -830,6 +893,7 @@ export default function App() {
       setBoard(next);
       setSelected(null);
       setUsedOffers((u) => [...u, offerIndex]);
+      setFrozen((f) => f.filter((i) => i !== offerIndex));
       setPicksLeft(picksLeft - 1);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1107,18 +1171,38 @@ export default function App() {
    */
   const rerollOffer = () => {
     if (phase !== "pick" || unitRerolls <= 0 || picksLeft <= 0) return;
-    const fresh = rollOffer();
-    setOffer(offer.map((k, i) => (usedOffers.includes(i) ? k : fresh[i])));
+    const fresh = rollOffer(OFFER_COUNT, playerAug.current);
+    setOffer(offer.map((k, i) => (usedOffers.includes(i) || frozen.includes(i) ? k : fresh[i])));
     setUnitRerolls(unitRerolls - 1);
     setRerollN((n) => n + 1);
     setHistory([]);
     setSelected(null);
   };
 
+  /** Freeze or unfreeze an untaken offer card. Saved at once, so a reload keeps it. */
+  const toggleFreeze = (i: number) => {
+    if (phase !== "pick" || usedOffers.includes(i)) return;
+    const next = frozen.includes(i) ? frozen.filter((x) => x !== i) : [...frozen, i];
+    setFrozen(next);
+    if (lastSave.current) save({ ...lastSave.current, frozen: next });
+  };
+
+  /**
+   * Freeze an upgrade to be offered first at the next choice (one at a time:
+   * freezing another moves it). Lives on the player's augment state, which is
+   * saved with the match.
+   */
+  const toggleFreezeAug = (id: string) => {
+    const st = playerAug.current;
+    st.frozen = st.frozen === id ? undefined : id;
+    setAugOffers((o) => [...o]); // re-render the panel
+    if (lastSave.current) save({ ...lastSave.current });
+  };
+
   /** Reroll the upgrade choice: three fresh cards from the unlocked rarities. */
   const rerollAugments = () => {
     if (phase !== "augment" || augRerolls <= 0) return;
-    setAugOffers(offerAugments(playerAug.current, AUGMENT_OFFER_COUNT, upgradeTier(round)));
+    setAugOffers(offerAugments(playerAug.current, augmentOfferCount(playerAug.current), upgradeTier(round)));
     setAugRerolls(augRerolls - 1);
   };
 
@@ -1133,7 +1217,7 @@ export default function App() {
     refreshForRound(next, playerAug.current, enemyAug.current);
     // The upgrade is locked in: re-save without the pending flag, so a reload
     // now resumes in this round's picks rather than offering it again.
-    saveMatch({ board: next, round, offer, player: playerAug.current, enemy: enemyAug.current, difficulty: difficultyRef.current, stats: statsRef.current });
+    save({ board: next, round, offer, player: playerAug.current, enemy: enemyAug.current, difficulty: difficultyRef.current, stats: statsRef.current, frozen });
     setBoard(next);
     setPeeking(false);
     // Scout taken just now applies to this round's picks.
@@ -1154,6 +1238,7 @@ export default function App() {
 
   useEffect(() => {
     if (phase !== "battle" || !result) return;
+    setFeed([]);
     let timer = 0;
     let i = 0;
     /** Delayed fx (extra-hit numbers, heals) — cleared if playback is torn down. */
@@ -1223,7 +1308,7 @@ export default function App() {
       for (const ev of f.events) {
         if (ev.type !== "attack") continue;
         // Cleave / thorns / last breath are side effects, not lunges.
-        if (ev.tag === "cleave" || ev.tag === "thorns" || ev.tag === "last-breath") continue;
+        if (ev.tag === "cleave" || ev.tag === "thorns" || ev.tag === "last-breath" || ev.tag === "pierce") continue;
         setPose(ev.attacker, "attack", POSE_MS.attack);
       }
     };
@@ -1273,18 +1358,21 @@ export default function App() {
         if (!named.has(ev.source)) {
           named.add(ev.source);
           const gain = [ev.atk > 0 ? `+${ev.atk}⚔` : "", ev.hp > 0 ? `+${ev.hp}♥` : ""].filter(Boolean).join(" ");
-          const name = key === "guard" ? "Bodyguard" : key === "squire" ? "Pass the torch" : "Last rally";
-          const scope = key === "knight" ? " all" : "";
-          if (key === "knight") fxAt(f.board, src.cell, "rally");
+          const name = ev.label ?? (key === "guard" ? "Bodyguard" : key === "squire" ? "Pass the torch" : "Last rally");
+          const scope = !ev.label && key === "knight" ? " all" : "";
+          if (key === "knight" || ev.label) fxAt(f.board, src.cell, "rally");
           abilityLabel(f.board, src.cell, `${name} ${gain}${scope}`);
         }
         // Allies receive one after another, so a Last rally can be followed.
         const at = 300 + n++ * 140;
+        // A self-buff (Last light) has nothing to travel: it lands at once.
+        const self = !!ev.label;
         later(at, () => {
+          if (self) return;
           if (key === "guard") fxBetween(f.board, src.cell, cell, "bodyguard");
           else if (key === "squire") fxBetween(f.board, src.cell, cell, "torch");
         });
-        const lands = at + (key === "knight" ? 0 : 520);
+        const lands = at + (key === "knight" || self ? 0 : 520);
         last = Math.max(last, lands);
         later(lands, () => {
           apply(ev);
@@ -1302,7 +1390,7 @@ export default function App() {
     const clash = (f: Frame): number => {
       const all = f.events.filter((e): e is AttackEvent => e.type === "attack");
       const isExtra = (e: AttackEvent) =>
-        e.tag === "cleave" || e.tag === "thorns" || e.tag === "last-breath";
+        e.tag === "cleave" || e.tag === "thorns" || e.tag === "last-breath" || e.tag === "pierce";
       const attacks = all.filter((e) => !isExtra(e));
       /** An in-swing ability fired, so hold the beat long enough to read it. */
       let abilityFired = false;
@@ -1318,6 +1406,21 @@ export default function App() {
           const at = findUnitCell(f.board, ev.target);
           if (at) fxAt(f.board, at, "block", { amount: ev.blocked });
         }
+      }
+      for (const ev of attacks) {
+        const a = unitAt(f.board, ev.attacker)?.unit;
+        const d = unitAt(f.board, ev.target)?.unit;
+        if (a && d) {
+          if (ev.tag === "dodge") pushFeed("dodge", [nameOf(d), " dodges ", nameOf(a)]);
+          else pushFeed("hit", [nameOf(a), " hits ", nameOf(d), ` for ${ev.damage}`]);
+        }
+      }
+      // Deaths from the main blows now; a side hit's victim is announced when
+      // that hit lands, after its own line.
+      const mainKills = new Set(attacks.filter((e) => e.tag !== "dodge" && dying.has(e.target)).map((e) => e.target));
+      for (const id of mainKills) {
+        const u = unitAt(f.board, id)?.unit;
+        if (u) pushFeed("death", ["☠ ", nameOf(u), " falls"]);
       }
       for (const ev of attacks) {
         // Evasion: the target sidesteps — afterimages and "DODGE!", no slash,
@@ -1380,11 +1483,21 @@ export default function App() {
             fxBetween(f.board, from, cell, "overflow");
             abilityLabel(f.board, src.cell, `Overflow ${ev.damage} carries on`);
           } else if (riposte) abilityLabel(f.board, src.cell, `Riposte ${ev.damage} dmg`);
+          else if (ev.tag === "pierce") abilityLabel(f.board, src.cell, `Impale ${ev.damage}`);
         });
         later(lands, () => {
           apply(ev);
-          const kind = ev.tag as "cleave" | "thorns" | "last-breath";
-          fxAt(f.board, kind === "last-breath" ? src.cell : cell, kind);
+          const target = f.board.slots[cell.side][cell.lane][cell.spot];
+          if (target) {
+            const how = ev.tag === "cleave" ? " carries on into " : ev.tag === "thorns" ? " strikes back at " : ev.tag === "pierce" ? " impales " : " lands a parting blow on ";
+            pushFeed("hit", [nameOf(src.unit), how, nameOf(target), ` for ${ev.damage}`]);
+            if (lethal && !mainKills.has(ev.target)) pushFeed("death", ["☠ ", nameOf(target), " falls"]);
+          }
+          if (ev.tag === "pierce") fxAt(f.board, cell, "slash");
+          else {
+            const kind = ev.tag as "cleave" | "thorns" | "last-breath";
+            fxAt(f.board, kind === "last-breath" ? src.cell : cell, kind);
+          }
           if (!dmg.has(ev.target) || overflow) setPose(ev.target, lethal ? "dying" : "hit", lethal ? POSE_MS.dying : POSE_MS.hit);
           fxAt(f.board, cell, "damage", { amount: ev.damage, lethal });
           if (lethal) fxAt(f.board, cell, "death");
@@ -1400,6 +1513,13 @@ export default function App() {
         later(healAt, () => {
           apply(ev);
           fxAt(f.board, cell, "heal", { amount: ev.amount });
+          // A Medic's Mend: name it on the feed (lifesteal heals carry no source).
+          const healer = ev.source ? unitAt(f.board, ev.source)?.unit : undefined;
+          const target = f.board.slots[cell.side][cell.lane][cell.spot];
+          if (healer && target) {
+            fxAt(f.board, findUnitCell(f.board, healer.id) ?? cell, "rally");
+            pushFeed("ability", [nameOf(healer), " mends ", nameOf(target), ` +${ev.amount}♥`]);
+          }
         });
         healAt += 120;
       }
@@ -1445,6 +1565,8 @@ export default function App() {
     posesRef.current = {};
     fxRef.current.clear();
     clearMatch();
+    frozenRef.current = []; // startRound reads the ref before the state lands
+    setFrozen([]);
     setLastRound(null);
     startRound(newBoard(), 1);
   };
@@ -1534,6 +1656,12 @@ export default function App() {
   return (
     <div className="app">
       <UpdatePrompt />
+      <SidePanels
+        player={playerAug.current}
+        enemy={enemyAug.current}
+        stats={statsRef.current}
+        difficulty={DIFFICULTY_LABEL[difficulty]}
+      />
       <header className="app__header">
         <button className="menu-btn" onClick={() => setShowMenu(true)} aria-label="Menu" title="Menu">
           ☰
@@ -1581,6 +1709,8 @@ export default function App() {
             onPeek={() => setPeeking((p) => !p)}
             rerollsLeft={augRerolls}
             onReroll={rerollAugments}
+            frozenId={playerAug.current.frozen}
+            onFreeze={toggleFreezeAug}
           />
         )}
         {phase === "over" && result?.matchWinner && (
@@ -1684,7 +1814,7 @@ export default function App() {
           className={`pick-label${picksLeft > 0 ? " pick-label--open" : " pick-label--done"}`}
         >
           {picksLeft > 0
-            ? `Pick ${picksLeft}${boardFull ? " — row full: merge or replace" : ""}`
+            ? `Pick ${picksLeft}${boardFull ? " · row full" : ""}`
             : "✓ Picks done — arrange your row, then commit"}
         </p>
         {picksLeft > 0 && (
@@ -1706,12 +1836,15 @@ export default function App() {
             const isSelected = selected?.kind === "offer" && selected.index === i;
             const taken = usedOffers.includes(i);
             const spent = taken || picksLeft <= 0;
+            const isFrozen = frozen.includes(i);
             return (
+              // A frozen card keeps its key, so it stays put through a reroll or a
+              // new round instead of being dealt in again like the fresh cards.
+              <div className="card-wrap" key={isFrozen ? `frozen-${key}-${i}` : `${round}-${rerollN}-${key}-${i}`}>
               <button
-                key={`${round}-${rerollN}-${key}-${i}`}
                 className={
                   `card${isSelected ? " card--selected" : ""}` +
-                  `${isDragging ? " card--dragging" : ""}${taken ? " card--taken" : ""}`
+                  `${isDragging ? " card--dragging" : ""}${taken ? " card--taken" : ""}${isFrozen ? " card--frozen" : ""}`
                 }
                 disabled={spent}
                 onPointerDown={(e) => {
@@ -1747,16 +1880,50 @@ export default function App() {
                   </span>
                 )}
               </button>
+              {!taken && (
+                <button
+                  className={`freeze-btn${isFrozen ? " freeze-btn--on" : ""}`}
+                  onClick={() => toggleFreeze(i)}
+                  aria-pressed={isFrozen}
+                  aria-label={`${isFrozen ? "Unfreeze" : "Freeze"} ${u.name}`}
+                  title={isFrozen ? "Frozen: kept for next round. Click to unfreeze" : "Freeze: keep this card for next round"}
+                >
+                  ❄
+                </button>
+              )}
+              </div>
             );
           })
         ) : (
-          <p className="hand__empty">
-            {phase === "battle" ? "Resolving…" : phase === "augment" ? "Choose an upgrade above." : ""}
-          </p>
+          phase === "battle" || phase === "over" ? (
+            <ol className="feed" aria-live="polite">
+              {feed.length === 0 && <li className="feed__line feed__line--idle">⚔ The rows close in…</li>}
+              {feed.map((item, k) => (
+                <li
+                  key={item.id}
+                  className={`feed__line feed__line--${item.tone}`}
+                  style={{ opacity: 0.4 + 0.6 * ((k + 1) / feed.length) }}
+                >
+                  {item.parts.map((p, j) =>
+                    typeof p === "string" ? (
+                      <span key={j}>{p}</span>
+                    ) : (
+                      <span key={j} className={`feed__name feed__name--${p.side}`}>
+                        {p.side === PLAYER ? "Your " : "Enemy "}
+                        {p.text}
+                      </span>
+                    ),
+                  )}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="hand__empty">{phase === "augment" ? "Choose an upgrade above." : ""}</p>
+          )
         )}
       </div>
 
-      <p className="app__hint">
+      <p className="app__hint" ref={hintRef}>
         {phase !== "pick"
           ? ""
           : grab
@@ -1769,15 +1936,25 @@ export default function App() {
       </p>
 
       {/* A hovered offer card's unit: stats and its innate ability. */}
-      {offerInfo && !drag && phase === "pick" && (
+      {offerInfo && !drag && !selected && phase === "pick" && (
         <OfferInfo unitKey={offerInfo.key} x={offerInfo.x} y={offerInfo.y} />
       )}
 
       {/* What's making a hovered unit's numbers what they are. */}
-      {info && !grab && <UnitInfo unit={info.unit} x={info.x} y={info.y} />}
+      {info && !grab && <UnitInfo unit={info.unit} x={info.x} y={info.y} toKnight={squireToGo(info.unit)} />}
+
+      {/* Picked up by a click or tap: its details, docked over the offer row
+          and just above the hint (which carries the outcome warnings), so it
+          never covers the board slots the next tap is aimed at. */}
+      {selected && !drag && phase === "pick" && !pinned && (() => {
+        const dockBottom = window.innerHeight - (hintRef.current?.getBoundingClientRect().top ?? window.innerHeight) + 6;
+        if (selected.kind === "offer") return <OfferInfo unitKey={selected.key} dockBottom={dockBottom} />;
+        const unit = board.slots.player[selected.lane]?.[selected.from];
+        return unit && unit.id === selected.unitId ? <UnitInfo unit={unit} dockBottom={dockBottom} toKnight={squireToGo(unit)} /> : null;
+      })()}
 
       {/* Touch: the long-pressed (or tapped) unit or offer, until the next tap. */}
-      {pinnedUnit && pinned && <UnitInfo unit={pinnedUnit} x={pinned.x} y={pinned.y} pinned />}
+      {pinnedUnit && pinned && <UnitInfo unit={pinnedUnit} x={pinned.x} y={pinned.y} pinned toKnight={squireToGo(pinnedUnit)} />}
       {pinned?.kind === "offer" && phase === "pick" && (
         <OfferInfo unitKey={pinned.key} x={pinned.x} y={pinned.y} />
       )}

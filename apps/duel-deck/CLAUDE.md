@@ -156,6 +156,100 @@ is held by id and read from the live board, so it tracks merges and battle.
 hover is unchanged and is gated on `pointerType === "mouse"`, so a touch drag no
 longer flashes hover cards.
 
+Picking something up by click or tap (a placed unit or an offer) also shows its
+card, for mouse and touch alike: **docked** (`dockBottom`) over the offer row,
+just above the hint line. Not by the pointer, since the next tap is aimed at
+the board, and not over the hint, which carries the replace warning. It is
+`pointer-events: none`, so taps go through, and it goes when the selection does.
+
+### Second wave: Herald, new upgrades, Freeze, AI fit
+- **Herald** (star, 1/5, classes `herald` + `support`): innate `rally` trait.
+  At round start every Herald *behind* the front adds its rally (3, +1 every 2
+  levels) to the front unit's attack (post-pass at the end of `applyAugments`,
+  shown as a "📯 Herald's rally" detail). Sim: 47-48% holder rate, in line with
+  other units. It's the first unit worth buying for the back of the row.
+- **Lancer** (kite, 3/5, class `lancer`): innate `pierce`. Each landed main
+  blow also strikes the unit behind its target for 1 (+1 every 2 levels),
+  queued in `strike` like cleave and tagged `"pierce"`, so a dodge doesn't
+  impale. Played back as a side hit ("Impale N"). Sim 51%. At 3/4 it measured
+  47.5%.
+- **Medic** (cross, 1/6, classes `medic` + `support`): innate `mend`. After
+  each exchange, every living Medic behind its lane's front heals that front
+  3 (+1 every 2 levels), `MEND_USES` = 3 times a round. Uncapped it could
+  out-heal a low-attack front indefinitely and run the round to the tick cap.
+  Heal events carry `source`, which the feed names. Sim 51%. At 2 healing it
+  measured 46%.
+- Lancer and Medic deliberately don't share classes with existing units, so
+  "Strikers and Berserkers" style augments don't silently cover them.
+- **Squire offer weight** (`offerWeight` in match.ts): with nine offered
+  types Squires came up 1 card in 9, rarely reached knighthood and won 36-44%.
+  `rollOffer` is now weighted: Squires `SQUIRE_WEIGHT` 1.3, +`SQUIRE_AUGMENT_WEIGHT`
+  0.5 while that side holds a Squire upgrade, so the upgrades find you Squires.
+  Every caller passes the side's augment state (app, AI, sim). Sim: Squire
+  47.7%, Squire's drill / Early knighthood / Knight's oath 50-51%. At 1.6/0.8
+  Knights became so common their holders won 71%. Knight holders still win ~70%:
+  partly selection (a Knight means the plan already paid off), up from ~60%.
+- **Character size**: `CHAR_SIZE` 0.58 of the slot height (was 0.78) so body
+  and legs fit inside the row; centre `CHAR_X` and text column `TEXT_X` moved in.
+- **MVP tally** (`game/stats.ts`): every tally's `key`/`name`/`merges` is
+  refreshed from the roster each round, so a knighted Squire is credited as a
+  Knight and the result screen shows the MVP's level in its tier colour.
+- **MVP dance**: the result screen's MVP portrait loops the `dance` pose (clock-
+  driven like idle; `UnitPortrait pose`): a hop on every beat, a lean and leg
+  kick to alternating sides, its weapon waved overhead, happy eyes.
+- **New upgrades** (all balanced with `pnpm sim 20000 --aug=random`):
+  Holdout (common, `SideMods.holdout`, last unit takes 2 less per hit, ~45%:
+  rarely decisive, insensitive to size), Full ranks (common, +1 attack if every
+  slot is filled, 53%; +1/+1 measured 58%), Tactician (rare, 4 upgrade cards via
+  `augmentOfferCount`; unmeasurable with random picks), Last light (rare,
+  `SideMods.lastLight`, combat tops the last unit up by 2 attack per fallen ally
+  and emits a labelled buff, 50%), Sabotage (epic, `SABOTAGE_ATK` = 4 off the
+  enemy front at round start, applied in `refreshForRound` after both sides,
+  51.5%), Living fortress (epic, Fortify fires for fallen Bulwarks too, in
+  `settleRound`, 56%; an extra +1 attack measured 59-71%).
+- **Freeze**: offer cards can be frozen (❄ beside each card). A frozen slot
+  survives rerolls and carries into the next round's offer in the same slot,
+  until taken (which unfreezes it; undo restores it) or unfrozen. Saved with
+  the match (`SavedMatch.frozen`), re-saved on each toggle via `lastSave`. One
+  upgrade can be frozen per choice (`AugmentState.frozen`): `offerAugments`
+  deals it first at the next choice, whatever the tier, until taken. Player
+  only; the AI doesn't freeze.
+- **AI fit** (`augmentFit` in match.ts): Normal's unit picks add `FIT_BONUS`
+  (1) per held augment built around a type, so it fields the units its
+  augments need. Skirmisher and Striker upgrades still sit at 44-46%: those
+  units are rarely fielded even so (~10-15% of rows), since a full row merges
+  into types it already owns.
+- **Sim reports** now include unit level percentiles and a per-unit holder
+  win rate (sides fielding that type at match end).
+- **Legs**: every character has two stubby legs with light shoes
+  (`drawLegs` in characters.ts), drawn in upright space behind the body, with
+  an idle shuffle, a scamper when attacking, buckled knees when hit, tucked
+  feet when hopping and a splay when falling. Characters sit 0.12R higher to
+  keep their feet in the row.
+
+### Battle presentation
+- **Damage numbers** (`drawNumbers` in `board/fx.ts`) are large, red-gradient
+  and heavily outlined, with a brief glow; the killing blow is bigger still
+  ("☠ −N"). Heals, blocks and bounty stay smaller beside them.
+- **Battle focus** (`RenderState.battle`): the clash zone glows red above and
+  blue below the centre line, each side's front unit (first living unit in the
+  lane) gets a halo in its colour, and the queue behind it is drawn at half
+  opacity. Dying units keep full opacity so their fall reads.
+- **Battle feed**: while a round plays, the offer row shows the last
+  `FEED_MAX` events: hits, dodges, deaths and every ability label, with unit
+  names coloured by side. Fed from the same playback beats as the effects
+  (`pushFeed` in `clash`, the side-hit sequence and `abilityLabel`), so it is
+  in step with the board. Side-hit victims are announced after their own hit.
+- **Level tiers** (`LEVEL_TIERS` in `board/render.ts`) colour the level badge:
+  1 faint grey, 2 green, 5 blue, 10 purple, 15 gold, 20 red. Set from
+  `pnpm sim`'s level report: median unit ends at 5, a row's strongest at 13
+  (p90 19, p99 ~25).
+- **Empty slots** are a faint wash with a dotted edge and their queue position
+  number, so filled slots stand out. The page backdrop is gradients only:
+  enemy red light from above, yours from below, a woven floor, a vignette.
+- **Side panels** (`ui/SidePanels.tsx`, ≥1100px wide only): your upgrades and
+  match tallies on the left, the enemy's upgrades and difficulty on the right.
+
 ### Augment badges are derived, never stored
 Each augment carries a unique `icon`, and every unit shows the icons of the
 augments currently changing its numbers (`Unit.auras`, augment ids in pick
@@ -224,7 +318,11 @@ so two dodging fronts don't end a round as a draw.
 ### Squire → Knight
 The late-game unit. Player-facing rule: **a Squire is knighted at level 7**
 (`KNIGHT_LEVEL`; level 6 with Early knighthood). Internally that is `KNIGHT_AT`
-= 6 merges. A Squire is the weakest body in the offer (2/4), but its
+= 6 merges. Every Squire, either side, shows the countdown on its row ("⚜ N more
+to Knight", shortened to "⚜ N" or dropped when the stats leave no room) and on
+its info card. Both read `squireToGo` in App.tsx, which uses that side's own
+`knightAt`, so Early knighthood is counted. It reaches the renderer as the
+injected `promoteIn` resolver, like `auraIcon`. A Squire is the weakest body in the offer (2/4), but its
 merges don't use `MERGE_RATIO`: the n-th merge into a Squire line adds
 n × `SQUIRE_STEP` (`engine/units.ts`), so each is bigger than the last. At
 `KNIGHT_AT` merges (`knightAt` — Early knighthood lowers it by one) it is

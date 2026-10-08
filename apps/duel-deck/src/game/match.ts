@@ -16,7 +16,9 @@ import { resolveRound } from "../engine/combat";
 import { KNIGHT_AT, OFFER_KEYS, UNITS, mergesInto } from "../engine/units";
 import type { Board, Side, Unit } from "../engine/types";
 import {
+  SABOTAGE_ATK,
   applyAugments,
+  getAugment,
   hasAugment,
   mergeRatioFor,
   offerAugments,
@@ -54,6 +56,11 @@ export const PICK_COUNT = 2;
 export const AUGMENT_EVERY = 3;
 export const AUGMENT_OFFER_COUNT = 3;
 
+/** Cards on an upgrade choice for this side (Tactician adds one). */
+export function augmentOfferCount(state: AugmentState): number {
+  return AUGMENT_OFFER_COUNT + (hasAugment(state, "tactician") ? 1 : 0);
+}
+
 /** Which upgrade round this is (1 for round 3, 2 for round 6, ...): gates rarity. */
 export function upgradeTier(round: number): number {
   return Math.max(1, Math.floor(round / AUGMENT_EVERY));
@@ -81,11 +88,34 @@ export function newBoard(): Board {
  * with only five unit types, sampling without replacement would offer the whole
  * pool every round and make the pick meaningless.
  */
-export function rollOffer(count = OFFER_COUNT): string[] {
-  return Array.from(
-    { length: count },
-    () => OFFER_KEYS[Math.floor(Math.random() * OFFER_KEYS.length)],
-  );
+export function rollOffer(count = OFFER_COUNT, state?: AugmentState): string[] {
+  const weights = OFFER_KEYS.map((k) => offerWeight(k, state));
+  const total = weights.reduce((a, b) => a + b, 0);
+  return Array.from({ length: count }, () => {
+    let r = Math.random() * total;
+    for (let i = 0; i < OFFER_KEYS.length; i++) {
+      r -= weights[i];
+      if (r < 0) return OFFER_KEYS[i];
+    }
+    return OFFER_KEYS[OFFER_KEYS.length - 1];
+  });
+}
+
+/**
+ * Squires are dealt more often than other units. A Squire only pays off once
+ * six more have been merged into it, so its share of the offer decides whether
+ * knighthood is reachable at all. Each new unit type thinned it (with nine
+ * offered types it fell to 1 card in 9 and Squires won 36%); 1.6 restores the
+ * 1-in-6 share it had among six. Holding a Squire upgrade (Squire's drill,
+ * Early knighthood, Knight's oath) adds SQUIRE_AUGMENT_WEIGHT, so taking one
+ * actually finds you the Squires it's built around.
+ */
+export const SQUIRE_WEIGHT = 1.3;
+export const SQUIRE_AUGMENT_WEIGHT = 0.5;
+export function offerWeight(key: string, state?: AugmentState): number {
+  if (key !== "squire") return 1;
+  const backed = !!state && SQUIRE_AUGMENTS.some((id) => hasAugment(state, id));
+  return SQUIRE_WEIGHT + (backed ? SQUIRE_AUGMENT_WEIGHT : 0);
 }
 
 /**
@@ -157,7 +187,7 @@ export interface AiOptions {
 
 /** Easy: two random cards, placed where they land, no rerolls, no arranging. */
 function easyCommit(board: Board, side: Side, state?: AugmentState): string[] {
-  const offer = rollOffer();
+  const offer = rollOffer(OFFER_COUNT, state);
   const picked: string[] = [];
   const order = offer.map((_, i) => i).sort(() => Math.random() - 0.5);
   for (const i of order) {
@@ -260,9 +290,9 @@ function hardCommit(
     }
     return best;
   };
-  let best = search(rollOffer());
+  let best = search(rollOffer(OFFER_COUNT, state));
   for (let left = unitRerollsFor(state); left > 0 && best && best.score < 0; left--) {
-    const next = search(rollOffer());
+    const next = search(rollOffer(OFFER_COUNT, state));
     if (next && next.score > best.score) best = next;
   }
   if (!best) return [];
@@ -288,14 +318,14 @@ export function aiCommit(
   if (difficulty === "hard" && state && opts.oppAug) {
     return hardCommit(board, side, state, opts.oppAug, opts.scout ?? board);
   }
-  let offer = rollOffer();
+  let offer = rollOffer(OFFER_COUNT, state);
   // Same rerolls as the player: spend them on an offer that's useless to a full
   // row (nothing it can merge into).
   for (let left = state ? unitRerollsFor(state) : UNIT_REROLLS; left > 0; left--) {
     const have = sideUnits(board, side).map((u) => u.key);
     const usable = offer.some((k) => have.some((h) => mergesInto(h, k)));
     if (usable || firstEmptySpot(board, side)) break;
-    offer = rollOffer();
+    offer = rollOffer(OFFER_COUNT, state);
   }
   const available = offer.map((_, i) => i);
   const picked: string[] = [];
@@ -308,6 +338,7 @@ export function aiCommit(
     // the augment rather than the play style.)
     const squireBuild =
       !!state && SQUIRE_AUGMENTS.some((id) => hasAugment(state, id));
+    const fit = augmentFit(state);
     const value = (i: number) => {
       const key = offer[i];
       // Owning a type only matters once the row is full and picks merge.
@@ -318,7 +349,7 @@ export function aiCommit(
         key === "squire"
           ? SQUIRE_PICK_VALUE + (squireBuild ? NUDGE : 0)
           : (AI_UNIT_VALUE[key] ?? 5);
-      return (owns ? 100 : 0) + base;
+      return (owns ? 100 : 0) + base + (key === "squire" ? 0 : (fit.get(key) ?? 0));
     };
     available.sort((a, b) => value(b) - value(a));
     // Best-valued offer that can actually be used, so a full row doesn't waste picks.
@@ -382,6 +413,14 @@ const AUGMENT_SCORE: Record<string, number> = {
   "iron-will": 47,
   scout: 46,
   "shield-wall": 46,
+  // Second wave (sim 2026-10-07, 20k matches, --aug=random). Tactician can't be
+  // measured with random picks (a 4th card adds nothing), so it's a placeholder.
+  "living-fortress": 56,
+  "full-ranks": 53,
+  sabotage: 51,
+  "last-light": 50,
+  holdout: 46,
+  tactician: 48,
 };
 
 /**
@@ -450,7 +489,7 @@ export function aiTakeAugment(
   difficulty: Difficulty = "normal",
 ): string | null {
   const units = sideUnits(board, side);
-  let offer = offerAugments(state, AUGMENT_OFFER_COUNT, upgradeTier(round));
+  let offer = offerAugments(state, augmentOfferCount(state), upgradeTier(round));
   if (difficulty === "easy") {
     // Easy takes a card at random.
     const choice = offer[Math.floor(Math.random() * offer.length)];
@@ -465,7 +504,7 @@ export function aiTakeAugment(
   for (let left = rerolls; left > 0; left--) {
     const top = aiPickAugment(offer, units, board.hp[side]);
     if (!top || aiAugmentScore(top, units, board.hp[side]) >= bar) break;
-    offer = offerAugments(state, AUGMENT_OFFER_COUNT, upgradeTier(round));
+    offer = offerAugments(state, augmentOfferCount(state), upgradeTier(round));
   }
   const choice = aiPickAugment(offer, units, board.hp[side]);
   if (!choice) return null;
@@ -485,6 +524,9 @@ export function aiTakeAugment(
  * suggests), so these are set from the "always take X" sim rather than derived.
  */
 const AI_UNIT_VALUE: Record<string, number> = {
+  herald: 5.4,
+  lancer: 5.6,
+  medic: 5.3,
   guard: 6,
   berserker: 5.8,
   bulwark: 5.5,
@@ -495,6 +537,28 @@ const AI_UNIT_VALUE: Record<string, number> = {
 /** What the AI treats a fresh Squire as worth, on the same scale as AI_UNIT_VALUE. */
 const SQUIRE_PICK_VALUE = 5.6;
 const NUDGE = 1;
+
+/**
+ * How much each unit type is worth extra to a side, given the augments it
+ * holds: FIT_BONUS per held augment built around that type (Adrenaline for
+ * Berserkers, Steady footing for Skirmishers). Augments that touch every unit,
+ * or none, don't tilt picks. Without this the AI took unit-specific augments
+ * and then never fielded the units, so they measured as dead cards.
+ */
+const FIT_BONUS = 1;
+const ALL_TYPES = Object.keys(UNITS).length;
+function augmentFit(state?: AugmentState): Map<string, number> {
+  const fit = new Map<string, number>();
+  if (!state) return fit;
+  for (const id of state.active) {
+    const def = getAugment(id);
+    if (!def) continue;
+    const affects = unitsAffectedBy(def);
+    if (affects.length === 0 || affects.length >= ALL_TYPES) continue;
+    for (const k of affects) fit.set(k, (fit.get(k) ?? 0) + FIT_BONUS);
+  }
+  return fit;
+}
 
 /** Augments that make Squires worth starting (the AI leans in when it has one). */
 const SQUIRE_AUGMENTS = ["squires-drill", "early-knighthood", "knights-oath"];
@@ -532,6 +596,19 @@ export function refreshForRound(
   ensureDepth(board, Math.max(board.mods.player!.capacity!, board.mods.enemy!.capacity!));
   const p = sideUnits(board, PLAYER);
   const e = sideUnits(board, ENEMY);
-  applyAugments(p, playerAug, board.hp.player, e.length);
-  applyAugments(e, enemyAug, board.hp.enemy, p.length);
+  applyAugments(p, playerAug, board.hp.player, e.length, board.mods.player!.capacity!);
+  applyAugments(e, enemyAug, board.hp.enemy, p.length, board.mods.enemy!.capacity!);
+  // Sabotage reaches across: each side's holds the other's front down. After
+  // both sides are computed, since it acts on the opponent's finished stats.
+  if (hasAugment(playerAug, "sabotage")) sabotage(e[0]);
+  if (hasAugment(enemyAug, "sabotage")) sabotage(p[0]);
+}
+
+/** Sabotage's hit on one front unit, badged and itemised like any augment. */
+function sabotage(front: Unit | undefined): void {
+  if (!front) return;
+  const cut = Math.min(SABOTAGE_ATK, front.atk);
+  front.atk -= cut;
+  if (!front.auras.includes("sabotage")) front.auras.push("sabotage");
+  front.auraDetails = [...(front.auraDetails ?? []), { id: "sabotage", atk: -cut, hp: 0 }];
 }

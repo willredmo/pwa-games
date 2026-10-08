@@ -31,6 +31,8 @@ export interface AugmentContext {
   momentum: number; // rounds won, for Momentum
   rally: number; // Berserkers lost, for Berserker's Rally
   kills: number; // enemy units you killed last round, for Overwhelm
+  /** Slots this side may fill this round (Full ranks). */
+  capacity: number;
 }
 
 /** A flat stat delta applied to one unit for the coming round. */
@@ -81,6 +83,11 @@ export interface AugmentState {
   kills: number;
   /** One-time grants baked onto specific units (e.g. Last Stand). */
   grants: Record<string, Grant>; // unitId -> delta
+  /**
+   * An upgrade frozen at a previous choice: offered first at the next one
+   * (if still not held), and kept frozen until taken or unfrozen. Player-only.
+   */
+  frozen?: string;
 }
 
 /**
@@ -483,7 +490,62 @@ export const AUGMENTS: AugmentDef[] = [
     category: "strategy",
     mods: { bounty: 4 },
   },
+
+  // --- Second wave: back-row and endgame play ---
+  {
+    id: "holdout",
+    icon: "🪨",
+    name: "Holdout",
+    description: "While it's your last unit standing, it takes 2 less damage per hit.",
+    category: "combat",
+    mods: { holdout: 2 },
+  },
+  {
+    id: "full-ranks",
+    icon: "🎌",
+    name: "Full ranks",
+    description: "If every slot in your row is filled when the round starts, all units gain +1 attack.",
+    category: "global",
+    effect: (_u, _i, ctx) => (ctx.units.length >= ctx.capacity ? { atk: 1 } : {}),
+  },
+  {
+    id: "tactician",
+    icon: "🧭",
+    name: "Tactician",
+    description: "Upgrade choices show 4 options instead of 3.",
+    category: "strategy",
+    rarity: "rare",
+  },
+  {
+    id: "last-light",
+    icon: "🕯️",
+    name: "Last light",
+    description: "When only one of your units is left standing, it gains +2 attack for every ally that fell this round.",
+    category: "combat",
+    rarity: "rare",
+    mods: { lastLight: 2 },
+  },
+  {
+    id: "sabotage",
+    icon: "🪤",
+    name: "Sabotage",
+    description: "The enemy's front unit loses 4 attack at the start of each round.",
+    category: "strategy",
+    rarity: "epic",
+  },
+  {
+    id: "living-fortress",
+    icon: "⛰️",
+    name: "Living fortress",
+    units: ["bulwark"],
+    description: "Bulwarks' Fortify works even if the Bulwark falls, so every Bulwark hardens every round.",
+    category: "class",
+    rarity: "epic",
+  },
 ];
+
+/** Attack the enemy front loses to Sabotage. */
+export const SABOTAGE_ATK = 4;
 
 const BY_ID = new Map(AUGMENTS.map((a) => [a.id, a]));
 
@@ -500,8 +562,11 @@ export const rarityOf = (a: AugmentDef): Rarity => a.rarity ?? "common";
  * least one card of it, so the second and third upgrade rounds feel different.
  */
 export function offerAugments(state: AugmentState, n: number, tier = 1): AugmentDef[] {
+  // A frozen upgrade leads the offer (whatever its rarity: it was offered once
+  // already) and is kept out of the random draw.
+  const frozen = state.frozen && !state.active.includes(state.frozen) ? getAugment(state.frozen) : undefined;
   const pool = AUGMENTS.filter(
-    (a) => !state.active.includes(a.id) && RARITY_UNLOCK[rarityOf(a)] <= tier,
+    (a) => !state.active.includes(a.id) && a.id !== frozen?.id && RARITY_UNLOCK[rarityOf(a)] <= tier,
   );
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -512,7 +577,8 @@ export function offerAugments(state: AugmentState, n: number, tier = 1): Augment
     const i = pool.findIndex((a) => rarityOf(a) === fresh);
     if (i > 0) pool.unshift(...pool.splice(i, 1));
   }
-  return pool.slice(0, Math.min(n, pool.length));
+  const drawn = pool.slice(0, Math.max(0, Math.min(n - (frozen ? 1 : 0), pool.length)));
+  return frozen ? [frozen, ...drawn] : drawn;
 }
 
 /** Take an augment. Returns the max-HP cost to apply to the player's pool. */
@@ -524,6 +590,7 @@ export function takeAugment(
   const def = getAugment(id);
   if (!def || state.active.includes(id)) return 0;
   state.active.push(id);
+  if (state.frozen === id) state.frozen = undefined;
   def.onPick?.(state, units);
   return def.hpCost ?? 0;
 }
@@ -538,11 +605,13 @@ export function applyAugments(
   state: AugmentState,
   ownHp: number,
   enemyUnitCount: number,
+  capacity = 5,
 ): void {
   const ctx: AugmentContext = {
     units,
     ownHp,
     enemyUnitCount,
+    capacity,
     momentum: state.momentum,
     rally: state.rally,
     kills: state.kills ?? 0,
@@ -592,6 +661,18 @@ export function applyAugments(
     unit.traits = traits;
     unit.auraDetails = details;
   });
+
+  // Herald's Rally: every rallying unit behind the front lifts the front's
+  // attack for the round. After the loop, so it lands on augmented stats.
+  const front = units[0];
+  if (front) {
+    const rally = units.slice(1).reduce((sum, u) => sum + (u.traits?.rally ?? 0), 0);
+    if (rally > 0) {
+      front.atk += rally;
+      if (!front.auras.includes("herald")) front.auras.push("herald");
+      front.auraDetails = [...(front.auraDetails ?? []), { id: "herald", label: "📯 Herald's rally", atk: rally, hp: 0 }];
+    }
+  }
 }
 
 /** Merge `t` into `into`: booleans OR, numbers add, lifesteal takes the max. */
@@ -660,6 +741,8 @@ export function sideModsFor(state: AugmentState): SideMods {
     if (!m) continue;
     if (m.bounty) out.bounty = (out.bounty ?? 0) + m.bounty;
     if (m.capacity) out.capacity = Math.max(out.capacity ?? 0, m.capacity);
+    if (m.lastLight) out.lastLight = (out.lastLight ?? 0) + m.lastLight;
+    if (m.holdout) out.holdout = (out.holdout ?? 0) + m.holdout;
   }
   return out;
 }
@@ -676,8 +759,18 @@ export function mergeRatioFor(state: AugmentState): number {
  * "filter by unit" view can't drift from what the augments actually do.
  * An augment that touches every type — or none (strategy picks) — is general.
  */
+const affectedCache = new Map<string, string[]>();
 export function unitsAffectedBy(def: AugmentDef): string[] {
   if (def.units) return def.units;
+  const cached = affectedCache.get(def.id);
+  if (cached) return cached;
+  const out = probeAffected(def);
+  affectedCache.set(def.id, out);
+  return out;
+}
+
+/** The probe behind unitsAffectedBy (pure, so its result is cached per augment). */
+function probeAffected(def: AugmentDef): string[] {
   const units: Unit[] = UNIT_KEYS.map((key, i) => {
     const st = UNITS[key];
     return {
@@ -686,7 +779,7 @@ export function unitsAffectedBy(def: AugmentDef): string[] {
       atk: st.atk, maxHp: st.maxHp, hp: st.maxHp, auras: [],
     };
   });
-  const ctx: AugmentContext = { units, ownHp: 1, enemyUnitCount: 0, momentum: 99, rally: 99, kills: 99 };
+  const ctx: AugmentContext = { units, ownHp: 1, enemyUnitCount: 0, momentum: 99, rally: 99, kills: 99, capacity: 0 };
   const hit = new Set<string>();
   units.forEach((u, i) => {
     // Front (index 0) and its real queue position, for front-only augments.

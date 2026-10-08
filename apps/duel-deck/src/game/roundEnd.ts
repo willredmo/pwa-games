@@ -47,11 +47,16 @@ export function settleRound(
 
   // Fortify (Bulwark): units that came through the round alive grow
   // permanently — on the committed roster, which the next round is built from.
+  // Living fortress: Fortify fires for fallen Bulwarks too. (An extra +1 attack
+  // on top measured 59-71% holder win rate in the sim.)
+  const fortress = hasAugment(state, "living-fortress");
   const alive = new Set(result.board.slots[side].flat().filter((u) => u).map((u) => u!.id));
   for (const lane of committed.slots[side]) {
     for (const u of lane) {
       const grow = u?.traits?.growOnSurvive;
-      if (!u || !grow || !alive.has(u.id)) continue;
+      if (!u || !grow) continue;
+      const isFortress = fortress && u.key === "bulwark";
+      if (!alive.has(u.id) && !isFortress) continue;
       u.baseAtk += grow.atk ?? 0;
       u.baseMaxHp += grow.hp ?? 0;
     }

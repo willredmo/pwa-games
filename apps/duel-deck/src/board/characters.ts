@@ -63,10 +63,12 @@ function m(c: RGB): string {
 }
 
 /** Top (most forward) extent of each body, in units of R — used for crowns. */
-const TOP: Record<string, number> = { guard: 0.82, striker: 1, skirmisher: 1, bulwark: 0.87, berserker: 1, squire: 0.66, knight: 0.86 };
+const TOP: Record<string, number> = { guard: 0.82, striker: 1, skirmisher: 1, bulwark: 0.87, berserker: 1, squire: 0.66, knight: 0.86, herald: 0.98, lancer: 1, medic: 0.88 };
+/** Lowest (rearmost) extent of each body in local space, in R — where legs go. */
+const BOTTOM: Record<string, number> = { guard: 0.82, striker: 0.8, skirmisher: 1, bulwark: 0.87, berserker: 0.9, squire: 0.78, knight: 0.92, herald: 0.79, lancer: 0.85, medic: 0.88 };
 /** Eye line (local y, in R) and half-spacing. */
-const EYE_Y: Record<string, number> = { guard: -0.1, striker: 0.16, skirmisher: 0.02, bulwark: -0.04, berserker: -0.06, squire: -0.06, knight: -0.12 };
-const EYE_X: Record<string, number> = { guard: 0.3, striker: 0.24, skirmisher: 0.27, bulwark: 0.25, berserker: 0.32, squire: 0.24, knight: 0.26 };
+const EYE_Y: Record<string, number> = { guard: -0.1, striker: 0.16, skirmisher: 0.02, bulwark: -0.04, berserker: -0.06, squire: -0.06, knight: -0.12, herald: 0.02, lancer: 0.02, medic: -0.04 };
+const EYE_X: Record<string, number> = { guard: 0.3, striker: 0.24, skirmisher: 0.27, bulwark: 0.25, berserker: 0.32, squire: 0.24, knight: 0.26, herald: 0.17, lancer: 0.24, medic: 0.19 };
 
 const enum Eye {
   Open,
@@ -114,6 +116,43 @@ function bodyPath(ctx: CanvasRenderingContext2D, key: string, R: number): void {
       ctx.quadraticCurveTo(-hw * 0.8, R * 0.72 * k, -hw, R * 0.12 * k);
       break;
     }
+    case "lancer":
+      // Kite: a point forward, broad shoulders, a flat base.
+      ctx.moveTo(0, -R);
+      ctx.lineTo(R * 0.74, -R * 0.18);
+      ctx.lineTo(R * 0.5, R * 0.85);
+      ctx.lineTo(-R * 0.5, R * 0.85);
+      ctx.lineTo(-R * 0.74, -R * 0.18);
+      break;
+    case "medic": {
+      // A plump, rounded plus.
+      const a = R * 0.4;
+      const e = R * 0.88;
+      const r = R * 0.16;
+      ctx.moveTo(-a + r, -e);
+      ctx.arcTo(a, -e, a, -a, r);
+      ctx.lineTo(a, -a);
+      ctx.arcTo(e, -a, e, a, r);
+      ctx.arcTo(e, a, a, a, r);
+      ctx.lineTo(a, a);
+      ctx.arcTo(a, e, -a, e, r);
+      ctx.arcTo(-a, e, -a, a, r);
+      ctx.lineTo(-a, a);
+      ctx.arcTo(-e, a, -e, -a, r);
+      ctx.arcTo(-e, -a, -a, -a, r);
+      ctx.lineTo(-a, -a);
+      ctx.arcTo(-a, -e, a, -e, r);
+      break;
+    }
+    case "herald":
+      // Five-point star, a point forward; rounded joins keep it friendly.
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + (i * Math.PI) / 5;
+        const r = i % 2 === 0 ? R * 0.98 : R * 0.5;
+        if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+        else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      break;
     case "bulwark":
       for (let i = 0; i < 6; i++) {
         const a = (i * Math.PI) / 3;
@@ -177,6 +216,121 @@ function weapon(
 ): void {
   ctx.lineJoin = "round";
   switch (key) {
+    case "lancer": {
+      // A long lance couched on the right: it thrusts well past the body on an
+      // attack (it reaches the unit behind, after all), with a small pennon.
+      const thrust = -Math.max(0, w) * R * 0.7;
+      ctx.save();
+      ctx.translate(R * 0.62, R * 0.55 + thrust);
+      ctx.rotate(sway * 0.3 - 0.06);
+      if (str > 0.1) {
+        ctx.save();
+        ctx.globalAlpha *= str * 0.5;
+        ctx.strokeStyle = m(WHITE);
+        ctx.lineWidth = lw * 2;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(0, -R * 1.3);
+        ctx.lineTo(0, -R * 0.6);
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.strokeStyle = m(WOOD);
+      ctx.lineWidth = lw * 1.3;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(0, R * 0.2);
+      ctx.lineTo(0, -R * 1.25);
+      ctx.stroke();
+      // Steel point.
+      ctx.beginPath();
+      ctx.moveTo(-R * 0.11, -R * 1.2);
+      ctx.lineTo(0, -R * 1.72);
+      ctx.lineTo(R * 0.11, -R * 1.2);
+      ctx.closePath();
+      ctx.fillStyle = m(STEEL);
+      ctx.strokeStyle = m(STEEL_D);
+      ctx.lineWidth = lw * 0.7;
+      ctx.fill();
+      ctx.stroke();
+      // Pennon below the point.
+      ctx.beginPath();
+      ctx.moveTo(0, -R * 1.18);
+      ctx.lineTo(-R * 0.36 - sway * R, -R * 1.08);
+      ctx.lineTo(0, -R * 0.96);
+      ctx.closePath();
+      ctx.fillStyle = m(P.edge);
+      ctx.fill();
+      ctx.restore();
+      break;
+    }
+    case "medic": {
+      // A short staff topped with a heart that swells as it mends.
+      const lift = Math.max(0, w) * R * 0.2;
+      ctx.save();
+      ctx.translate(R * 0.78, R * 0.42 - lift);
+      ctx.rotate(sway * 0.5);
+      ctx.strokeStyle = m(WOOD);
+      ctx.lineWidth = lw * 1.1;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, -R * 1.05);
+      ctx.stroke();
+      const hs = R * (0.22 + 0.06 * Math.max(0, w) + 0.02 * sway * 10);
+      const hy = -R * 1.12;
+      ctx.beginPath();
+      ctx.moveTo(0, hy + hs * 0.9);
+      ctx.bezierCurveTo(-hs * 1.4, hy - hs * 0.1, -hs * 0.6, hy - hs * 1.1, 0, hy - hs * 0.35);
+      ctx.bezierCurveTo(hs * 0.6, hy - hs * 1.1, hs * 1.4, hy - hs * 0.1, 0, hy + hs * 0.9);
+      ctx.closePath();
+      ctx.fillStyle = m([0xff, 0x6b, 0x8a]);
+      ctx.strokeStyle = m([0x9c, 0x1f, 0x3f]);
+      ctx.lineWidth = lw * 0.7;
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+      break;
+    }
+    case "herald": {
+      // A banner on a pole, right. It doesn't fight: an "attack" raises it high
+      // and the flag snaps forward, cheering the front on.
+      const lift = Math.max(0, w) * R * 0.25;
+      const px = R * 0.78;
+      ctx.save();
+      ctx.translate(px, R * 0.45 - lift);
+      ctx.rotate(sway * 0.6 - Math.max(0, w) * 0.15);
+      ctx.strokeStyle = m(WOOD);
+      ctx.lineWidth = lw * 1.2;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, -R * 1.45);
+      ctx.stroke();
+      // Flag: a swallow-tailed pennant, its tail rippling with the sway.
+      const top = -R * 1.42;
+      const len = R * 0.75;
+      const wave = sway * R * 2.2 + str * R * 0.15;
+      ctx.beginPath();
+      ctx.moveTo(0, top);
+      ctx.quadraticCurveTo(len * 0.5, top - R * 0.08 + wave * 0.4, len, top + wave * 0.6);
+      ctx.lineTo(len * 0.72, top + R * 0.2 + wave * 0.5);
+      ctx.lineTo(len, top + R * 0.42 + wave * 0.6);
+      ctx.quadraticCurveTo(len * 0.5, top + R * 0.34 + wave * 0.4, 0, top + R * 0.42);
+      ctx.closePath();
+      ctx.fillStyle = m(P.edge);
+      ctx.strokeStyle = m(P.dark);
+      ctx.lineWidth = lw * 0.8;
+      ctx.fill();
+      ctx.stroke();
+      // Gold finial.
+      ctx.beginPath();
+      ctx.arc(0, top - R * 0.06, R * 0.08, 0, Math.PI * 2);
+      ctx.fillStyle = m(GOLD);
+      ctx.fill();
+      ctx.restore();
+      break;
+    }
     case "guard": {
       // Kite shield, left.
       ctx.save();
@@ -554,6 +708,64 @@ function drawEyes(
   }
 }
 
+/**
+ * Two stubby legs with round shoes, under the body. Drawn in upright space
+ * (feet always toward screen-bottom, like the faces) and before the body, so
+ * the hips tuck in behind it whatever its shape.
+ *  - stride: -1..1, which foot is lifted (walking / charging)
+ *  - tuck: 0..1, both feet drawn up (hopping)
+ *  - buckle: 0..1, knees give (taking a hit)
+ *  - splay: 0..1, legs kick out (falling)
+ */
+function drawLegs(
+  ctx: CanvasRenderingContext2D,
+  key: string,
+  R: number,
+  P: Palette,
+  bottomOf: Record<string, number>,
+  lw: number,
+  stride: number,
+  tuck: number,
+  buckle: number,
+  splay: number,
+): void {
+  const bottom = (bottomOf[key] ?? 0.9) * R;
+  const hipY = bottom - R * 0.3;
+  const footY = bottom + R * 0.34 * (1 - 0.4 * buckle);
+  const legW = Math.max(lw * 1.8, R * 0.17);
+  ctx.save();
+  ctx.lineCap = "round";
+  for (const i of [-1, 1]) {
+    const x = i * R * 0.28 * (1 + 0.6 * splay);
+    const lift = Math.max(0, i * stride) * R * 0.16 + tuck * R * 0.14;
+    const fy = footY - lift;
+    ctx.beginPath();
+    ctx.moveTo(x * 0.75, hipY);
+    ctx.lineTo(x + i * splay * R * 0.12, fy);
+    // Outlined in the side's trim so legs read against the dark board.
+    ctx.strokeStyle = m(P.edge);
+    ctx.lineWidth = legW + lw * 0.9;
+    ctx.stroke();
+    ctx.strokeStyle = m(P.dark);
+    ctx.lineWidth = legW;
+    ctx.stroke();
+    // Shoe: a rounded oval, toes pointing slightly out.
+    ctx.beginPath();
+    ctx.ellipse(x + i * (R * 0.06 + splay * R * 0.12), fy + R * 0.04, R * 0.18, R * 0.11, i * 0.15, 0, Math.PI * 2);
+    ctx.fillStyle = m(P.edge);
+    ctx.fill();
+    ctx.strokeStyle = m(P.dark);
+    ctx.lineWidth = lw * 0.7;
+    ctx.stroke();
+    // A tiny highlight on the toe cap.
+    ctx.beginPath();
+    ctx.ellipse(x + i * R * 0.12, fy + R * 0.005, R * 0.05, R * 0.028, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 export function drawCharacter(ctx: CanvasRenderingContext2D, o: CharacterOpts): void {
   const { key, pose, t, time, seed } = o;
   const P = o.side === "player" ? PLAYER : ENEMY;
@@ -580,6 +792,11 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: CharacterOpts): 
   let fwd = 0; // local forward offset (negative = forward)
   const sway = Math.sin(time / 520 + phase) * 0.07;
   let eye: Eye = Eye.Open;
+  // Legs: a gentle idle shuffle unless a pose takes them over.
+  let stride = 0.35 * Math.sin(time / 300 + phase);
+  let tuck = 0;
+  let buckle = 0;
+  let splay = 0;
   const period = 3000 + (seed % 7) * 450;
   if ((time + seed * 977) % period < 130) eye = Eye.Closed;
 
@@ -611,6 +828,8 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: CharacterOpts): 
       fwd = R * (0.08 * wind - 0.14 * st);
       bob = 0;
       angry = 1;
+      // A quick charging scamper.
+      stride = Math.sin(t * Math.PI * 6);
       eye = Eye.Open;
       break;
     }
@@ -622,6 +841,8 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: CharacterOpts): 
       tilt = (s > 0 ? 1 : -1) * 0.2 * Math.sin(Math.PI * Math.min(1, t * 1.4)) * (seed % 2 ? 1 : -1);
       bob = 0;
       eye = t < 0.8 ? Eye.Pain : Eye.Closed;
+      buckle = p;
+      stride = 0;
       break;
     }
     case "dying": {
@@ -632,6 +853,8 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: CharacterOpts): 
       sy = 1 - 0.1 * pulse(t * 2);
       bob = R * 0.25 * t;
       eye = Eye.Cross;
+      splay = easeOutCubic(t);
+      stride = 0;
       break;
     }
     case "spawn": {
@@ -661,6 +884,30 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: CharacterOpts): 
       sx = 1 - 0.05 * hop + 0.08 * land * land * land;
       glow = 0.25;
       eye = Eye.Happy;
+      // Feet tuck up at the top of each hop.
+      tuck = hop;
+      stride = 0;
+      break;
+    }
+    case "dance": {
+      // Victory dance, looping on the clock: hop on every beat, lean left and
+      // right on alternate beats, kick the leg on the leaning side, and wave
+      // the weapon overhead. Happy eyes throughout.
+      const beat = time / 380 + phase;
+      const ph = beat - Math.floor(beat);
+      const side = Math.floor(beat) % 2 === 0 ? 1 : -1;
+      const hop = Math.sin(Math.PI * ph);
+      const land = 1 - hop;
+      bob = -hop * R * 0.28;
+      sy = 1 + 0.1 * hop - 0.14 * land * land * land;
+      sx = 1 - 0.06 * hop + 0.12 * land * land * land;
+      tilt = side * 0.2 * hop;
+      w = Math.sin(beat * Math.PI * 2) * 0.9;
+      stride = side * hop;
+      tuck = 0.3 * hop;
+      // A light glow only: a full one floods the disc and hides the kicking legs.
+      glow = 0.08 * hop;
+      eye = Eye.Happy;
       break;
     }
     default:
@@ -670,7 +917,8 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: CharacterOpts): 
   FLASH = flash;
   ctx.save();
   ctx.globalAlpha *= alpha;
-  ctx.translate(o.cx, o.cy + bob * s);
+  // Nudged up a touch so the feet stay inside the row.
+  ctx.translate(o.cx, o.cy - R * 0.12 + bob * s);
   ctx.rotate(tilt);
   ctx.scale(scale * sx, scale * sy);
   ctx.scale(1, s);
@@ -694,6 +942,13 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: CharacterOpts): 
     }
     ctx.restore();
   }
+
+  // Legs, behind the body. Upright space: an enemy's flipped body has its
+  // local top at the bottom of the screen, so its legs hang from TOP.
+  ctx.save();
+  ctx.scale(1, s);
+  drawLegs(ctx, key, R, P, s > 0 ? BOTTOM : TOP, lw, stride, tuck, buckle, splay);
+  ctx.restore();
 
   // Body.
   bodyPath(ctx, key, R);

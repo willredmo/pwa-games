@@ -531,3 +531,13 @@
 }
 .unit-entry__ability-text { flex-basis: 100%; color: #e3dff2; }
 .unit-entry__ability-scaling { flex-basis: 100%; font-size: 0.74rem; font-weight: 700; color: #5fe08f; }
+
+.result-mvp__level {
+  display: inline-block;
+  margin-left: 0.3rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  vertical-align: middle;
+}

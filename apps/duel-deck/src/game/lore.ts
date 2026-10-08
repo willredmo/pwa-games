@@ -9,6 +9,30 @@ export interface UnitLore {
 }
 
 export const UNIT_LORE: Record<string, UnitLore> = {
+  lancer: {
+    title: "The Long Reach",
+    story:
+      "Lancers were cut from the same stone as Strikers, then filed into kites so they " +
+      "could carry a weapon twice their height. A Lancer's blow goes straight through the " +
+      "front of the enemy queue and into whoever is hiding behind it. They say every Bulwark " +
+      "has a recurring dream, and there is a Lancer in it.",
+  },
+  medic: {
+    title: "The Steady Hand",
+    story:
+      "Medics are crosses because they were made to stand where lines meet. A Medic never " +
+      "asks to be at the front. It stays one step behind, staff raised, and patches up whoever " +
+      "is holding the line, three times a round and not once more, because even a Medic has " +
+      "to breathe. Put one in front and it apologises a lot.",
+  },
+  herald: {
+    title: "Voice of the Row",
+    story:
+      "Heralds are stars because they were cut to be seen from far away. A Herald has " +
+      "never won a fight and doesn't plan to start. It stands at the back of the queue with " +
+      "its banner up and shouts the front unit's name until the front unit believes it. " +
+      "Put a Herald in front and it simply waves the flag at the enemy, which helps nobody.",
+  },
   guard: {
     title: "The Square Oath",
     story:

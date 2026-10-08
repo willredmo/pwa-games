@@ -7,8 +7,11 @@ import { sideUnits } from "../engine/board";
 
 /** One unit's contribution over the match. Ids survive respawns and merges. */
 export interface UnitTally {
+  /** Type and name as of its latest round, so a knighted Squire reads as a Knight. */
   key: string;
   name: string;
+  /** Merges as of its latest round, for its level. Absent in older saves. */
+  merges?: number;
   damage: number;
   kills: number;
 }
@@ -84,8 +87,18 @@ export function recordRound(
   const tally = (id: string): UnitTally | null => {
     const u = mine.get(id);
     if (!u) return null;
-    return (stats.units[id] ??= { key: u.key, name: u.name, damage: 0, kills: 0 });
+    return (stats.units[id] ??= { key: u.key, name: u.name, merges: u.merges, damage: 0, kills: 0 });
   };
+  // Units change between rounds (merges, knighthood): keep every tally current,
+  // not just the ones that struck this round.
+  for (const u of mine.values()) {
+    const t = stats.units[u.id];
+    if (t) {
+      t.key = u.key;
+      t.name = u.name;
+      t.merges = u.merges;
+    }
+  }
   /** Opening blows already counted as a Charge this round. */
   const charged = new Set<string>();
   for (const tick of result.ticks) {

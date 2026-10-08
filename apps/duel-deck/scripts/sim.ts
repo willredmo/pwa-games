@@ -12,7 +12,7 @@
 import { cloneBoard, sideUnits } from "../src/engine/board";
 import { resolveRound } from "../src/engine/combat";
 import type { Side } from "../src/engine/types";
-import { newBoard, aiCommit, type Difficulty, aiPickAugment, aiTakeAugment, isAugmentRound, refreshForRound, upgradeTier, AUGMENT_OFFER_COUNT } from "../src/game/match";
+import { newBoard, aiCommit, type Difficulty, aiPickAugment, aiTakeAugment, isAugmentRound, refreshForRound, upgradeTier, augmentOfferCount } from "../src/game/match";
 import { createAugmentState, offerAugments, takeAugment, AUGMENTS } from "../src/game/augments";
 import { settleRound } from "../src/game/roundEnd";
 
@@ -43,6 +43,11 @@ let capHits = 0, totRounds = 0, totDraws = 0, zeroDmg = 0;
 const MAXR = 10; // rounds >= MAXR bucketed together
 const byRound = Array.from({ length: MAXR + 1 }, () => ({ n: 0, draws: 0, dmg: 0 }));
 const augWin: Record<string, [number, number]> = {};
+// Unit levels (merges + 1) on each row at match end, and each row's highest.
+const endLevels: number[] = [];
+// Per unit type: [matches won, matches] for sides fielding it at match end.
+const unitWin: Record<string, [number, number]> = {};
+const topLevels: number[] = [];
 for (const a of AUGMENTS) augWin[a.id] = [0, 0];
 
 for (let i = 0; i < N; i++) {
@@ -58,7 +63,7 @@ for (let i = 0; i < N; i++) {
     // mode picks blind, for unbiased per-augment win rates.
     if (isAugmentRound(r)) for (const s of SIDES) {
       if (augMode === "ai") { aiTakeAugment(c, s, aug[s], r, diff[s]); continue; }
-      const ch = pickAug(offerAugments(aug[s], AUGMENT_OFFER_COUNT, upgradeTier(r)));
+      const ch = pickAug(offerAugments(aug[s], augmentOfferCount(aug[s]), upgradeTier(r)));
       if (ch) { const k = takeAugment(aug[s], ch.id, sideUnits(c, s)); if (k) c.hp[s] = Math.max(1, c.hp[s] - k); }
     }
     // Hard scouts the rows as they stood before either side picked.
@@ -90,6 +95,16 @@ for (let i = 0; i < N; i++) {
     if (mw) { winner = mw; break; }
     board = cloneBoard(c); board.hp = hp;
   }
+  for (const s of SIDES) {
+    for (const k of new Set(sideUnits(board, s).map((u) => u.key))) {
+      const t = (unitWin[k] ??= [0, 0]);
+      t[1]++;
+      if (winner === s) t[0]++;
+    }
+    const lv = sideUnits(board, s).map((u) => u.merges + 1);
+    endLevels.push(...lv);
+    if (lv.length) topLevels.push(Math.max(...lv));
+  }
   rounds.push(r); totRounds += r;
   if (winner) sideWins[winner]++;
   if (!winner) capHits++;
@@ -105,6 +120,13 @@ console.log(`rounds/match: p10 ${pct(0.1)} median ${pct(0.5)} p90 ${pct(0.9)} ma
 console.log(`draw rounds: ${f(100 * totDraws / totRounds)}%   zero-damage rounds: ${f(100 * zeroDmg / totRounds)}%   cap hits: ${capHits}`);
 console.log("by round:");
 byRound.forEach((b, r) => { if (r && b.n) console.log(`  r${String(r).padEnd(3)}${r === MAXR ? "+" : " "} draws ${f(100 * b.draws / b.n, 0).padStart(3)}%  avg dmg ${f(b.dmg / b.n).padStart(5)}  (n=${b.n})`); });
+const q = (xs: number[], p: number) => xs[Math.min(xs.length - 1, Math.floor(p * xs.length))];
+endLevels.sort((a, b) => a - b); topLevels.sort((a, b) => a - b);
+console.log(`unit level at match end: median ${q(endLevels, 0.5)} p75 ${q(endLevels, 0.75)} p90 ${q(endLevels, 0.9)} p99 ${q(endLevels, 0.99)} max ${endLevels[endLevels.length - 1]}`);
+console.log(`row's top level:       median ${q(topLevels, 0.5)} p75 ${q(topLevels, 0.75)} p90 ${q(topLevels, 0.9)} p99 ${q(topLevels, 0.99)} max ${topLevels[topLevels.length - 1]}`);
+console.log("unit holder win rate (fielded at match end):");
+for (const [k, [w, n]] of Object.entries(unitWin).sort((a, b) => b[1][0] / b[1][1] - a[1][0] / a[1][1]))
+  console.log(`  ${k.padEnd(20)} ${f(100 * w / n)}%  (n=${n})`);
 console.log("augment holder win rate:");
 for (const [id, [w, n]] of Object.entries(augWin).sort((a, b) => (b[1][0] / (b[1][1] || 1)) - (a[1][0] / (a[1][1] || 1))))
   console.log(`  ${id.padEnd(20)} ${n ? f(100 * w / n) + "%" : "n/a"}  (n=${n})`);
