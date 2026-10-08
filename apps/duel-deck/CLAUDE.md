@@ -222,10 +222,12 @@ the board, and not over the hint, which carries the replace warning. It is
 - **Sim reports** now include unit level percentiles and a per-unit holder
   win rate (sides fielding that type at match end).
 - **Legs**: every character has two stubby legs with light shoes
-  (`drawLegs` in characters.ts), drawn in upright space behind the body, with
+  (`drawLegs` in characters.ts), drawn behind the body, with
   an idle shuffle, a scamper when attacking, buckled knees when hit, tucked
   feet when hopping and a splay when falling. Characters sit 0.12R higher to
-  keep their feet in the row.
+  keep their feet in the row. Enemies are drawn upright too (they used to be
+  flipped vertically, which read as upside down once they had legs); only the
+  forward lunge offset (`fwd * s`) points toward the opponent.
 
 ### Battle presentation
 - **Damage numbers** (`drawNumbers` in `board/fx.ts`) are large, red-gradient

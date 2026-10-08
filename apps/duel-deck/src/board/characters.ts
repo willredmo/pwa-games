@@ -12,9 +12,9 @@ import {
 // Procedural unit characters: flat vector shapes with eyes, a weapon and a
 // pose-driven animation. Pure function of its options — no internal state.
 //
-// Local space: origin at the unit centre, "forward" is -y. Body and weapons are
-// drawn in a context flipped for enemies so forward maps to screen-down; faces
-// are drawn through `Y()` so they stay upright.
+// Local space: origin at the unit centre, up is -y. Both sides are drawn upright
+// (enemies used to be flipped, which read as upside down once units had legs);
+// only the forward lunge offset points toward the opponent.
 
 export interface CharacterOpts {
   /** Unit type: "guard" | "striker" | "skirmisher" | "bulwark" | "berserker". */
@@ -769,7 +769,10 @@ function drawLegs(
 export function drawCharacter(ctx: CanvasRenderingContext2D, o: CharacterOpts): void {
   const { key, pose, t, time, seed } = o;
   const P = o.side === "player" ? PLAYER : ENEMY;
-  const s = o.side === "player" ? 1 : -1; // y-flip for the enemy
+  // Which way is forward on screen: up for the player, down for the enemy.
+  // Only motion uses it (the lunge offset). Bodies, weapons, faces and legs are
+  // drawn upright for both sides: with legs, a flipped enemy read as upside down.
+  const s = o.side === "player" ? 1 : -1;
   // Body radius as a share of the box. The rest is headroom for weapons; kept
   // small so the body itself reads large on short rows.
   const R = o.size * 0.72;
@@ -918,11 +921,11 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: CharacterOpts): 
   ctx.save();
   ctx.globalAlpha *= alpha;
   // Nudged up a touch so the feet stay inside the row.
-  ctx.translate(o.cx, o.cy - R * 0.12 + bob * s);
+  ctx.translate(o.cx, o.cy - R * 0.12 + bob);
   ctx.rotate(tilt);
   ctx.scale(scale * sx, scale * sy);
-  ctx.scale(1, s);
-  ctx.translate(0, fwd);
+  // Forward motion (wind-up, follow-through) heads toward the opponent.
+  ctx.translate(0, fwd * s);
 
   // Tier aura (behind everything).
   const tier = Math.min(Math.max(o.merges, 0), 5);
@@ -943,12 +946,8 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: CharacterOpts): 
     ctx.restore();
   }
 
-  // Legs, behind the body. Upright space: an enemy's flipped body has its
-  // local top at the bottom of the screen, so its legs hang from TOP.
-  ctx.save();
-  ctx.scale(1, s);
-  drawLegs(ctx, key, R, P, s > 0 ? BOTTOM : TOP, lw, stride, tuck, buckle, splay);
-  ctx.restore();
+  // Legs, behind the body.
+  drawLegs(ctx, key, R, P, BOTTOM, lw, stride, tuck, buckle, splay);
 
   // Body.
   bodyPath(ctx, key, R);
@@ -1006,10 +1005,9 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: CharacterOpts): 
     ctx.fill();
   }
 
-  // Weapon, then face (upright via s).
+  // Weapon, then face.
   weapon(ctx, key, R, P, w, sway, str, lw);
-  ctx.scale(1, s);
-  drawEyes(ctx, key, R, s, eye, angry, lw);
+  drawEyes(ctx, key, R, 1, eye, angry, lw);
 
   ctx.restore();
 }
