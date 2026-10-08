@@ -259,11 +259,12 @@ export const AUGMENTS: AugmentDef[] = [
     id: "mixed-formation",
     icon: "🎲",
     name: "Mixed formation",
-    description: "+1 attack/+1 health to all units, if you have 4+ unit types.",
+    // 5 types, not 4: with nine offered types 4 came too easily (54.7%).
+    description: "+1 attack/+1 health to all units, if you have 5+ unit types.",
     category: "synergy",
     effect: (_u, _i, ctx) => {
       const types = new Set(ctx.units.map((x) => x.key));
-      return types.size >= 4 ? { atk: 1, hp: 1 } : {};
+      return types.size >= 5 ? { atk: 1, hp: 1 } : {};
     },
   },
   {

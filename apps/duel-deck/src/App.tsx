@@ -1170,7 +1170,9 @@ export default function App() {
    * the history's offer indices would point at the old cards.
    */
   const rerollOffer = () => {
-    if (phase !== "pick" || unitRerolls <= 0 || picksLeft <= 0) return;
+    // Allowed after both picks too: rerolling then is a look at more cards, to
+    // freeze any worth keeping for next round.
+    if (phase !== "pick" || unitRerolls <= 0) return;
     const fresh = rollOffer(OFFER_COUNT, playerAug.current);
     setOffer(offer.map((k, i) => (usedOffers.includes(i) || frozen.includes(i) ? k : fresh[i])));
     setUnitRerolls(unitRerolls - 1);
@@ -1815,14 +1817,20 @@ export default function App() {
         >
           {picksLeft > 0
             ? `Pick ${picksLeft}${boardFull ? " · row full" : ""}`
-            : "✓ Picks done — arrange your row, then commit"}
+            : unitRerolls > 0
+              ? "✓ Picks done · ❄ freeze for next round"
+              : "✓ Picks done — arrange your row, then commit"}
         </p>
-        {picksLeft > 0 && (
+        {(picksLeft > 0 || unitRerolls > 0) && (
           <button
             className="ghost-btn ghost-btn--sm reroll-btn"
             onClick={rerollOffer}
             disabled={unitRerolls <= 0}
-            title="Swap the cards you haven't taken for new ones"
+            title={
+              picksLeft > 0
+                ? "Swap the cards you haven't taken (or frozen) for new ones"
+                : "Picks done: reroll to find cards worth freezing for next round"
+            }
           >
             🎲 Reroll ({unitRerolls})
           </button>

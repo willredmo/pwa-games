@@ -111,7 +111,7 @@ export function rollOffer(count = OFFER_COUNT, state?: AugmentState): string[] {
  * actually finds you the Squires it's built around.
  */
 export const SQUIRE_WEIGHT = 1.3;
-export const SQUIRE_AUGMENT_WEIGHT = 0.5;
+export const SQUIRE_AUGMENT_WEIGHT = 0.2;
 export function offerWeight(key: string, state?: AugmentState): number {
   if (key !== "squire") return 1;
   const backed = !!state && SQUIRE_AUGMENTS.some((id) => hasAugment(state, id));
@@ -252,6 +252,8 @@ function scoreRow(
   else if (res.roundWinner === opp) score -= 20 + res.hpLoss;
   // Survivors' attack also covers a draw-ish wipe: more left standing is better.
   score += (res.survivors?.ids.length ?? 0) * (res.roundWinner === side ? 1 : 0);
+  // Weighting this tie-break up (0.4), or adding a bonus per merge, measured
+  // worse for Hard (53-55% vs 60% against Normal): the round result is what counts.
   for (const u of sideUnits(cand, side)) score += (u.baseAtk + u.baseMaxHp) * 0.15;
   return score;
 }
@@ -268,6 +270,14 @@ function hardCommit(
   oppAug: AugmentState,
   scout: Board,
 ): string[] {
+  // The scouted row is the opponent's at the start of the round; by the fight
+  // it has two more picks. Predict them the way Normal would (no hidden
+  // information: a guess from the same visible row, on cards Hard rolls itself)
+  // and score each candidate against both rows. Sim: Hard beats Normal 68%,
+  // up from 55-60% scoring against the start-of-round row alone.
+  const opp: Side = side === PLAYER ? ENEMY : PLAYER;
+  const predicted = cloneBoard(scout);
+  aiCommit(predicted, opp, oppAug, { difficulty: "normal" });
   const search = (offer: string[]) => {
     let best: { score: number; board: Board; picked: string[] } | null = null;
     for (let i = 0; i < offer.length; i++) {
@@ -282,7 +292,8 @@ function hardCommit(
           for (const formation of FORMATIONS) {
             const arranged = cloneBoard(cand);
             arrange(arranged, side, formation);
-            const score = scoreRow(arranged, side, state, oppAug, scout);
+            const score =
+              (scoreRow(arranged, side, state, oppAug, scout) + scoreRow(arranged, side, state, oppAug, predicted)) / 2;
             if (!best || score > best.score) best = { score, board: arranged, picked };
           }
         }
@@ -536,7 +547,12 @@ const AI_UNIT_VALUE: Record<string, number> = {
 
 /** What the AI treats a fresh Squire as worth, on the same scale as AI_UNIT_VALUE. */
 const SQUIRE_PICK_VALUE = 5.6;
-const NUDGE = 1;
+/**
+ * Extra pick value for a Squire while holding a Squire upgrade. 1 had the AI's
+ * Squire upgrades winning 63-65% (50-51% when picked at random); 0.5, with
+ * SQUIRE_AUGMENT_WEIGHT 0.2, brings them to 55-58%.
+ */
+const NUDGE = 0.5;
 
 /**
  * How much each unit type is worth extra to a side, given the augments it

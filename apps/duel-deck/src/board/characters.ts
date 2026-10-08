@@ -5,6 +5,7 @@ import {
   easeInOutSine,
   easeOutBack,
   easeOutCubic,
+  prefersReducedMotion,
   pulse,
   type Pose,
 } from "./anim";
@@ -899,13 +900,15 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: CharacterOpts): 
       const beat = time / 380 + phase;
       const ph = beat - Math.floor(beat);
       const side = Math.floor(beat) % 2 === 0 ? 1 : -1;
-      const hop = Math.sin(Math.PI * ph);
+      // Half strength when the device asks for reduced motion.
+      const amp = prefersReducedMotion() ? 0.5 : 1;
+      const hop = Math.sin(Math.PI * ph) * amp;
       const land = 1 - hop;
       bob = -hop * R * 0.28;
       sy = 1 + 0.1 * hop - 0.14 * land * land * land;
       sx = 1 - 0.06 * hop + 0.12 * land * land * land;
       tilt = side * 0.2 * hop;
-      w = Math.sin(beat * Math.PI * 2) * 0.9;
+      w = Math.sin(beat * Math.PI * 2) * 0.9 * amp;
       stride = side * hop;
       tuck = 0.3 * hop;
       // A light glow only: a full one floods the disc and hides the kicking legs.

@@ -185,8 +185,10 @@ the board, and not over the hint, which carries the replace warning. It is
   types Squires came up 1 card in 9, rarely reached knighthood and won 36-44%.
   `rollOffer` is now weighted: Squires `SQUIRE_WEIGHT` 1.3, +`SQUIRE_AUGMENT_WEIGHT`
   0.5 while that side holds a Squire upgrade, so the upgrades find you Squires.
-  Every caller passes the side's augment state (app, AI, sim). Sim: Squire
-  47.7%, Squire's drill / Early knighthood / Knight's oath 50-51%. At 1.6/0.8
+  Every caller passes the side's augment state (app, AI, sim). SQUIRE_AUGMENT_WEIGHT
+  was then cut 0.5 -> 0.2 and the AI's Squire `NUDGE` 1 -> 0.5: under AI picks the
+  Squire upgrades had reached 63-65% (stacked offer weight + pick nudge), now
+  55-58%; with random picks 48-51%. Sim: Squire 47.7%. At 1.6/0.8
   Knights became so common their holders won 71%. Knight holders still win ~70%:
   partly selection (a Knight means the plan already paid off), up from ~60%.
 - **Character size**: `CHAR_SIZE` 0.58 of the slot height (was 0.78) so body
@@ -196,7 +198,13 @@ the board, and not over the hint, which carries the replace warning. It is
   Knight and the result screen shows the MVP's level in its tier colour.
 - **MVP dance**: the result screen's MVP portrait loops the `dance` pose (clock-
   driven like idle; `UnitPortrait pose`): a hop on every beat, a lean and leg
-  kick to alternating sides, its weapon waved overhead, happy eyes.
+  kick to alternating sides, its weapon waved overhead, happy eyes. It plays
+  under prefers-reduced-motion too, at half amplitude (other portraits go
+  still), and draws into a `bleed` margin past its box so it isn't clipped.
+- **Reroll after picks**: the unit reroll stays available once both picks are
+  made, to find cards worth freezing for next round.
+- **Mixed formation** needs 5 unit types (was 4; with nine offered types 4 came
+  too easily, 54.7%). Now 49%.
 - **New upgrades** (all balanced with `pnpm sim 20000 --aug=random`):
   Holdout (common, `SideMods.holdout`, last unit takes 2 less per hit, ~45%:
   rarely decisive, insensitive to size), Full ranks (common, +1 attack if every
@@ -394,7 +402,11 @@ it. The last choice is remembered (`duel-deck:difficulty`) for the next match. `
   the start of the round — never this round's picks) and keeps the best. It
   rerolls when even the best line loses, and gets one extra upgrade reroll
   with a higher reroll bar.
-Sim (`--player=` / `--enemy=`): Normal beats Easy ~92%; Hard beats Normal ~68%.
+Hard also predicts the opponent's two picks this round (Normal's logic run on
+the scouted row, with cards it rolls itself: no hidden information) and scores
+each candidate against both the scouted and the predicted row. Without that it
+had slipped to 55-60% as units gained mid-round abilities and Normal improved.
+Sim (`--player=` / `--enemy=`, 2026-10-08): Normal beats Easy ~94%; Hard beats Normal ~68%.
 
 ### Save and resume
 The match is saved to `localStorage` (`duel-deck:match`) at the start of every

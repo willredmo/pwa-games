@@ -50,7 +50,10 @@ export function UnitPortrait({ unitKey, side, size, merges = 0, pose = "idle", b
         merges,
       });
     };
-    if (prefersReducedMotion()) {
+    // Reduced motion stills idle portraits. The MVP's dance still plays (the
+    // result screen's one celebration, and it's asked for), at half strength:
+    // drawCharacter tones the dance down under the same setting.
+    if (prefersReducedMotion() && pose !== "dance") {
       draw(0);
       return;
     }
