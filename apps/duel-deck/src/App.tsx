@@ -68,6 +68,7 @@ import {
   ConfirmPanel,
   HelpPanel,
   ResultPanel,
+  DifficultyPanel,
   UnitsView,
 } from "./ui/Overlays";
 import { emptyStats, recordRound, type MatchStats } from "./game/stats";
@@ -333,7 +334,7 @@ export default function App() {
     return () => mq.removeEventListener("change", on);
   }, []);
   const [showUnits, setShowUnits] = useState(false);
-  /** Commit was pressed with picks still unspent; waiting on "commit anyway?". */
+  /** Battle was pressed with picks still unspent; waiting on "battle anyway?". */
   const [confirmCommit, setConfirmCommit] = useState(false);
   const [showAugments, setShowAugments] = useState(false);
   /** Augment offer temporarily hidden so the player can inspect the board. */
@@ -347,12 +348,11 @@ export default function App() {
     }
   });
   /**
-   * Enemy AI difficulty. Chosen before the first commit and then locked for the
-   * match (saved with it); the last choice is remembered for the next match.
+   * Enemy AI difficulty. Chosen on the start screen when a match begins, fixed
+   * for the match (saved with it); the last choice is preselected next time.
    */
   const [difficulty, setDifficulty] = useState<Difficulty>(() => {
-    // A match past its first round keeps the difficulty it was started on.
-    if (saved && saved.round > 1 && saved.difficulty) return saved.difficulty;
+    if (saved?.difficulty) return saved.difficulty;
     try {
       const v = localStorage.getItem(DIFFICULTY_KEY) as Difficulty | null;
       return v && DIFFICULTIES.includes(v) ? v : "normal";
@@ -361,17 +361,22 @@ export default function App() {
     }
   });
   const difficultyRef = useRef(difficulty);
-  /** Locked from the first commit until a new match starts. */
-  const difficultyLocked = round > 1 || phase === "battle";
-  const changeDifficulty = (d: Difficulty) => {
-    if (difficultyLocked) return;
+  /**
+   * The start screen is up: a fresh match (no save to resume, or New match)
+   * waits for the player to pick an opponent before round 1 is played.
+   */
+  const [choosingDifficulty, setChoosingDifficulty] = useState(() => !saved);
+  const chooseDifficulty = (d: Difficulty) => {
     setDifficulty(d);
     difficultyRef.current = d;
+    setChoosingDifficulty(false);
     try {
       localStorage.setItem(DIFFICULTY_KEY, d);
     } catch {
       /* fine — applies this session */
     }
+    if (lastSave.current) save({ ...lastSave.current, difficulty: d });
+    showBanner(`Round ${round}`, "neutral");
   };
   const [augOffers, setAugOffers] = useState<AugmentDef[]>(() =>
     saved?.augmentPending
@@ -714,9 +719,10 @@ export default function App() {
     if (selectedUnitId) poses[selectedUnitId] = { pose: "selected", start: performance.now(), duration: 600 };
   }, [selectedUnitId]);
 
-  // Opening (or resumed) round announcement.
+  // Opening (or resumed) round announcement. A fresh match announces it once
+  // the opponent is chosen instead.
   useEffect(() => {
-    showBanner(`Round ${round}`, "neutral");
+    if (!choosingDifficulty) showBanner(`Round ${round}`, "neutral");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -811,7 +817,7 @@ export default function App() {
   const finishPicks = useCallback((current: Board) => commit(current), [commit]);
 
   // Note: picks never auto-commit. The player stays in the pick phase until
-  // they press Commit, so there's always a chance to reorder the queue first.
+  // they press Battle, so there's always a chance to reorder the queue first.
 
   /** The current pick-phase state, for the undo stack. */
   const snapshot = (): UndoEntry => ({
@@ -1571,6 +1577,8 @@ export default function App() {
     setFrozen([]);
     setLastRound(null);
     startRound(newBoard(), 1);
+    // Every new match starts by picking an opponent.
+    setChoosingDifficulty(true);
   };
 
   // The pick count lives on the label right above the offer cards (`pickLabel`),
@@ -1741,20 +1749,24 @@ export default function App() {
               setShowMenu(false);
               newMatch();
             }}
-            difficulty={difficulty}
-            difficulties={DIFFICULTIES}
-            difficultyLabel={DIFFICULTY_LABEL}
-            difficultyLocked={difficultyLocked}
-            onDifficulty={changeDifficulty}
+            difficultyLabel={DIFFICULTY_LABEL[difficulty]}
+          />
+        )}
+        {choosingDifficulty && (
+          <DifficultyPanel
+            options={DIFFICULTIES}
+            labels={DIFFICULTY_LABEL}
+            current={difficulty}
+            onChoose={chooseDifficulty}
           />
         )}
         {showHelp && <HelpPanel onClose={() => setShowHelp(false)} />}
         {showUnits && <UnitsView onClose={() => setShowUnits(false)} />}
         {confirmCommit && phase === "pick" && (
           <ConfirmPanel
-            title="Commit with picks left?"
+            title="Battle with picks left?"
             message={`You still have ${picksLeft} pick${picksLeft === 1 ? "" : "s"} left this round. Unused picks are lost.`}
-            confirmLabel="Commit anyway"
+            confirmLabel="Battle anyway"
             cancelLabel="Keep picking"
             onConfirm={() => {
               setConfirmCommit(false);
@@ -1785,7 +1797,7 @@ export default function App() {
           onClick={() => (picksLeft > 0 ? setConfirmCommit(true) : finishPicks(board))}
           disabled={phase !== "pick"}
         >
-          Commit
+          ⚔ Battle
         </button>
         <button
           className={`ghost-btn${fast ? " ghost-btn--on" : ""}`}
@@ -1819,7 +1831,7 @@ export default function App() {
             ? `Pick ${picksLeft}${boardFull ? " · row full" : ""}`
             : unitRerolls > 0
               ? "✓ Picks done · ❄ freeze for next round"
-              : "✓ Picks done — arrange your row, then commit"}
+              : "✓ Picks done — arrange your row, then battle"}
         </p>
         {(picksLeft > 0 || unitRerolls > 0) && (
           <button

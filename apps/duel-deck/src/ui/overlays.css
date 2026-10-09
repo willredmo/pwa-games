@@ -541,3 +541,98 @@
   font-weight: 800;
   vertical-align: middle;
 }
+
+/* --- Result screen: per-unit ledger --- */
+.ledger { margin: 0 0 0.9rem; text-align: left; }
+.ledger__tabs { display: flex; gap: 0.35rem; margin-bottom: 0.4rem; }
+.ledger__tab {
+  flex: 1;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.35rem 0.5rem;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid #3a3454;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ledger__tab--on.ledger__tab--player { color: #7db8ff; border-color: #3a86d6; background: rgba(58, 134, 214, 0.12); }
+.ledger__tab--on.ledger__tab--enemy { color: #ff8577; border-color: #d1483a; background: rgba(209, 72, 58, 0.12); }
+.ledger__empty { margin: 0.4rem 0; color: var(--muted); font-size: 0.85rem; }
+.ledger__table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.ledger__table th {
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 0.2rem 0.3rem;
+  text-align: right;
+  white-space: nowrap;
+}
+.ledger__table td {
+  padding: 0.15rem 0.3rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+.ledger__table th.ledger__unit, .ledger__table td.ledger__unit { text-align: left; }
+.ledger__table td.ledger__unit { display: flex; align-items: center; gap: 0.35rem; font-weight: 600; }
+.ledger__name { display: flex; flex-direction: column; line-height: 1.15; }
+.ledger__name small { font-size: 0.66rem; font-weight: 600; color: var(--muted); }
+.ledger__name .result-mvp__level { font-size: 0.62rem; padding: 0 0.3rem; margin-left: 0.15rem; }
+.ledger__row--gone { opacity: 0.5; }
+.ledger__table tfoot td { border-top: 1px solid rgba(255, 255, 255, 0.18); color: #f0e7c8; }
+@media (max-width: 420px) {
+  .ledger__table { font-size: 0.74rem; }
+  .ledger__table th { font-size: 0.6rem; padding: 0.2rem 0.15rem; }
+  .ledger__table td { padding: 0.15rem 0.15rem; }
+}
+/* --- Start screen: choose the opponent --- */
+.overlay--start { z-index: 60; background: rgba(12, 10, 20, 0.82); backdrop-filter: blur(3px); }
+.start-panel { width: min(26rem, calc(100vw - 24px)); text-align: center; }
+.start-panel h2 { margin: 0; font-size: 1.8rem; letter-spacing: 0.02em; }
+.start-panel__emblem { font-size: 2.2rem; line-height: 1; margin-bottom: 0.2rem; }
+.start-panel__sub { margin: 0.2rem 0 0.9rem; color: var(--muted); }
+.start-panel__options { display: grid; gap: 0.55rem; }
+.start-option {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem 0.85rem;
+  font: inherit;
+  text-align: left;
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid #3d3760;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s, background 0.15s;
+}
+.start-option:hover, .start-option:focus-visible { transform: translateY(-2px); border-color: #f0b429; background: rgba(240, 180, 41, 0.08); }
+.start-option__icon { font-size: 1.6rem; width: 2.2rem; text-align: center; }
+.start-option__text { display: flex; flex-direction: column; gap: 0.15rem; }
+.start-option__text strong { font-size: 1.05rem; display: flex; align-items: center; gap: 0.4rem; }
+.start-option__text em {
+  font-style: normal;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.05rem 0.35rem;
+  border-radius: 6px;
+  color: #2a1f05;
+  background: #f0b429;
+}
+.start-option__text > span { font-size: 0.8rem; color: #b9b3c9; line-height: 1.3; }
+.start-option--easy .start-option__text strong { color: #7bd88f; }
+.start-option--normal .start-option__text strong { color: #7db8ff; }
+.start-option--hard .start-option__text strong { color: #ff8577; }
+.start-option--last { border-color: rgba(240, 180, 41, 0.55); }
+.start-panel__note { margin: 0.8rem 0 0; font-size: 0.75rem; color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) {
+  .start-option { animation: ov-pop 0.4s cubic-bezier(0.2, 1.3, 0.4, 1) both; animation-delay: calc(var(--i) * 0.07s + 0.1s); }
+}

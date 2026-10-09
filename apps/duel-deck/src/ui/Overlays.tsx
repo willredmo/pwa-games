@@ -5,7 +5,7 @@ import { AUGMENTS, RALLY_CAP, getAugment, rarityOf, unitsAffectedBy, type Rarity
 import { KNIGHT_LEVEL, UNITS, UNIT_KEYS, levelOf } from "../engine/units";
 import { levelTier } from "../board/render";
 import { AUGMENT_EVERY, PICK_COUNT, START_HP } from "../game/match";
-import { mvpOf, type MatchStats } from "../game/stats";
+import { mvpOf, roundsPlayed, type MatchStats, type UnitTally } from "../game/stats";
 import { prefersReducedMotion } from "../board/anim";
 import { UNIT_LORE } from "../game/lore";
 import { UnitPortrait } from "./UnitPortrait";
@@ -354,6 +354,156 @@ function Stat({ label, value, i, suffix = "", sub }: { label: string; value: num
   );
 }
 
+const DIFFICULTY_INFO: Record<string, { icon: string; blurb: string }> = {
+  easy: { icon: "🌱", blurb: "Picks cards at random and never arranges its row. Good for learning the units." },
+  normal: { icon: "⚔️", blurb: "Builds sensibly: fills its row, merges, and takes upgrades that suit it." },
+  hard: { icon: "🔥", blurb: "Simulates every pair of picks against your row, and predicts what you'll add." },
+};
+
+/**
+ * Start screen: pick the opponent before round 1. Shown for a fresh match and
+ * after New match; the choice is fixed for the match.
+ */
+export function DifficultyPanel<D extends string>({
+  options,
+  labels,
+  current,
+  onChoose,
+}: {
+  options: readonly D[];
+  labels: Record<D, string>;
+  /** Last match's choice, marked so a repeat pick is one tap. */
+  current: D;
+  onChoose: (d: D) => void;
+}) {
+  return (
+    <div className="overlay overlay--full overlay--start">
+      <div className="panel panel--center start-panel">
+        <div className="start-panel__emblem" aria-hidden="true">⚔</div>
+        <h2>Duel Deck</h2>
+        <p className="start-panel__sub">Choose your opponent</p>
+        <div className="start-panel__options">
+          {options.map((d, i) => {
+            const info = DIFFICULTY_INFO[d] ?? { icon: "🤖", blurb: "" };
+            return (
+              <button
+                key={d}
+                className={`start-option start-option--${d}${d === current ? " start-option--last" : ""}`}
+                style={{ "--i": i } as React.CSSProperties}
+                onClick={() => onChoose(d)}
+              >
+                <span className="start-option__icon" aria-hidden="true">{info.icon}</span>
+                <span className="start-option__text">
+                  <strong>
+                    {labels[d]}
+                    {d === current && <em>last pick</em>}
+                  </strong>
+                  <span>{info.blurb}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <p className="start-panel__note">Fixed for the match. Start a new match from ☰ to change it.</p>
+      </div>
+    </div>
+  );
+}
+
+/** A level chip in the board's tier colours. */
+function LevelChip({ merges }: { merges: number }) {
+  const lv = levelOf(merges);
+  const tier = levelTier(lv);
+  return (
+    <span className="result-mvp__level" style={{ background: tier.fill, color: tier.ink }}>
+      Lv{lv}
+    </span>
+  );
+}
+
+/**
+ * Every unit that fought this match, per side: damage dealt and taken, kills,
+ * falls. Units that left the row (merged into another, or replaced) stay
+ * listed, faded, so the totals add up.
+ */
+function UnitLedger({ stats }: { stats: MatchStats }) {
+  const [tab, setTab] = useState<"player" | "enemy">("player");
+  const total = roundsPlayed(stats);
+  const bookFor = (s: "player" | "enemy") => (s === "player" ? stats.units : (stats.foes ?? {}));
+  const rows = Object.entries(bookFor(tab)).sort(
+    ([, a], [, b]) => b.damage - a.damage || (b.taken ?? 0) - (a.taken ?? 0),
+  );
+  const sum = (k: (t: UnitTally) => number) => rows.reduce((n, [, t]) => n + k(t), 0);
+  return (
+    <section className="ledger">
+      <div className="ledger__tabs" role="tablist">
+        {(["player", "enemy"] as const).map((s) => (
+          <button
+            key={s}
+            role="tab"
+            aria-selected={tab === s}
+            className={`ledger__tab ledger__tab--${s}${tab === s ? " ledger__tab--on" : ""}`}
+            onClick={() => setTab(s)}
+          >
+            {s === "player" ? "Your units" : "Enemy units"} ({Object.keys(bookFor(s)).length})
+          </button>
+        ))}
+      </div>
+      {rows.length === 0 ? (
+        <p className="ledger__empty">No units recorded for this side.</p>
+      ) : (
+        <table className="ledger__table">
+          <thead>
+            <tr>
+              <th className="ledger__unit">Unit</th>
+              <th title="Damage dealt">⚔ Dealt</th>
+              <th title="Damage taken">🛡 Taken</th>
+              <th title="Kills">☠ Kills</th>
+              <th title="Times it fell">↓ Fell</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(([id, t]) => {
+              const gone = (t.last ?? total) < total;
+              return (
+                <tr key={id} className={gone ? "ledger__row--gone" : undefined} title={gone ? "Left the row (merged or replaced)" : undefined}>
+                  <td className="ledger__unit">
+                    <UnitPortrait unitKey={t.key} side={tab} size={30} merges={t.merges ?? 0} />
+                    <span className="ledger__name">
+                      <span>
+                        {t.name} <LevelChip merges={t.merges ?? 0} />
+                      </span>
+                      {t.rounds ? (
+                        <small>
+                          {t.rounds} round{t.rounds === 1 ? "" : "s"}
+                          {gone ? " · left the row" : ""}
+                        </small>
+                      ) : null}
+                    </span>
+                  </td>
+                  <td>{t.damage}</td>
+                  <td>{t.taken ?? 0}</td>
+                  <td>{t.kills}</td>
+                  <td>{t.falls ?? 0}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td className="ledger__unit">Total</td>
+              <td>{sum((t) => t.damage)}</td>
+              <td>{sum((t) => t.taken ?? 0)}</td>
+              <td>{sum((t) => t.kills)}</td>
+              <td>{sum((t) => t.falls ?? 0)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      )}
+    </section>
+  );
+}
+
 /** Continuous backdrop: sunburst and confetti rain for a win, drifting embers for a loss. */
 function ResultBackdrop({ won }: { won: boolean }) {
   const bits = useMemo(
@@ -414,17 +564,7 @@ export function ResultPanel({ winner, round, stats, hp, upgrades, difficulty, on
             <div>
               <span className="result-mvp__tag">★ MVP</span>
               <strong>
-                {mvp.name}{" "}
-                {(() => {
-                  // Same tier colours as the board's level badge.
-                  const lv = levelOf(mvp.merges ?? 0);
-                  const tier = levelTier(lv);
-                  return (
-                    <span className="result-mvp__level" style={{ background: tier.fill, color: tier.ink }}>
-                      Lv{lv}
-                    </span>
-                  );
-                })()}
+                {mvp.name} <LevelChip merges={mvp.merges ?? 0} />
               </strong>
               <span>
                 {mvp.damage} damage · {mvp.kills} kill{mvp.kills === 1 ? "" : "s"}
@@ -448,6 +588,8 @@ export function ResultPanel({ winner, round, stats, hp, upgrades, difficulty, on
           <Stat i={6} label="Abilities fired" value={stats.abilities} />
           <Stat i={7} label="Best win streak" value={stats.bestStreak} sub={stats.healed > 0 ? `healed ${stats.healed} HP` : undefined} />
         </div>
+
+        <UnitLedger stats={stats} />
 
         {upgrades.length > 0 && (
           <div className="result-upgrades">

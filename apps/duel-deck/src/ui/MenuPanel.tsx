@@ -9,27 +9,23 @@ import {
   type DeployInfo,
 } from "../pwa";
 
-// The ☰ menu: things you reach for now and then (codex, rules, difficulty, a
-// new match) plus an About section saying which build this device is running
+// The ☰ menu: things you reach for now and then (codex, rules, a new match) plus an About section saying which build this device is running
 // and when the newest one was deployed — the same idea as the partner check-in
 // app's settings, but it also says whether this device is behind.
 
-export interface MenuPanelProps<D extends string> {
+export interface MenuPanelProps {
   onClose: () => void;
   onUnits: () => void;
   onHelp: () => void;
   onNewMatch: () => void;
-  difficulty: D;
-  difficulties: readonly D[];
-  difficultyLabel: Record<D, string>;
-  difficultyLocked: boolean;
-  onDifficulty: (d: D) => void;
+  /** This match's opponent, for display (it's chosen on the start screen). */
+  difficultyLabel: string;
 }
 
 type CheckState = "idle" | "checking" | "done";
 
-export function MenuPanel<D extends string>(props: MenuPanelProps<D>) {
-  const { onClose, onUnits, onHelp, onNewMatch, difficulty, difficulties, difficultyLabel, difficultyLocked, onDifficulty } = props;
+export function MenuPanel(props: MenuPanelProps) {
+  const { onClose, onUnits, onHelp, onNewMatch, difficultyLabel } = props;
   const waiting = usePwaUpdate();
   const [latest, setLatest] = useState<DeployInfo | null>(null);
   const [check, setCheck] = useState<CheckState>("idle");
@@ -65,18 +61,13 @@ export function MenuPanel<D extends string>(props: MenuPanelProps<D>) {
             <span className="menu-item__icon">❓</span>
             <span>How to play<small>Rounds, merging, upgrades</small></span>
           </button>
-          <label className={`menu-item menu-item--select${difficultyLocked ? " menu-item--locked" : ""}`}>
-            <span className="menu-item__icon">{difficultyLocked ? "🔒" : "🤖"}</span>
+          <div className="menu-item menu-item--locked">
+            <span className="menu-item__icon">🤖</span>
             <span>
-              AI difficulty
-              <small>{difficultyLocked ? "Locked for this match — start a new one to change it" : "Locks once you commit round 1"}</small>
+              Opponent: {difficultyLabel}
+              <small>Chosen when the match started. New match to pick again.</small>
             </span>
-            <select value={difficulty} disabled={difficultyLocked} onChange={(e) => onDifficulty(e.target.value as D)}>
-              {difficulties.map((d) => (
-                <option key={d} value={d}>{difficultyLabel[d]}</option>
-              ))}
-            </select>
-          </label>
+          </div>
           {confirmNew ? (
             <div className="menu-item menu-item--confirm">
               <span className="menu-item__icon">⚠️</span>
@@ -89,7 +80,7 @@ export function MenuPanel<D extends string>(props: MenuPanelProps<D>) {
           ) : (
             <button className="menu-item" onClick={() => setConfirmNew(true)}>
               <span className="menu-item__icon">🔄</span>
-              <span>New match<small>Start over from round 1</small></span>
+              <span>New match<small>Start over and choose your opponent</small></span>
             </button>
           )}
         </div>

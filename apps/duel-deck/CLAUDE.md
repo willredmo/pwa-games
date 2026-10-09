@@ -61,7 +61,7 @@ round (`applyAugments`), rather than mutated into units once. Stacking counters
   slot, and **already-placed units can be dragged to reorder** the queue — so
   which unit takes the front is a real decision.
 - **Rounds are committed manually.** Spending both picks does not auto-start the
-  battle; the player presses Commit. Without this there is no chance to reorder
+  battle; the player presses ⚔ Battle. Without this there is no chance to reorder
   after the second pick.
 - **The queue is always contiguous.** Dropping onto an occupied slot inserts
   ahead of that unit and pushes the rest back, rather than leaving gaps.
@@ -386,14 +386,19 @@ the unit it killed only once that unit's damage is up, and its own damage lands
 on arrival (`OVERFLOW_TRAVEL_MS`). The clash holds until the sequence is done.
 
 `game/stats.ts` keeps match tallies (`recordRound`, called in playback's
-`finish`), saved with the match. `ResultPanel` shows them full-window over a
+`finish`), saved with the match. Every unit on either row gets a tally (damage
+dealt and taken, kills, falls, rounds fielded, last round seen; `foes` holds
+the enemy's), shown on the result screen's unit ledger with Your / Enemy tabs.
+Units that left the row (merged away, replaced) stay listed, faded. `ResultPanel` shows them full-window over a
 continuous backdrop (confetti rain and rays for a win, embers for a loss),
 with an MVP (most damage) and the upgrades taken.
 
 ### AI difficulty
-Header selector. Choosable only before the first commit; it then locks
-(disabled, 🔒) until a new match, and is saved with the match so a reload keeps
-it. The last choice is remembered (`duel-deck:difficulty`) for the next match. `aiCommit(..., { difficulty, oppAug, scout })`:
+Chosen on a start screen (`DifficultyPanel`) when a match begins: on a fresh
+load with no save, and after New match. The round-1 banner waits for the pick.
+It's fixed for the match and saved with it (a resumed save skips the start
+screen); the ☰ menu just shows it. The last choice is remembered
+(`duel-deck:difficulty`) and marked `last pick` next time. `aiCommit(..., { difficulty, oppAug, scout })`:
 - **Easy** — two random cards, no rerolls, no arranging; random upgrade.
 - **Normal** — the value-table AI described above.
 - **Hard** — searches every ordered pair of offer cards × two ways of adding

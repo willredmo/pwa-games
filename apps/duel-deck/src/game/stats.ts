@@ -1,4 +1,4 @@
-import type { Board, RoundResult, Side } from "../engine/types";
+import type { Board, RoundResult, Side, Unit } from "../engine/types";
 import { sideUnits } from "../engine/board";
 
 // Running tallies for the end-of-match screen. Recorded once per round from
@@ -14,6 +14,17 @@ export interface UnitTally {
   merges?: number;
   damage: number;
   kills: number;
+  /** Damage it took in fights. Absent in older saves (read as 0). */
+  taken?: number;
+  /** Times it fell. */
+  falls?: number;
+  /** Rounds it was on the committed row. */
+  rounds?: number;
+  /**
+   * The round count when it was last on the row. Lower than the match's
+   * rounds means it left: merged into another unit or replaced.
+   */
+  last?: number;
 }
 
 export interface MatchStats {
@@ -34,7 +45,10 @@ export interface MatchStats {
   healed: number;
   streak: number;
   bestStreak: number;
+  /** Your units, by id. */
   units: Record<string, UnitTally>;
+  /** The opponent's units, by id, for the result screen's enemy tab. Absent in older saves. */
+  foes?: Record<string, UnitTally>;
 }
 
 export function emptyStats(): MatchStats {
@@ -54,8 +68,12 @@ export function emptyStats(): MatchStats {
     streak: 0,
     bestStreak: 0,
     units: {},
+    foes: {},
   };
 }
+
+/** Rounds played so far (the round counter tallies' `last` is compared against). */
+export const roundsPlayed = (s: MatchStats) => s.won + s.lost + s.drawn;
 
 /**
  * Add one round to `stats`, from `side`'s point of view. `committed` is the
@@ -68,7 +86,9 @@ export function recordRound(
   side: Side,
   healed: number,
 ): void {
+  const foeSide: Side = side === "player" ? "enemy" : "player";
   const mine = new Map(sideUnits(committed, side).map((u) => [u.id, u]));
+  const theirs = new Map(sideUnits(committed, foeSide).map((u) => [u.id, u]));
   if (result.roundWinner === side) {
     stats.won++;
     stats.poolDealt += result.hpLoss;
@@ -83,22 +103,23 @@ export function recordRound(
     stats.streak = 0;
   }
   stats.healed += healed;
+  const round = roundsPlayed(stats);
+  const foes = (stats.foes ??= {});
 
-  const tally = (id: string): UnitTally | null => {
-    const u = mine.get(id);
-    if (!u) return null;
-    return (stats.units[id] ??= { key: u.key, name: u.name, merges: u.merges, damage: 0, kills: 0 });
+  // Every unit on either row gets a tally, fighting or not, kept current:
+  // units change between rounds (merges, knighthood).
+  const touch = (book: Record<string, UnitTally>, u: Unit) => {
+    const t = (book[u.id] ??= { key: u.key, name: u.name, damage: 0, kills: 0 });
+    t.key = u.key;
+    t.name = u.name;
+    t.merges = u.merges;
+    t.rounds = (t.rounds ?? 0) + 1;
+    t.last = round;
   };
-  // Units change between rounds (merges, knighthood): keep every tally current,
-  // not just the ones that struck this round.
-  for (const u of mine.values()) {
-    const t = stats.units[u.id];
-    if (t) {
-      t.key = u.key;
-      t.name = u.name;
-      t.merges = u.merges;
-    }
-  }
+  for (const u of mine.values()) touch(stats.units, u);
+  for (const u of theirs.values()) touch(foes, u);
+  const tally = (id: string): UnitTally | undefined => stats.units[id] ?? (theirs.has(id) ? foes[id] : undefined);
+
   /** Opening blows already counted as a Charge this round. */
   const charged = new Set<string>();
   for (const tick of result.ticks) {
@@ -106,6 +127,8 @@ export function recordRound(
     for (const ev of tick.events) {
       if (ev.type === "death") {
         if (mine.has(ev.unit)) stats.losses++;
+        const t = mine.has(ev.unit) || theirs.has(ev.unit) ? tally(ev.unit) : undefined;
+        if (t) t.falls = (t.falls ?? 0) + 1;
         continue;
       }
       if (ev.type === "buff") {
@@ -113,25 +136,27 @@ export function recordRound(
         continue;
       }
       if (ev.type !== "attack") continue;
+
+      // Per-unit, both sides: damage dealt, damage taken, the killing blow.
+      const a = tally(ev.attacker);
+      const d = tally(ev.target);
+      if (a) a.damage += ev.damage;
+      if (d) d.taken = (d.taken ?? 0) + ev.damage;
+      const killing =
+        dead.has(ev.target) &&
+        [...tick.events].reverse().find((e) => e.type === "attack" && e.target === ev.target && e.damage > 0) === ev;
+      if (a && killing) a.kills++;
+
+      // Side-wide figures, from `side`'s point of view (unchanged).
       if (mine.has(ev.target)) {
         stats.unitDamageTaken += ev.damage;
         if (ev.tag === "dodge") stats.abilities++;
         continue;
       }
-      const t = tally(ev.attacker);
-      if (!t) continue;
+      if (!mine.has(ev.attacker)) continue;
       stats.unitDamage += ev.damage;
-      t.damage += ev.damage;
-      if (dead.has(ev.target)) {
-        // Credit the kill once, to the blow that was dealt last to that target.
-        const lastBlow = [...tick.events]
-          .reverse()
-          .find((e) => e.type === "attack" && e.target === ev.target && e.damage > 0);
-        if (lastBlow === ev) {
-          t.kills++;
-          stats.kills++;
-        }
-      }
+      if (killing) stats.kills++;
+      const t = stats.units[ev.attacker];
       if (!stats.biggestHit || ev.damage > stats.biggestHit.amount) {
         stats.biggestHit = { amount: ev.damage, key: t.key, name: t.name };
       }
@@ -139,8 +164,7 @@ export function recordRound(
         charged.add(ev.attacker);
         stats.abilities++;
       }
-      const src = mine.get(ev.attacker);
-      if (ev.tag === "cleave" && src?.key === "berserker") stats.abilities++;
+      if (ev.tag === "cleave" && mine.get(ev.attacker)?.key === "berserker") stats.abilities++;
     }
   }
   // Fortify: surviving Bulwarks.
