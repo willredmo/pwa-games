@@ -1,0 +1,34 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "rooms": {
+      "knock-hockey": {
+        "$code": {
+          ".read": "$code.length === 5",
+          ".write": "$code.length === 5",
+          ".validate": "newData.hasChildren(['host', 'createdAt'])",
+          "host": { ".validate": "newData.isString() && newData.val().length <= 40 && (!data.exists() || data.val() === newData.val())" },
+          "guest": { ".validate": "newData.isString() && newData.val().length <= 40" },
+          "createdAt": { ".validate": "newData.isNumber() && (!data.exists() || data.val() === newData.val())" },
+          "presence": {
+            "p1": { ".validate": "newData.isBoolean()" },
+            "p2": { ".validate": "newData.isBoolean()" },
+            "$other": { ".validate": false }
+          },
+          "looks": {
+            "p1": { ".validate": "newData.hasChildren(['shaft', 'blade'])" },
+            "p2": { ".validate": "newData.hasChildren(['shaft', 'blade'])" },
+            "$other": { ".validate": false }
+          },
+          "match": { ".validate": "newData.hasChildren(['score', 'turn', 'puck', 'shots', 'startedAt'])" },
+          "shot": { ".validate": "newData.hasChildren(['seq', 'by', 'x', 'y', 'vx', 'vy', 'angle', 'power'])" },
+          "result": { ".validate": "newData.hasChildren(['seq', 'match'])" },
+          "aim": { ".validate": "newData.hasChildren(['by', 'angle', 'power'])" },
+          "left": { ".validate": "newData.isString()" },
+          "$other": { ".validate": false }
+        }
+      }
+    }
+  }
+}

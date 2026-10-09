@@ -1,0 +1,470 @@
+import { DT, launch, moving, step, wobble, type Contact, type Puck, type Shot } from "../physics/sim";
+import { GOAL_X0, GOAL_X1, H, PUCK_R, W, type GoalSide, type Vec } from "../physics/table";
+import type { Player, ShotOutcome } from "../game/match";
+import type { StickLook } from "../game/stick";
+import { clack, unlockSound } from "../game/sound";
+import { P1_COLOR, P2_COLOR, drawAimLine, drawBoard, drawPuck, fitBoard, type View } from "./board";
+import { drawStick } from "./stick";
+
+// The board on screen: draws it, takes your aim and power, animates the CPU's
+// (or an online opponent's) stick, and plays shots out with the same
+// fixed-step physics the CPU searches with. React owns the rules
+// (game/match.ts); this owns the canvas.
+//
+// Shooting: set the power on the power bar (the stick pulls back to match)
+// and turn the aim with the ↺ ↻ buttons. Either can change, in any order,
+// until you press Hit, which is the only way to shoot.
+
+/** Pull-back gap at zero and full power, board units. */
+const BACK_MIN = 2;
+const BACK_MAX = 62;
+/** Below this the release cancels instead of shooting. */
+export const MIN_POWER = 0.04;
+
+/** Who is taking the current shot. */
+export type Controller = "local" | "cpu" | "remote";
+
+/** A shot as it actually left the stick: where from, and the exact launch velocity. */
+export interface Launch {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  angle: number;
+  power: number;
+}
+
+export interface TableEvents {
+  /** Pull-back changed (0–1), so the power bar can follow. */
+  onPull: (power: number) => void;
+  /** The stick has started its swing: the turn is committed. */
+  onFire: (launch: Launch, by: Controller) => void;
+  /** Your aim or power changed while lining up (for showing an online opponent). */
+  onAim?: (angle: number, power: number) => void;
+  /** The puck has stopped, or gone in. */
+  onShot: (out: ShotOutcome) => void;
+}
+
+type Phase = "waiting" | "aiming" | "cpu" | "striking" | "rolling";
+
+interface Strike {
+  t0: number;
+  dur: number;
+  fromBack: number;
+  launch: Launch;
+}
+
+interface CpuMove {
+  t0: number;
+  fromAngle: number;
+  toAngle: number;
+  fromPower: number;
+  shot: Shot;
+  /** An online opponent's shot: exact launch to replay, and a quicker line-up. */
+  exact?: Launch;
+}
+
+interface Fade {
+  t0: number;
+  player: Player;
+  angle: number;
+  at: Vec;
+}
+
+const now = () => performance.now();
+const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+export class Table {
+  aimLine = true;
+  /** Draw the board turned 180°, so the top goal is at the bottom (online guest). */
+  flipped = false;
+  private ctx: CanvasRenderingContext2D;
+  private view: View = { scale: 1, ox: 0, oy: 0 };
+  private dpr = 1;
+  private raf = 0;
+  private last = 0;
+  private acc = 0;
+
+  private puck: Puck;
+  private phase: Phase = "waiting";
+  private shooter: Player | null = null;
+  private controller: Controller = "local";
+  /** An online opponent's live aim, eased toward. */
+  private remoteAim: { angle: number; power: number } | null = null;
+  private lastAimSent = { angle: NaN, power: NaN };
+  private aim = -Math.PI / 2;
+  private power = 0;
+  private looks: Record<Player, StickLook>;
+
+  private strike: Strike | null = null;
+  private cpu: CpuMove | null = null;
+  private fade: Fade | null = null;
+  private contacts: Contact[] = [];
+  private shotPower = 0;
+  private trail: Vec[] = [];
+  private sparks: { x: number; y: number; t0: number; s: number }[] = [];
+  private goal: { side: GoalSide; t0: number } | null = null;
+  private ro: ResizeObserver;
+
+  constructor(
+    private canvas: HTMLCanvasElement,
+    private events: TableEvents,
+    at: Vec,
+    looks: Record<Player, StickLook>,
+  ) {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no 2d context");
+    this.ctx = ctx;
+    this.looks = looks;
+    this.puck = { x: at.x, y: at.y, vx: 0, vy: 0 };
+    this.ro = new ResizeObserver(() => this.resize());
+    this.ro.observe(canvas.parentElement ?? canvas);
+    this.resize();
+    canvas.addEventListener("pointerdown", this.down);
+    this.raf = requestAnimationFrame(this.frame);
+  }
+
+  destroy(): void {
+    cancelAnimationFrame(this.raf);
+    this.ro.disconnect();
+    this.canvas.removeEventListener("pointerdown", this.down);
+  }
+
+  setLooks(looks: Record<Player, StickLook>): void {
+    this.looks = looks;
+  }
+
+  /** Put the puck down (match start, a goal's restart, a resumed save). */
+  placePuck(at: Vec): void {
+    this.puck = { x: at.x, y: at.y, vx: 0, vy: 0 };
+    this.trail = [];
+    this.goal = null;
+  }
+
+  /**
+   * Hand the stick to `who`. Local turns take input; CPU turns wait for
+   * `playCpu`; remote turns follow `setRemoteAim` and wait for `playRemote`.
+   */
+  beginTurn(who: Player, controller: Controller): void {
+    this.shooter = who;
+    this.controller = controller;
+    this.phase = controller === "local" ? "aiming" : "cpu";
+    this.cpu = null;
+    this.remoteAim = null;
+    this.power = 0;
+    this.events.onPull(0);
+    // Start aimed straight at the goal being attacked.
+    const gy = who === "p1" ? 0 : H;
+    this.aim = Math.atan2(gy - this.puck.y, W / 2 - this.puck.x);
+  }
+
+  /** No one's turn (goal celebration, end of match). */
+  idle(): void {
+    this.shooter = null;
+    this.phase = "waiting";
+  }
+
+  get canAim(): boolean {
+    return this.phase === "aiming" && this.controller === "local" && !this.strike;
+  }
+
+  /** Swing with the current power and aim. The only way a human shot fires. */
+  hit(): void {
+    if (!this.canAim || this.power < MIN_POWER) return;
+    this.fire({ angle: this.aim, power: this.power });
+  }
+
+  /** Turn the aim, from the ↺ ↻ buttons (the only way to aim). Positive is clockwise on screen. */
+  nudge(deg: number): void {
+    if (!this.canAim) return;
+    this.aim += (deg * Math.PI) / 180;
+  }
+
+  /** The power bar is being set. */
+  barPull(power: number): void {
+    if (!this.canAim) return;
+    this.power = clamp01(power);
+    this.events.onPull(this.power);
+  }
+
+  /** Raise or lower the power (↑ ↓ keys). */
+  addPower(delta: number): void {
+    this.barPull(this.power + delta);
+  }
+
+  /** Animate the CPU lining up `shot`, pulling back, and hitting. */
+  playCpu(shot: Shot): void {
+    if (this.phase !== "cpu") return;
+    // Turn the short way round.
+    let to = shot.angle;
+    while (to - this.aim > Math.PI) to -= Math.PI * 2;
+    while (to - this.aim < -Math.PI) to += Math.PI * 2;
+    this.cpu = { t0: now(), fromAngle: this.aim, toAngle: to, fromPower: 0, shot: { angle: to, power: shot.power } };
+  }
+
+  /** An online opponent is lining up: show their stick where they have it. */
+  setRemoteAim(angle: number, power: number): void {
+    if (this.phase !== "cpu" || this.controller !== "remote" || this.cpu) return;
+    this.remoteAim = { angle, power };
+  }
+
+  /** Replay an online opponent's shot exactly as it left their stick. */
+  playRemote(l: Launch): void {
+    if (this.phase !== "cpu" || this.controller !== "remote") return;
+    // Start from exactly where their puck was.
+    this.puck = { x: l.x, y: l.y, vx: 0, vy: 0 };
+    this.goal = null;
+    let to = l.angle;
+    while (to - this.aim > Math.PI) to -= Math.PI * 2;
+    while (to - this.aim < -Math.PI) to += Math.PI * 2;
+    this.remoteAim = null;
+    this.cpu = { t0: now(), fromAngle: this.aim, toAngle: to, fromPower: this.power, shot: { angle: to, power: l.power }, exact: l };
+  }
+
+  // --- Input ---------------------------------------------------------------
+
+  // Aiming is only by the ↺ ↻ buttons (`nudge`) and power only by the bar, so
+  // the board takes no aiming input. A press still unlocks sound (browsers
+  // only allow audio after a tap).
+  private down = () => unlockSound();
+
+  private fire(intended: Shot, exact?: Launch): void {
+    this.phase = "striking";
+    let l: Launch;
+    if (exact) l = exact;
+    else {
+      // Every hit, yours or the CPU's, wobbles slightly off what was intended.
+      // (An online opponent's wobble was rolled on their device.)
+      const shot = wobble(intended);
+      const p = launch(this.puck, shot);
+      l = { x: this.puck.x, y: this.puck.y, vx: p.vx, vy: p.vy, angle: shot.angle, power: shot.power };
+    }
+    this.events.onFire(l, this.controller);
+    // Harder hits snap forward faster.
+    this.strike = { t0: now(), dur: 150 - 70 * l.power, fromBack: this.back(), launch: l };
+  }
+
+  // --- Animation and physics -----------------------------------------------
+
+  private back(): number {
+    return BACK_MIN + (BACK_MAX - BACK_MIN) * this.power;
+  }
+
+  private pose() {
+    return { x: this.puck.x, y: this.puck.y, angle: this.aim, back: this.back() };
+  }
+
+  private frame = (t: number) => {
+    this.raf = requestAnimationFrame(this.frame);
+    const dt = Math.min(0.1, this.last ? (t - this.last) / 1000 : 0);
+    this.last = t;
+    this.update(t, dt);
+    this.draw(t);
+  };
+
+  private update(t: number, dt: number): void {
+    // CPU: turn to aim (0.5 s), pull back (0.7 s), hold, hit. An online
+    // opponent's line-up was already shown live, so theirs just settles quickly.
+    if (this.cpu && this.phase === "cpu") {
+      const e = t - this.cpu.t0;
+      const quick = !!this.cpu.exact;
+      const TURN = quick ? 160 : 520;
+      const PULL = quick ? 200 : 700;
+      const HOLD = quick ? 80 : 220;
+      const { fromPower, shot } = this.cpu;
+      this.aim = this.cpu.fromAngle + (this.cpu.toAngle - this.cpu.fromAngle) * ease(clamp01(e / TURN));
+      this.power = fromPower + (shot.power - fromPower) * ease(clamp01((e - TURN) / PULL));
+      this.events.onPull(this.power);
+      if (e >= TURN + PULL + HOLD) {
+        const exact = this.cpu.exact;
+        this.cpu = null;
+        this.fire(shot, exact);
+      }
+    } else if (this.remoteAim && this.phase === "cpu") {
+      // Ease toward the opponent's live aim, the short way round.
+      let d = this.remoteAim.angle - this.aim;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      const k = Math.min(1, dt * 12);
+      this.aim += d * k;
+      this.power += (this.remoteAim.power - this.power) * k;
+      this.events.onPull(this.power);
+    }
+
+    // Report your own line-up as it changes, for an online opponent to watch.
+    if (this.events.onAim && this.canAim && (this.aim !== this.lastAimSent.angle || this.power !== this.lastAimSent.power)) {
+      this.lastAimSent = { angle: this.aim, power: this.power };
+      this.events.onAim(this.aim, this.power);
+    }
+
+    if (this.strike) {
+      const k = clamp01((t - this.strike.t0) / this.strike.dur);
+      // Accelerate into the puck.
+      this.power = (1 - k * k) * ((this.strike.fromBack - BACK_MIN) / (BACK_MAX - BACK_MIN));
+      if (k >= 1) {
+        const l = this.strike.launch;
+        this.strike = null;
+        this.power = 0;
+        this.events.onPull(0);
+        this.fade = { t0: t, player: this.shooter!, angle: l.angle, at: { x: l.x, y: l.y } };
+        this.puck = { x: l.x, y: l.y, vx: l.vx, vy: l.vy };
+        this.contacts = [];
+        this.shotPower = l.power;
+        this.trail = [];
+        this.acc = 0;
+        this.phase = "rolling";
+        clack("stick", 0.25 + l.power * 0.75);
+      }
+    }
+
+    if (this.phase === "rolling") {
+      this.acc += dt;
+      let scored: GoalSide | null = null;
+      while (this.acc >= DT && moving(this.puck)) {
+        this.acc -= DT;
+        const n = this.contacts.length;
+        scored = step(this.puck, this.contacts);
+        for (let i = n; i < this.contacts.length; i++) {
+          const c = this.contacts[i];
+          const s = Math.min(1, c.speed / 900);
+          clack(c.kind, s);
+          if (s > 0.12) this.sparks.push({ x: c.x, y: c.y, t0: t, s });
+        }
+        if (scored) break;
+      }
+      this.trail.push({ x: this.puck.x, y: this.puck.y });
+      if (this.trail.length > 14) this.trail.shift();
+      if (scored || !moving(this.puck)) {
+        if (scored) this.goal = { side: scored, t0: t };
+        this.phase = "waiting";
+        this.shooter = null;
+        this.events.onShot({
+          goal: scored,
+          rest: { x: this.puck.x, y: this.puck.y },
+          contacts: this.contacts,
+          power: this.shotPower,
+        });
+      }
+    } else if (this.trail.length) {
+      this.trail.shift();
+    }
+  }
+
+  private resize(): void {
+    const host = this.canvas.parentElement ?? this.canvas;
+    const cw = host.clientWidth;
+    const ch = host.clientHeight;
+    this.dpr = Math.min(3, window.devicePixelRatio || 1);
+    this.canvas.width = Math.round(cw * this.dpr);
+    this.canvas.height = Math.round(ch * this.dpr);
+    this.canvas.style.width = `${cw}px`;
+    this.canvas.style.height = `${ch}px`;
+    this.view = fitBoard(cw, ch);
+  }
+
+  private draw(t: number): void {
+    const { ctx, view, dpr } = this;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.setTransform(dpr * view.scale, 0, 0, dpr * view.scale, dpr * view.ox, dpr * view.oy);
+    if (this.flipped) {
+      // Turned 180° about the board's centre.
+      ctx.translate(W, H);
+      ctx.scale(-1, -1);
+    }
+    drawBoard(ctx);
+
+    // Trail behind a moving puck.
+    for (let i = 0; i < this.trail.length; i++) {
+      const p = this.trail[i];
+      ctx.fillStyle = `rgba(30,30,35,${(i / this.trail.length) * 0.16})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, PUCK_R * (0.5 + (i / this.trail.length) * 0.5), 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const color = this.shooter === "p2" ? P2_COLOR : P1_COLOR;
+    // Turn ring around the puck.
+    if (this.shooter && this.phase !== "rolling") {
+      const pulse = 0.5 + 0.5 * Math.sin(t / 260);
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.35 + 0.35 * pulse;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(this.puck.x, this.puck.y, PUCK_R + 5 + pulse * 2, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    // A goal: the puck drops into the slot.
+    let puckAlpha = 1;
+    if (this.goal) {
+      const k = clamp01((t - this.goal.t0) / 450);
+      puckAlpha = 1 - k;
+    }
+    drawPuck(ctx, this.puck, puckAlpha);
+
+    if (this.shooter && (this.phase === "aiming" || this.phase === "cpu" || this.phase === "striking")) {
+      if (this.aimLine && this.controller === "local" && this.phase === "aiming") drawAimLine(ctx, this.puck, this.aim, color);
+      drawStick(ctx, this.looks[this.shooter], this.pose());
+    }
+    // Follow-through: the stick ends up just behind where the puck was, then fades.
+    if (this.fade) {
+      const k = (t - this.fade.t0) / 520;
+      if (k >= 1) this.fade = null;
+      else
+        drawStick(ctx, this.looks[this.fade.player], {
+          ...this.fade.at,
+          angle: this.fade.angle,
+          back: -PUCK_R * 0.6 * ease(clamp01(k * 3)),
+          alpha: 1 - ease(clamp01((k - 0.3) / 0.7)),
+        });
+    }
+
+    // Impact sparks: a quick ring at each hard bounce.
+    this.sparks = this.sparks.filter((s) => t - s.t0 < 320);
+    for (const s of this.sparks) {
+      const k = (t - s.t0) / 320;
+      ctx.strokeStyle = `rgba(255,244,214,${(1 - k) * 0.9})`;
+      ctx.lineWidth = 2 * (1 - k) + 0.5;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 3 + k * (8 + 10 * s.s), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Goal flash on the scoring end.
+    if (this.goal) {
+      const k = (t - this.goal.t0) / 1300;
+      if (k < 1) {
+        const y = this.goal.side === "top" ? 0 : H;
+        const scorerColor = this.goal.side === "top" ? P1_COLOR : P2_COLOR;
+        const g = ctx.createRadialGradient(W / 2, y, 4, W / 2, y, 170);
+        g.addColorStop(0, hexA(scorerColor, 0.55 * (1 - k)));
+        g.addColorStop(1, hexA(scorerColor, 0));
+        ctx.fillStyle = g;
+        ctx.fillRect(0, y === 0 ? 0 : H - 170, W, 170);
+        ctx.strokeStyle = hexA("#fff4c2", 1 - k);
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(GOAL_X0, y);
+        ctx.lineTo(GOAL_X1, y);
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+/** Keep getting moves outside the element. Can throw if the pointer is already gone. */
+export function capture(el: Element, id: number): void {
+  try {
+    el.setPointerCapture(id);
+  } catch {
+    /* fine: moves still arrive while over the element */
+  }
+}
+
+function hexA(hex: string, a: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${Math.max(0, a)})`;
+}

@@ -40,6 +40,20 @@
         "roguelike-games"
       ],
       "port": 5176
+    },
+    {
+      "name": "knock-hockey",
+      "runtimeExecutable": "corepack",
+      "runtimeArgs": [
+        "pnpm",
+        "--filter",
+        "knock-hockey",
+        "dev",
+        "--port",
+        "5177",
+        "--strictPort"
+      ],
+      "port": 5177
     }
   ]
 }

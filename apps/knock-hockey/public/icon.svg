@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#1a2230"/>
+  <!-- board -->
+  <rect x="86" y="70" width="340" height="372" rx="26" fill="#9c5f2c"/>
+  <rect x="112" y="96" width="288" height="320" fill="#ecd2a2"/>
+  <path d="M112 96h52l-52 70z M400 96h-52l52 70z" fill="#9c5f2c"/>
+  <rect x="216" y="70" width="80" height="26" fill="#24140a"/>
+  <rect x="112" y="300" width="288" height="7" fill="#2c5fb8" opacity=".85"/>
+  <path d="M256 128l30 30-30 30-30-30z" fill="#9c5f2c"/>
+  <!-- puck -->
+  <circle cx="300" cy="262" r="24" fill="#1c1c20"/>
+  <circle cx="300" cy="262" r="16" fill="none" stroke="#fff" stroke-opacity=".22" stroke-width="4"/>
+  <!-- stick: lined up behind the puck, aimed at the goal, the way the game draws it -->
+  <g transform="translate(300 262) rotate(-105)">
+    <path d="M-36 -42 Q-40 -4 -36 40" stroke="#1d1d22" stroke-width="18" stroke-linecap="round" fill="none"/>
+    <path d="M-36 -28 Q-39 -2 -36 26" stroke="#f4f1ea" stroke-width="13" fill="none"/>
+    <path d="M-38 40 L-196 155" stroke="#2f6fd6" stroke-width="18"/>
+    <path d="M-38 40 L-118 98" stroke="#f4f1ea" stroke-width="18"/>
+  </g>
+</svg>

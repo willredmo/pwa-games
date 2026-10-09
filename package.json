@@ -1,5 +1,5 @@
 {
-  "name": "roguelike-games",
+  "name": "pwa-games",
   "private": true,
   "packageManager": "pnpm@9.15.9",
   "scripts": {
@@ -7,6 +7,7 @@
     "dev:duel-deck": "pnpm --filter duel-deck dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "dev:house-edge": "pnpm --filter house-edge dev"
+    "dev:house-edge": "pnpm --filter house-edge dev",
+    "dev:knock-hockey": "pnpm --filter knock-hockey dev"
   }
 }

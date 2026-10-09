@@ -7,8 +7,12 @@
       "hosting": {
         "duel-deck": [
           "duel-deck-game"
+        ],
+        "knock-hockey": [
+          "knock-hockey"
         ]
       }
     }
-  }
+  },
+  "etags": {}
 }
