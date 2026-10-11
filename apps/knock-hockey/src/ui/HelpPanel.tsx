@@ -20,8 +20,8 @@ export function HelpPanel({ onClose }: { onClose: () => void }) {
         </p>
         <h3>Taking a shot</h3>
         <ol>
-          <li><b>Power:</b> touch or drag the power bar beside the board. Higher up is a soft tap, lower down hits harder. The stick pulls back to match.</li>
-          <li><b>Aim:</b> use the ↺ ↻ buttons under the board (or ← → on a keyboard). Tap for a tiny turn; hold to swing round, faster the longer you hold.</li>
+          <li><b>Aim and power:</b> press anywhere on the board and drag back, like a slingshot. The shot goes from your finger toward where you pressed, and the longer the drag, the harder the hit. A white ring marks where you pressed and a dashed line follows your finger; the stick swings and pulls back to match. Letting go keeps it.</li>
+          <li><b>Fine-tune:</b> ↺ ↻ under the board turn the aim (tap for a tiny turn, hold to swing faster), and the power bar on the right sets power exactly.</li>
           <li><b>Hit:</b> tap 🏒 Hit! It's the only way to shoot, so set power and aim in any order and take your time. Every hit wobbles a touch, so even a perfect shot isn't guaranteed.</li>
         </ol>
         <p>

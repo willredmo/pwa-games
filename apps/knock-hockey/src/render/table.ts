@@ -3,7 +3,7 @@ import { GOAL_X0, GOAL_X1, H, PUCK_R, W, type GoalSide, type Vec } from "../phys
 import type { Player, ShotOutcome } from "../game/match";
 import type { StickLook } from "../game/stick";
 import { clack, unlockSound } from "../game/sound";
-import { P1_COLOR, P2_COLOR, drawAimLine, drawBoard, drawPuck, fitBoard, type View } from "./board";
+import { P1_COLOR, P2_COLOR, drawAimLine, drawBoard, drawPuck, fitBoard, toBoard, type View } from "./board";
 import { drawStick } from "./stick";
 
 // The board on screen: draws it, takes your aim and power, animates the CPU's
@@ -11,13 +11,18 @@ import { drawStick } from "./stick";
 // fixed-step physics the CPU searches with. React owns the rules
 // (game/match.ts); this owns the canvas.
 //
-// Shooting: set the power on the power bar (the stick pulls back to match)
-// and turn the aim with the ↺ ↻ buttons. Either can change, in any order,
-// until you press Hit, which is the only way to shoot.
+// Shooting: press anywhere on the board and drag back, like a slingshot —
+// the shot points from your finger back toward where you pressed, and the
+// drag's length is the power. A marker shows where you pressed and a dashed
+// white line runs to your finger. The ↺ ↻ buttons, arrow keys and power bar
+// fine-tune. Nothing fires until you press Hit (or Space).
 
 /** Pull-back gap at zero and full power, board units. */
 const BACK_MIN = 2;
 const BACK_MAX = 62;
+/** Drag length (board units) for full power, and the dead zone before a drag counts. */
+const DRAG_FULL = 150;
+const DRAG_DEAD = 6;
 /** Below this the release cancels instead of shooting. */
 export const MIN_POWER = 0.04;
 
@@ -106,6 +111,8 @@ export class Table {
   private sparks: { x: number; y: number; t0: number; s: number }[] = [];
   private goal: { side: GoalSide; t0: number } | null = null;
   private ro: ResizeObserver;
+  /** A drag to set angle and power: where it started and where the finger is (board units). */
+  private drag: { id: number; start: Vec; cur: Vec } | null = null;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -122,6 +129,9 @@ export class Table {
     this.ro.observe(canvas.parentElement ?? canvas);
     this.resize();
     canvas.addEventListener("pointerdown", this.down);
+    canvas.addEventListener("pointermove", this.move);
+    canvas.addEventListener("pointerup", this.up);
+    canvas.addEventListener("pointercancel", this.up);
     this.raf = requestAnimationFrame(this.frame);
   }
 
@@ -129,6 +139,9 @@ export class Table {
     cancelAnimationFrame(this.raf);
     this.ro.disconnect();
     this.canvas.removeEventListener("pointerdown", this.down);
+    this.canvas.removeEventListener("pointermove", this.move);
+    this.canvas.removeEventListener("pointerup", this.up);
+    this.canvas.removeEventListener("pointercancel", this.up);
   }
 
   setLooks(looks: Record<Player, StickLook>): void {
@@ -224,10 +237,44 @@ export class Table {
 
   // --- Input ---------------------------------------------------------------
 
-  // Aiming is only by the ↺ ↻ buttons (`nudge`) and power only by the bar, so
-  // the board takes no aiming input. A press still unlocks sound (browsers
-  // only allow audio after a tap).
-  private down = () => unlockSound();
+  private boardPoint(e: PointerEvent): Vec {
+    const r = this.canvas.getBoundingClientRect();
+    const p = toBoard(this.view, e.clientX - r.left, e.clientY - r.top);
+    // Turned round (online guest): screen points map to the far side of the board.
+    return this.flipped ? { x: W - p.x, y: H - p.y } : p;
+  }
+
+  private down = (e: PointerEvent) => {
+    unlockSound(); // browsers only allow audio after a tap
+    if (!this.canAim || this.drag) return;
+    capture(this.canvas, e.pointerId);
+    const p = this.boardPoint(e);
+    this.drag = { id: e.pointerId, start: p, cur: p };
+    e.preventDefault();
+  };
+
+  private move = (e: PointerEvent) => {
+    const d = this.drag;
+    if (!d || d.id !== e.pointerId) return;
+    if (!this.canAim) {
+      this.drag = null;
+      return;
+    }
+    d.cur = this.boardPoint(e);
+    // Slingshot: the shot points from the finger back toward the press.
+    const dx = d.start.x - d.cur.x;
+    const dy = d.start.y - d.cur.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < DRAG_DEAD) return; // a tap, or a shaky start: leave aim and power alone
+    this.aim = Math.atan2(dy, dx);
+    this.power = clamp01((len - DRAG_DEAD) / DRAG_FULL);
+    this.events.onPull(this.power);
+  };
+
+  /** Letting go keeps the angle and power; the Hit button shoots. */
+  private up = (e: PointerEvent) => {
+    if (this.drag?.id === e.pointerId) this.drag = null;
+  };
 
   private fire(intended: Shot, exact?: Launch): void {
     this.phase = "striking";
@@ -409,6 +456,7 @@ export class Table {
       if (this.aimLine && this.controller === "local" && this.phase === "aiming") drawAimLine(ctx, this.puck, this.aim, color);
       drawStick(ctx, this.looks[this.shooter], this.pose());
     }
+    if (this.drag && this.canAim) drawDrag(ctx, this.drag.start, this.drag.cur);
     // Follow-through: the stick ends up just behind where the puck was, then fades.
     if (this.fade) {
       const k = (t - this.fade.t0) / 520;
@@ -462,6 +510,42 @@ export function capture(el: Element, id: number): void {
   } catch {
     /* fine: moves still arrive while over the element */
   }
+}
+
+/** Where the drag started (a ring and dot) and a dashed white line to the finger. */
+function drawDrag(ctx: CanvasRenderingContext2D, start: Vec, cur: Vec): void {
+  ctx.save();
+  ctx.lineCap = "round";
+  // A dark under-stroke keeps the white readable on the light wood.
+  for (const [color, width] of [
+    ["rgba(20,14,6,0.35)", 4],
+    ["#ffffff", 2.2],
+  ] as const) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    ctx.lineTo(cur.x, cur.y);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.fillStyle = "rgba(255,255,255,0.18)";
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(start.x, start.y, 11, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(start.x, start.y, 3, 0, Math.PI * 2);
+  ctx.fill();
+  // The finger end.
+  ctx.beginPath();
+  ctx.arc(cur.x, cur.y, 4.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 function hexA(hex: string, a: number): string {

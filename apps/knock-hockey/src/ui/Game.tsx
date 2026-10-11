@@ -543,7 +543,7 @@ export function Game(props: GameProps) {
             <button className={`lock-btn lock-btn--hit lock-btn--${match.turn}`} disabled={power < MIN_POWER} onClick={() => tableRef.current?.hit()}>
               🏒 Hit!
             </button>
-            <small>{power < MIN_POWER ? "Aim with ↺ ↻ · set power on the bar →" : "Aim with ↺ ↻, then hit"}</small>
+            <small>{power < MIN_POWER ? "Drag back on the board to aim and set power" : "Drag again to adjust, or hit"}</small>
           </div>
         ) : (
           <div className="turn-status">

@@ -58,15 +58,13 @@ over first-to-10 the stronger level wins ~90%+. Aim error is the main dial.
 ## Screen (render/table.ts)
 The `Table` class owns the canvas: draws, takes input, animates the CPU's
 stick, plays shots. React (ui/Game.tsx) owns the rules and the turn loop.
-- Power: touch or drag the power bar (ui/PowerBar.tsx) — position on the
-  bar is the power, top soft, bottom full. The stick pulls back to match.
-  Letting go keeps it; nothing fires.
-- Aim: only the ↺ ↻ buttons (or ← → keys); the board takes no aiming input.
-  A tap turns 0.25°; holding turns continuously, from 20°/s ramping to
-  150°/s (`HOLD` at the top of ui/Game.tsx).
-- Keyboard: ← → aim, ↑ ↓ power (same tap-then-hold-faster behaviour: 2% a
-  tap, up to 80%/s held), Space hits. Keys only act on your own turn, not
-  under the menu or end screen, and never while typing in a text field.
+- Drag (main control): press anywhere on the board and drag back like a
+  slingshot. Angle = from the finger toward the press point; power = drag
+  length (`DRAG_FULL` = 150 board units for 100%, after a 6-unit dead zone).
+  A white ring marks the press point and a dashed white line runs to the
+  finger while dragging. Letting go keeps angle and power; nothing fires.
+- Fine-tune: ↺ ↻ buttons (tap 0.25°, hold ramps 20→150°/s; `HOLD` in
+  ui/Game.tsx) and the power bar (ui/PowerBar.tsx, position = power).
 - Hit: the "Hit!" button is the only way to shoot (live once some power is
   set). Every turn starts at zero power.
 - The CPU's stick visibly turns, pulls back and swings with the same pose.

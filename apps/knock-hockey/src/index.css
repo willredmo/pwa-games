@@ -38,3 +38,21 @@ button {
   font: inherit;
   color: inherit;
 }
+
+/* It's a game, not a document: touch-and-hold anywhere must never start a
+   text selection, the iOS callout (copy / look up / share) or the magnifier —
+   holding the aim buttons used to. Text fields stay selectable so codes and
+   decals can still be typed and edited. */
+* {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}

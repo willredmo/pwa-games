@@ -18,6 +18,18 @@ document.addEventListener(
   { passive: false },
 );
 
+// No long-press context menu (Android, desktop right-click) outside text fields.
+document.addEventListener("contextmenu", (e) => {
+  const el = e.target as HTMLElement | null;
+  if (!el?.closest("input, textarea, [contenteditable='true']")) e.preventDefault();
+});
+// iOS can still start a selection on a long press; cancel any that begins
+// outside a text field.
+document.addEventListener("selectstart", (e) => {
+  const el = e.target instanceof Element ? e.target : (e.target as Node | null)?.parentElement;
+  if (!el?.closest("input, textarea, [contenteditable='true']")) e.preventDefault();
+});
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <App />
