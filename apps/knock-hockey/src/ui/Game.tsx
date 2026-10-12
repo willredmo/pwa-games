@@ -5,6 +5,7 @@ import {
   applyShot,
   controllerOf,
   hasNaturalBoard,
+  setupOf,
   other,
   playerName,
   runLabel,
@@ -25,7 +26,7 @@ import { MIN_POWER, Table, capture, type Controller, type Launch } from "../rend
 import {
   fixMatch,
   leaveRoom,
-  rematch,
+  requestRematch,
   saveSession,
   sendAim,
   sendLook,
@@ -43,6 +44,7 @@ import { PowerBar } from "./PowerBar";
 import { MenuPanel } from "./MenuPanel";
 import { EndScreen } from "./EndScreen";
 import { Replays } from "./Replays";
+import { setupSummary } from "./MatchSetup";
 
 // One match: vs the CPU, two people passing one device, or two devices
 // online. The Table (render/table.ts) runs the canvas; this component runs
@@ -95,7 +97,8 @@ export interface GameProps {
   onRoomMatch?: (m: MatchState) => void;
   onLocker: () => void;
   onHelp: () => void;
-  onRematch: () => void;
+  /** Start a new local match like `finished` (the match that just ended). */
+  onRematch: (finished: MatchState) => void;
   onExit: () => void;
 }
 
@@ -121,6 +124,15 @@ export function Game(props: GameProps) {
   const [oppLook, setOppLook] = useState<StickLook | null>(null);
   const [oppOnline, setOppOnline] = useState(true);
   const [oppLeft, setOppLeft] = useState(false);
+  /** Online guest: the host's settings, shown briefly as the match starts. */
+  const [setupNote, setSetupNote] = useState(online?.me === "p2" && initial.shots === 0);
+  useEffect(() => {
+    if (!setupNote) return;
+    const t = window.setTimeout(() => setSetupNote(false), 4500);
+    return () => window.clearTimeout(t);
+  }, [setupNote]);
+  /** Online: who has asked for a rematch since the match ended. */
+  const [rematchAsks, setRematchAsks] = useState<Partial<Record<Player, boolean>>>({});
   /** Goal replays open: at which goal, and whether to roll on to the next ones. */
   const [replay, setReplay] = useState<{ start: number; auto: boolean } | null>(null);
   /** The goal just scored (index into match.goals), offered as a replay until the next shot. */
@@ -387,6 +399,7 @@ export function Game(props: GameProps) {
       watchRoom<Partial<Record<Player, boolean>>>(online, "presence", (p) => setOppOnline(!!p?.[theirs])),
       watchRoom<Partial<Record<Player, StickLook>>>(online, "looks", (l) => setOppLook(l?.[theirs] ?? null)),
       watchRoom<Player>(online, "left", (who) => setOppLeft(who === theirs)),
+      watchRoom<Partial<Record<Player, boolean>>>(online, "rematch", (r) => setRematchAsks(r ?? {})),
       watchRoom<MatchState>(online, "match", (m) => {
         // A rematch started (by either of us).
         if (m && m.startedAt !== matchRef.current.startedAt && !m.winner && m.shots === 0) props.onRoomMatch?.(fixMatch(m));
@@ -562,6 +575,11 @@ export function Game(props: GameProps) {
               )}
             </div>
           )}
+          {setupNote && (
+            <div className="setup-pill" role="status" onClick={() => setSetupNote(false)}>
+              Host's settings: {setupSummary(setupOf(match))}
+            </div>
+          )}
           {/* After the banner, the goal stays offered until the next shot. */}
           {!banner && freshGoal !== null && !match.winner && (
             <button className="replay-chip" onClick={() => openReplays(freshGoal, false)}>
@@ -660,7 +678,12 @@ export function Game(props: GameProps) {
           match={match}
           me={me}
           onReplays={() => openReplays(0, true)}
-          onRematch={online ? () => void rematch(online) : props.onRematch}
+          onRematch={online ? () => void requestRematch(online) : () => props.onRematch(match)}
+          rematch={
+            online
+              ? { mine: !!rematchAsks[online.me], theirs: !!rematchAsks[other(online.me)], opponentGone: oppLeft }
+              : undefined
+          }
           onExit={online ? leave : props.onExit}
         />
       )}

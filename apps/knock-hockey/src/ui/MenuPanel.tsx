@@ -109,7 +109,7 @@ export function MenuPanel(props: MenuPanelProps) {
             <span className="menu-item__icon">🪵</span>
             <span>
               Board: {naturalBoard ? "natural" : "perfectly true"}, {corners45 ? "45° corners" : "standard corners"}
-              <small>Set for this match. Change it on the start screen for the next one.</small>
+              <small>{online ? "Set by the host for this match." : "Set for this match. Choose again when you start a new game."}</small>
             </span>
           </div>
           {confirmNew ? (

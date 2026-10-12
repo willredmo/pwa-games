@@ -8,25 +8,66 @@
           ".read": "$code.length === 5",
           ".write": "$code.length === 5",
           ".validate": "newData.hasChildren(['host', 'createdAt'])",
-          "host": { ".validate": "newData.isString() && newData.val().length <= 40 && (!data.exists() || data.val() === newData.val())" },
-          "guest": { ".validate": "newData.isString() && newData.val().length <= 40" },
-          "createdAt": { ".validate": "newData.isNumber() && (!data.exists() || data.val() === newData.val())" },
+          "host": {
+            ".validate": "newData.isString() && newData.val().length <= 40 && (!data.exists() || data.val() === newData.val())"
+          },
+          "guest": {
+            ".validate": "newData.isString() && newData.val().length <= 40"
+          },
+          "createdAt": {
+            ".validate": "newData.isNumber() && (!data.exists() || data.val() === newData.val())"
+          },
           "presence": {
-            "p1": { ".validate": "newData.isBoolean()" },
-            "p2": { ".validate": "newData.isBoolean()" },
-            "$other": { ".validate": false }
+            "p1": {
+              ".validate": "newData.isBoolean()"
+            },
+            "p2": {
+              ".validate": "newData.isBoolean()"
+            },
+            "$other": {
+              ".validate": false
+            }
           },
           "looks": {
-            "p1": { ".validate": "newData.hasChildren(['shaft', 'blade'])" },
-            "p2": { ".validate": "newData.hasChildren(['shaft', 'blade'])" },
-            "$other": { ".validate": false }
+            "p1": {
+              ".validate": "newData.hasChildren(['shaft', 'blade'])"
+            },
+            "p2": {
+              ".validate": "newData.hasChildren(['shaft', 'blade'])"
+            },
+            "$other": {
+              ".validate": false
+            }
           },
-          "match": { ".validate": "newData.hasChildren(['score', 'turn', 'puck', 'shots', 'startedAt'])" },
-          "shot": { ".validate": "newData.hasChildren(['seq', 'by', 'x', 'y', 'vx', 'vy', 'angle', 'power'])" },
-          "result": { ".validate": "newData.hasChildren(['seq', 'match'])" },
-          "aim": { ".validate": "newData.hasChildren(['by', 'angle', 'power'])" },
-          "left": { ".validate": "newData.isString()" },
-          "$other": { ".validate": false }
+          "match": {
+            ".validate": "newData.hasChildren(['score', 'turn', 'puck', 'shots', 'startedAt'])"
+          },
+          "shot": {
+            ".validate": "newData.hasChildren(['seq', 'by', 'x', 'y', 'vx', 'vy', 'angle', 'power'])"
+          },
+          "result": {
+            ".validate": "newData.hasChildren(['seq', 'match'])"
+          },
+          "aim": {
+            ".validate": "newData.hasChildren(['by', 'angle', 'power'])"
+          },
+          "left": {
+            ".validate": "newData.isString()"
+          },
+          "rematch": {
+            "p1": {
+              ".validate": "newData.isBoolean()"
+            },
+            "p2": {
+              ".validate": "newData.isBoolean()"
+            },
+            "$other": {
+              ".validate": false
+            }
+          },
+          "$other": {
+            ".validate": false
+          }
         }
       },
       "duel-deck": {
@@ -34,38 +75,74 @@
           ".read": "$code.length === 5",
           ".write": "$code.length === 5",
           ".validate": "newData.hasChildren(['host', 'createdAt'])",
-          "host": { ".validate": "newData.isString() && newData.val().length <= 40 && (!data.exists() || data.val() === newData.val())" },
-          "guest": { ".validate": "newData.isString() && newData.val().length <= 40" },
-          "createdAt": { ".validate": "newData.isNumber() && (!data.exists() || data.val() === newData.val())" },
-          "startedAt": { ".validate": "newData.isNumber()" },
+          "host": {
+            ".validate": "newData.isString() && newData.val().length <= 40 && (!data.exists() || data.val() === newData.val())"
+          },
+          "guest": {
+            ".validate": "newData.isString() && newData.val().length <= 40"
+          },
+          "createdAt": {
+            ".validate": "newData.isNumber() && (!data.exists() || data.val() === newData.val())"
+          },
+          "startedAt": {
+            ".validate": "newData.isNumber()"
+          },
           "presence": {
-            "p1": { ".validate": "newData.isBoolean()" },
-            "p2": { ".validate": "newData.isBoolean()" },
-            "$other": { ".validate": false }
+            "p1": {
+              ".validate": "newData.isBoolean()"
+            },
+            "p2": {
+              ".validate": "newData.isBoolean()"
+            },
+            "$other": {
+              ".validate": false
+            }
           },
           "commits": {
             "$player": {
               ".validate": "($player === 'p1' || $player === 'p2') && newData.hasChildren(['round'])",
-              "round": { ".validate": "newData.isNumber()" },
+              "round": {
+                ".validate": "newData.isNumber()"
+              },
               "lanes": {
                 "$lane": {
                   "$spot": {
                     ".validate": "newData.hasChildren(['key', 'baseAtk', 'baseMaxHp'])",
-                    "key": { ".validate": "newData.isString() && newData.val().length <= 24" },
-                    "baseAtk": { ".validate": "newData.isNumber()" },
-                    "baseMaxHp": { ".validate": "newData.isNumber()" },
-                    "merges": { ".validate": "newData.isNumber()" },
-                    "grant": { ".validate": "newData.hasChildren()" },
-                    "$other": { ".validate": false }
+                    "key": {
+                      ".validate": "newData.isString() && newData.val().length <= 24"
+                    },
+                    "baseAtk": {
+                      ".validate": "newData.isNumber()"
+                    },
+                    "baseMaxHp": {
+                      ".validate": "newData.isNumber()"
+                    },
+                    "merges": {
+                      ".validate": "newData.isNumber()"
+                    },
+                    "grant": {
+                      ".validate": "newData.hasChildren()"
+                    },
+                    "$other": {
+                      ".validate": false
+                    }
                   }
                 }
               },
-              "aug": { ".validate": "newData.hasChildren()" },
-              "$other": { ".validate": false }
+              "aug": {
+                ".validate": "newData.hasChildren()"
+              },
+              "$other": {
+                ".validate": false
+              }
             }
           },
-          "left": { ".validate": "newData.isString()" },
-          "$other": { ".validate": false }
+          "left": {
+            ".validate": "newData.isString()"
+          },
+          "$other": {
+            ".validate": false
+          }
         }
       }
     }

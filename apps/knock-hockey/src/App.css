@@ -268,6 +268,27 @@
   pointer-events: auto; /* the banner itself lets taps through */
 }
 .goal-banner__replay:hover { background: rgba(0, 0, 0, 0.3); }
+.setup-pill {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(20, 27, 39, 0.92);
+  border: 1px solid var(--gold);
+  color: #ffe2a0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+  animation: fade-in 0.3s both;
+  cursor: pointer;
+}
+.setup__note { margin: 0.4rem 0 0; font-size: 0.85rem; color: #ffe2a0; }
+.setup { display: flex; flex-direction: column; gap: 0.8rem; }
+.setup .toggle-row { margin-top: 0; }
+.setup .field { gap: 0.45rem; }
+.setup__small { margin: 0; font-size: 0.78rem; color: var(--muted); text-align: center; }
 .replay-chip {
   /* Top-left, over the corner wedge, clear of the goal mouth. */
   position: absolute;
@@ -547,6 +568,23 @@
 .replay__empty { margin: auto; color: var(--muted); }
 .ghost-btn--on { border-color: var(--gold); background: #3a3220; color: #ffe2a0; }
 .end__replays { margin-top: 0.8rem; }
+.end__ready { margin-top: 0.8rem; }
+.end__ready-hint { margin: 0.7rem 0 0; font-size: 0.85rem; color: var(--muted); }
+.end__ready-hint--ask { color: var(--gold); font-weight: 800; animation: hot 1.4s ease-in-out infinite; }
+.end__ready-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.5rem; }
+.ready-btn {
+  padding: 0.7rem 0.4rem;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  font-weight: 800;
+  color: #fff;
+  cursor: pointer;
+}
+.ready-btn--p1 { background: var(--p1); }
+.ready-btn--p2 { background: var(--p2); }
+.ready-btn--on { background: transparent; cursor: default; }
+.ready-btn--p1.ready-btn--on { border-color: var(--p1); color: #8db8ff; }
+.ready-btn--p2.ready-btn--on { border-color: var(--p2); color: #ff9a90; }
 button.menu-item:disabled { opacity: 0.5; cursor: default; }
 
 /* --- ☰ menu (ui/MenuPanel.tsx) --- */

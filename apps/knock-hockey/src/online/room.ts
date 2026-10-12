@@ -69,6 +69,8 @@ export interface Room {
   aim?: AimMsg;
   /** Set to the player who left for good. */
   left?: Player;
+  /** Who has asked for a rematch after the match ended. Both → it starts. */
+  rematch?: Partial<Record<Player, boolean>>;
 }
 
 export interface Session {
@@ -129,16 +131,25 @@ export const sendResult = (s: Session, r: ResultMsg) => updateRoom(GAME, s.code,
 export const leaveRoom = (s: Session) => setField(GAME, s.code, "left", s.me);
 
 /** Start a new match in the room after one ends; the loser goes first. */
-export async function rematch(s: Session): Promise<void> {
+/**
+ * Ask for a rematch. It starts only once both players have asked: whoever
+ * asks second starts it (same board setup, the loser shoots first).
+ */
+export async function requestRematch(s: Session): Promise<void> {
   await transactRoom<Room>(GAME, s.code, (cur) => {
     if (!cur) return null;
-    if (!cur.match?.winner) return undefined; // someone already started one
+    if (!cur.match?.winner) return undefined; // a new match already started
+    const asked = { ...cur.rematch, [s.me]: true };
+    if (!asked.p1 || !asked.p2) return { ...cur, rematch: asked };
     const fresh = newMatch("online", "medium", setupOf(cur.match), other(cur.match.winner));
-    // Drop the old turn's messages (the database can't store undefined).
-    const { shot: _s, result: _r, aim: _a, ...rest } = cur;
+    // Drop the old match's messages and requests (the database can't store undefined).
+    const { shot: _s, result: _r, aim: _a, rematch: _q, ...rest } = cur;
     return { ...rest, match: fresh };
   });
 }
+
+/** Take back a rematch request (e.g. on leaving). */
+export const cancelRematch = (s: Session) => setField(GAME, s.code, `rematch/${s.me}`, null);
 
 // --- This device's current online game, so a reload can rejoin -------------
 

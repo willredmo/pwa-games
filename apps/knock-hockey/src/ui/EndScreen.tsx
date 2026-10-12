@@ -21,18 +21,38 @@ export interface EndScreenProps {
   match: MatchState;
   /** Online: which player this device is. */
   me?: Player;
+  /**
+   * Start the rematch. Vs the CPU it's immediate; on one device it's called
+   * once both players have tapped; online it asks (the room starts it once
+   * both have asked — see `online`).
+   */
   onRematch: () => void;
   onExit: () => void;
   onReplays: () => void;
+  /** Online: who has asked for a rematch so far, and whether the opponent can still say yes. */
+  rematch?: { mine: boolean; theirs: boolean; opponentGone: boolean };
 }
 
-export function EndScreen({ match, me, onRematch, onExit, onReplays }: EndScreenProps) {
+export function EndScreen({ match, me, onRematch, onExit, onReplays, rematch }: EndScreenProps) {
   const pvp = match.mode === "pvp";
   const online = match.mode === "online";
   // In 2-player there's no loser's view: always celebrate the winner.
   const won = pvp || match.winner === (me ?? "p1");
   const winner = playerName(match, match.winner ?? "p1", me);
-  const [asked, setAsked] = useState(false);
+  // On one device, both players tap their own Rematch button.
+  const [ready, setReady] = useState<Record<Player, boolean>>({ p1: false, p2: false });
+  const [started, setStarted] = useState(false);
+  const loser = match.winner ? (match.winner === "p1" ? "p2" : "p1") : "p1";
+  const firstName = playerName(match, loser, me);
+  const firstLine = firstName === "You" ? "You shoot first" : `${firstName} shoots first`;
+  const tapReady = (p: Player) => {
+    const next = { ...ready, [p]: true };
+    setReady(next);
+    if (next.p1 && next.p2 && !started) {
+      setStarted(true);
+      onRematch();
+    }
+  };
   const { p1, p2 } = match.stats;
   const mins = Math.max(1, Math.round((Date.now() - match.startedAt) / 60000));
   const rows: Row[] = [
@@ -94,17 +114,47 @@ export function EndScreen({ match, me, onRematch, onExit, onReplays }: EndScreen
             🎬 Watch all {match.goals!.length} goals
           </button>
         )}
+        {pvp ? (
+          <div className="end__ready">
+            <p className="end__ready-hint">Rematch when you're both ready · {firstLine}</p>
+            <div className="end__ready-btns">
+              {(["p1", "p2"] as const).map((p) => (
+                <button
+                  key={p}
+                  className={`ready-btn ready-btn--${p}${ready[p] ? " ready-btn--on" : ""}`}
+                  aria-pressed={ready[p]}
+                  disabled={ready[p]}
+                  onClick={() => tapReady(p)}
+                >
+                  {ready[p] ? `✓ ${playerName(match, p, me)} ready` : `${playerName(match, p, me)}: Rematch`}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : online && rematch ? (
+          <p className={`end__ready-hint${rematch.theirs && !rematch.mine ? " end__ready-hint--ask" : ""}`} role="status">
+            {rematch.opponentGone
+              ? "Your opponent has left — no rematch."
+              : rematch.mine && !rematch.theirs
+                ? "Waiting for your opponent to accept…"
+                : rematch.theirs && !rematch.mine
+                  ? "Your opponent wants a rematch!"
+                  : `Rematch? ${firstLine}.`}
+          </p>
+        ) : null}
         <div className="end__actions">
-          <button
-            className="primary-btn"
-            disabled={asked}
-            onClick={() => {
-              setAsked(true);
-              onRematch();
-            }}
-          >
-            {asked && online ? "Starting…" : "Rematch"}
-          </button>
+          {!pvp && (
+            <button
+              className="primary-btn"
+              disabled={online ? !!rematch && (rematch.mine || rematch.opponentGone) : started}
+              onClick={() => {
+                if (!online) setStarted(true);
+                onRematch();
+              }}
+            >
+              {online && rematch?.mine ? "Asked ✓" : online && rematch?.theirs ? "Accept rematch" : "Rematch"}
+            </button>
+          )}
           <button className="ghost-btn" onClick={onExit}>{pvp ? "Main menu" : online ? "Leave" : "Change opponent"}</button>
         </div>
       </div>

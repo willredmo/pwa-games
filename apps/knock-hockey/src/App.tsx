@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { setupOf, loadMatch, loadSettings, newMatch, saveMatch, saveSettings, type MatchState, type Mode, type Settings } from "./game/match";
+import { other, setupOf, loadMatch, loadSettings, newMatch, saveMatch, saveSettings, type MatchState, type Mode, type Settings } from "./game/match";
 import { loadLook, saveLook, type LookSlot, type StickLook } from "./game/stick";
 import { setSoundEnabled } from "./game/sound";
 import { Game } from "./ui/Game";
@@ -8,6 +8,7 @@ import { Locker } from "./ui/Locker";
 import { HelpPanel } from "./ui/HelpPanel";
 import { UpdatePrompt } from "./ui/UpdatePrompt";
 import { Lobby, type LobbyProps } from "./ui/Lobby";
+import { MatchSetup, type MatchChoice, type SetupMode } from "./ui/MatchSetup";
 import { fixMatch, loadSession, readSession, saveSession, type Session } from "./online/room";
 import "./App.css";
 
@@ -42,19 +43,30 @@ export default function App() {
   const [online, setOnline] = useState<Session | null>(null);
   /** A saved online game to offer rejoining (after a reload). */
   const [savedOnline, setSavedOnline] = useState<Session | null>(loadSession);
-  const [lobby, setLobby] = useState<Pick<LobbyProps, "kind" | "session" | "code"> | null>(() => {
+  const [lobby, setLobby] = useState<Pick<LobbyProps, "kind" | "session" | "code" | "setup"> | null>(() => {
     const code = takeJoinCode();
     return code ? { kind: "join", code } : null;
   });
   const [notice, setNotice] = useState<string | null>(null);
+  /** The match settings sheet, open for this kind of game. */
+  const [setupFor, setSetupFor] = useState<SetupMode | null>(null);
 
   useEffect(() => saveSettings(settings), [settings]);
   useEffect(() => setSoundEnabled(settings.sound), [settings.sound]);
   useEffect(() => saveLook("p1", looks.p1), [looks.p1]);
   useEffect(() => saveLook("p2", looks.p2), [looks.p2]);
 
-  const start = (mode: Mode) => {
-    const m = newMatch(mode, settings.difficulty, { naturalBoard: settings.naturalBoard, corners: settings.corners });
+  /** The settings sheet a new game opens with, from the last choices. */
+  const lastChoice: MatchChoice = { difficulty: settings.difficulty, naturalBoard: settings.naturalBoard, corners: settings.corners };
+  const startFromSetup = (mode: SetupMode, choice: MatchChoice) => {
+    setSetupFor(null);
+    setSettings((s) => ({ ...s, ...choice }));
+    if (mode === "online") setLobby({ kind: "host", setup: { naturalBoard: choice.naturalBoard, corners: choice.corners } });
+    else start(mode, choice);
+  };
+
+  const start = (mode: Mode, choice: MatchChoice) => {
+    const m = newMatch(mode, choice.difficulty, { naturalBoard: choice.naturalBoard, corners: choice.corners });
     saveMatch(m);
     setSaved(m);
     setMatch(m);
@@ -104,21 +116,15 @@ export default function App() {
     <div className="app">
       {screen === "title" || !match ? (
         <Title
-          difficulty={settings.difficulty}
-          onDifficulty={(difficulty) => setSettings((s) => ({ ...s, difficulty }))}
-          naturalBoard={settings.naturalBoard}
-          onNaturalBoard={(naturalBoard) => setSettings((s) => ({ ...s, naturalBoard }))}
-          corners={settings.corners}
-          onCorners={(corners) => setSettings((s) => ({ ...s, corners }))}
           look={looks.p1}
           saved={saved}
           savedOnline={savedOnline}
           notice={notice}
-          onPlay={() => start("cpu")}
-          onPlay2={() => start("pvp")}
+          onPlay={() => setSetupFor("cpu")}
+          onPlay2={() => setSetupFor("pvp")}
           onHost={() => {
             setNotice(null);
-            setLobby({ kind: "host" });
+            setSetupFor("online");
           }}
           onJoin={() => {
             setNotice(null);
@@ -140,9 +146,9 @@ export default function App() {
           looks={looks}
           onLocker={() => setLocker("p1")}
           onHelp={() => setHelp(true)}
-          onRematch={() => {
-            // Same mode and opponent as the match that just ended.
-            const m = newMatch(match.mode, match.difficulty, setupOf(match));
+          onRematch={(finished) => {
+            // Same mode, opponent and board as the match that just ended; the loser shoots first.
+            const m = newMatch(finished.mode, finished.difficulty, setupOf(finished), finished.winner ? other(finished.winner) : "p1");
             saveMatch(m);
             setMatch(m);
           }}
@@ -151,11 +157,13 @@ export default function App() {
       )}
       {locker && <Locker slot={locker} onSlot={setLocker} looks={looks} onChange={setLooks} onClose={() => setLocker(null)} />}
       {help && <HelpPanel onClose={() => setHelp(false)} />}
+      {setupFor && (
+        <MatchSetup mode={setupFor} initial={lastChoice} onStart={(c) => startFromSetup(setupFor, c)} onClose={() => setSetupFor(null)} />
+      )}
       {lobby && (
         <Lobby
           {...lobby}
           look={looks.p1}
-          setup={{ naturalBoard: settings.naturalBoard, corners: settings.corners }}
           onReady={startOnline}
           onClose={() => {
             setLobby(null);

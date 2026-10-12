@@ -15,7 +15,9 @@ behind it.
   rotates. Names, banners, Hit button colour and the end screen follow
   `playerName` / `isHuman` in match.ts.
 - After a goal the puck goes back to centre ice and the side that was scored
-  on hits first. A new match starts with you. First to 10 (`TARGET`), win
+  on hits first. A new match starts with Player 1; a rematch starts with the
+  previous match's loser. On one device both players tap their own Rematch
+  button before it starts. First to 10 (`TARGET`), win
   by 2 (`WIN_BY`; `hasWon`): at 10–9 play goes on. The header shows "Game
   point" when the next goal could win and "Win by 2" when level at 9+.
 - Runs (`stats.runs`): each player's own shots that scored, back to back. A
@@ -38,8 +40,8 @@ a line segment; segment ends act as round posts.
   units off the end rail, leaving a 26-unit gap behind it (the puck is 18).
 - Corner wedges, steeper than 45° on the standard board (42 along the end
   rail, 58 along the side; ≈54° to the end rail). A match can use true 45°
-  corners instead (50 × 50): the start screen's "📐 45° corners" switch
-  (`Settings.corners`, saved as `MatchState.corners`, absent = steep). Each
+  corners instead (50 × 50): the "📐 45° corners" match setting (saved as
+  `MatchState.corners`, absent = steep). Each
   variant is a `Layout` in `LAYOUTS` (physics/table.ts) with its own
   segments; the physics, drawing, CPU (`corners` to the worker), board
   character and replays all take the match's layout. Like the natural board
@@ -60,11 +62,18 @@ constant slow-down plus speed-proportional drag; bounces keep 80% of head-on
 speed. Shot power maps to launch speed on a curve (`shotSpeed`) so low power
 gives fine control. No spin yet (planned: "English", where the stick strikes).
 
+## Match settings (ui/MatchSetup.tsx)
+Chosen when a game starts, not on the title screen: Play vs CPU, Same device
+and Online game each open a settings sheet (CPU difficulty for vs CPU;
+Natural board and 45° corners for all) with a Start / Create game button.
+The sheet opens on the last choices (`Settings`). Fixed for the match, shown
+in the ☰ menu, kept by a rematch (`setupOf`). Online, only the host sets
+them, before the room is made; the lobby lists them, and the guest gets a
+"Host's settings: …" note as the match starts and can't change them.
+
 ## Board character (physics/board.ts)
-A match setting: the start screen's "🪵 Natural board" switch
-(`Settings.naturalBoard`, default on) applies to new matches in every mode;
-the ☰ menu shows the current match's board; a rematch keeps the choice; online,
-the host's choice applies. On, the match gets a `boardSeed` (saved in
+A match setting, chosen when a game starts (see Match settings below):
+"🪵 Natural board" (default on). On, the match gets a `boardSeed` (saved in
 `MatchState`; off, there's no seed and the board is perfectly true) that gives
 its board a little character, fixed for the whole game:
 - Rails, wedges and diamonds: along each segment, bounciness varies up to
@@ -144,7 +153,10 @@ same-device players never download it). Rooms live at
   server on disconnect) — the other sees "Opponent disconnected". Leaving
   writes `left`; the room is then closed. Reloading offers "Rejoin online
   game" (`knock-hockey:online` in localStorage holds the code and side).
-- **Rematch:** either player; the loser shoots first. Both devices see the new
+- **Rematch:** each player asks (`rematch/<p>` in the room); the end screen
+  shows "Your opponent wants a rematch!" / "Waiting for your opponent…". The
+  second ask starts it in one transaction (`requestRematch`): same board
+  setup, the loser shoots first, requests cleared. Both devices see the new
   `match.startedAt` and restart.
 - **No sign-in:** devices are identified by a random id
   (`pwa-games:client-id`); a room is only reachable by its code. Rules in

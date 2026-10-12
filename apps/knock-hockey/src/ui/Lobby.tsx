@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { BoardSetup, MatchState } from "../game/match";
+import { setupSummary } from "./MatchSetup";
 import type { StickLook } from "../game/stick";
 import {
   fixMatch,
@@ -24,8 +25,8 @@ export interface LobbyProps {
   /** Join: code from a shared link. */
   code?: string;
   look: StickLook;
-  /** Host: how the room's matches set up the board. */
-  setup: BoardSetup;
+  /** Host making a room: the board settings chosen for it (absent when rejoining a waiting room). */
+  setup?: BoardSetup;
   onReady: (s: Session, m: MatchState) => void;
   onClose: () => void;
 }
@@ -49,7 +50,7 @@ export function Lobby({ kind, session: initialSession, code: initialCode, look, 
     if (kind !== "host" || session || started.current) return;
     started.current = true;
     setBusy(true);
-    hostRoom(look, setup)
+    hostRoom(look, setup ?? {})
       .then((s) => {
         saveSession(s);
         setSession(s);
@@ -153,8 +154,8 @@ export function Lobby({ kind, session: initialSession, code: initialCode, look, 
               ) : null}
             </p>
             <p className="lobby__small">
-              You're blue and take the first shot. {setup.naturalBoard ? "Natural board" : "True board"}
-              {setup.corners === "45" ? ", 45° corners" : ""} (set on the start screen).
+              You're blue and take the first shot.
+              {setup && ` ${setupSummary(setup)}.`}
             </p>
           </>
         ) : (
