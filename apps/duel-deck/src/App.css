@@ -601,7 +601,10 @@ body { background-color: #12101c; }
 .app { position: relative; isolation: isolate; }
 /* Arena backdrop: the enemy's red light from above and yours from below (the
    board's own orientation), a faint woven floor, and a vignette to the edges.
-   All gradients, so no image assets. */
+   All gradients, so no image assets. On .app-root as well as .app, so the
+   title screen sits in the same arena rather than on flat colour. */
+.app-root { position: relative; isolation: isolate; }
+.app-root::before,
 .app::before {
   content: "";
   position: fixed;
@@ -904,7 +907,7 @@ button.menu-item:hover { border-color: #5a5180; }
 
 /* --- Phone layout --- */
 .hud__short { display: none; }
-@media (max-width: 480px) {
+@media (max-width: 44.99rem) {
   .app { gap: 0.35rem; padding: max(0.6rem, env(safe-area-inset-top)) 12px calc(0.6rem + env(safe-area-inset-bottom)); }
   .app__header { min-height: 2.5rem; }
   .app__header h1 { font-size: 1.15rem; }
@@ -930,7 +933,9 @@ button.menu-item:hover { border-color: #5a5180; }
 
 /* --- Desktop side panels (#7): only where there's room beside the board --- */
 .side-panel { display: none; }
-@media (min-width: 1100px) {
+/* The two-column layout makes the centre block ~52rem, so the panels need a
+   lot more room than when it was ~34rem — below this they'd sit on top of it. */
+@media (min-width: 88rem) {
   .side-panel {
     display: block;
     position: fixed;
@@ -946,9 +951,9 @@ button.menu-item:hover { border-color: #5a5180; }
     font-size: 0.8rem;
     text-align: left;
   }
-  /* Centre column is at most 34rem wide; sit 1rem clear of it. */
-  .side-panel--player { left: calc(50% - 33rem); border-top: 3px solid #3a86d6; }
-  .side-panel--enemy { right: calc(50% - 33rem); border-top: 3px solid #d1483a; }
+  /* Clear of the ~52rem centre block, and never off the left edge. */
+  .side-panel--player { left: max(0.75rem, calc(50% - 42rem)); border-top: 3px solid #3a86d6; }
+  .side-panel--enemy { right: max(0.75rem, calc(50% - 42rem)); border-top: 3px solid #d1483a; }
 }
 .side-panel__title { margin: 0 0 0.4rem; font-size: 1rem; }
 .side-panel--player .side-panel__title { color: #7db8ff; }
@@ -1032,4 +1037,253 @@ button.menu-item:hover { border-color: #5a5180; }
 @keyframes frost-shimmer {
   0%, 100% { box-shadow: 0 0 0 1px rgba(143, 211, 255, 0.45), 0 0 10px rgba(124, 200, 255, 0.25); }
   50% { box-shadow: 0 0 0 1px rgba(191, 230, 255, 0.8), 0 0 18px rgba(124, 200, 255, 0.5); }
+}
+/* --- Title screen --------------------------------------------------------
+   Unlike the match (one fixed screen, never scrolls), the menu is allowed to
+   scroll: on a short phone the opponent cards plus Play don't always fit. */
+.title {
+  min-height: 100dvh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.2rem;
+  padding: 1.5rem 1rem calc(1.5rem + env(safe-area-inset-bottom));
+}
+.title__hero { text-align: center; }
+.title__emblem {
+  font-size: 2.6rem;
+  line-height: 1;
+  filter: drop-shadow(0 0 14px rgba(240, 180, 41, 0.45));
+}
+.title__hero h1 {
+  margin: 0.3rem 0 0;
+  font-size: clamp(2rem, 9vw, 2.9rem);
+  letter-spacing: 0.03em;
+  background: linear-gradient(180deg, #fff 10%, #f0b429 120%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.title__tagline {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+.title__panel {
+  width: min(94vw, 27rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.title__label {
+  margin: 0.2rem 0 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.title__options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+/* The chosen opponent, as a radio rather than the start screen's one-shot
+   button: gold edge and a tinted fill so it reads as "this is set". */
+.start-option--on {
+  border-color: #f0b429;
+  background: rgba(240, 180, 41, 0.12);
+}
+.primary-btn--wide { width: 100%; }
+.primary-btn--wide small,
+.ghost-btn small {
+  display: block;
+  font-weight: 500;
+  font-size: 0.76rem;
+  opacity: 0.8;
+}
+.title__warn {
+  margin: 0;
+  text-align: center;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+.title__links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.3rem 1rem;
+  margin-top: 0.3rem;
+}
+.link-btn {
+  font: inherit;
+  font-size: 0.84rem;
+  padding: 0.3rem 0.2rem;
+  border: none;
+  background: none;
+  color: #9ecbf5;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.link-btn:hover { color: #d7ebff; }
+
+/* --- Online lobby (ui/Lobby.tsx) ----------------------------------------
+   Ported from knock-hockey's, with duel-deck's palette: the two games show
+   the same join-code flow, so they should look like the same flow. */
+.lobby { display: flex; flex-direction: column; gap: 0.75rem; text-align: center; }
+.lobby__hint { margin: 0.3rem 0 0; color: #d5dceb; font-size: 0.92rem; }
+.lobby__code { display: flex; justify-content: center; gap: 0.4rem; margin: 0.3rem 0; }
+.lobby__code span {
+  display: grid;
+  place-items: center;
+  width: 2.7rem;
+  height: 3.2rem;
+  border-radius: 10px;
+  background: #14121f;
+  border: 1px solid #3a3454;
+  font-size: 1.8rem;
+  font-weight: 900;
+  color: #f0b429;
+  font-variant-numeric: tabular-nums;
+}
+.lobby__code .lobby__dots { width: auto; padding: 0 1rem; color: var(--muted); font-size: 1.2rem; }
+.lobby__waiting {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: var(--muted);
+  min-height: 1.4em;
+}
+.lobby__spinner,
+.waiting__spinner {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid #3a3454;
+  border-top-color: #f0b429;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .lobby__spinner, .waiting__spinner { animation-duration: 3s; }
+}
+.lobby__small { margin: 0; font-size: 0.8rem; color: var(--muted); }
+.lobby__join { display: flex; flex-direction: column; gap: 0.7rem; }
+.lobby__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.6rem;
+  font: inherit;
+  font-size: 1.8rem;
+  font-weight: 900;
+  letter-spacing: 0.35em;
+  text-indent: 0.35em;
+  text-align: center;
+  text-transform: uppercase;
+  color: #f0b429;
+  background: #14121f;
+  border: 1px solid #3a3454;
+  border-radius: 12px;
+}
+.lobby__error { margin: 0; color: #ffb4a8; font-size: 0.88rem; }
+
+.title__row { display: flex; gap: 0.5rem; }
+.title__row .ghost-btn { flex: 1; }
+.title__notice {
+  margin: 0;
+  text-align: center;
+  font-size: 0.84rem;
+  color: #ffb4a8;
+}
+
+/* Online: your row is in, theirs isn't yet. Sits where the offer cards were,
+   so the board keeps exactly the height it had during picks. */
+.waiting {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  min-height: 3.6rem;
+  padding: 0 1rem;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* --- Wide screens: controls beside the board, not under it ---------------
+   The board's size is set by leftover HEIGHT, never by width: render.ts caps
+   lane width at MAX_LANE_W (320px) on one lane, so widening the window does
+   nothing for the board at all — only rowH (canvasHeight / rows) moves. The
+   one way to make it bigger is to free vertical space, i.e. stand the HUD,
+   pick row, offer cards and hint in a column to its right.
+
+   45rem is where the controls column can still hold five cards at full
+   portrait size (~340px) next to the 320px board. Below it the compact
+   (phone) chrome runs instead, so there's no band left with full-size chrome
+   in one column — that was the worst case of all, rowH 36 against the
+   phone's 44. There .app__controls is `display: contents`, so the wrapper
+   vanishes and the single-column layout is exactly what it always was. */
+.app__controls { display: contents; }
+
+@media (min-width: 45rem) and (min-height: 34rem) {
+  .app {
+    display: grid;
+    grid-template-columns: minmax(20rem, 22rem) minmax(21rem, 25rem);
+    grid-template-rows: auto auto 1fr auto auto;
+    grid-template-areas:
+      "header controls"
+      "ehp    controls"
+      "stage  controls"
+      "php    controls"
+      "log    log";
+    justify-content: center;
+    column-gap: clamp(1rem, 3vw, 2rem);
+    /* .app centres its children as a flex column; in grid that would centre
+       each item inside its track rather than filling it, and the stage —
+       whose whole job is to absorb the 1fr row — would collapse. */
+    align-items: stretch;
+    justify-items: stretch;
+  }
+  .app__header { grid-area: header; }
+  .hpbar--enemy { grid-area: ehp; }
+  .app__stage { grid-area: stage; }
+  .hpbar--player { grid-area: php; }
+  .app__log { grid-area: log; }
+
+  /* Each column's children fill it, rather than keeping their phone widths. */
+  .app__header, .hpbar, .app__log { width: 100%; }
+  .app__stage { width: 100%; }
+
+  .app__controls {
+    grid-area: controls;
+    display: flex;
+    flex-direction: column;
+    /* Centred against the board rather than pinned to the top: the offer row
+       is what the eye moves between, and the board's middle is where it is. */
+    justify-content: center;
+    align-items: center;
+    gap: 0.7rem;
+    min-width: 0;
+  }
+  .app__controls .hud,
+  .app__controls .hand { width: 100%; }
+  /* Five across, shrinking to fit — the same treatment as the phone, whose
+     375px is about what this column is. Wrapping gave a ragged 4 + 1. */
+  .app__controls .hand { flex-wrap: nowrap; gap: 0.3rem; }
+  .app__controls .hand .card-wrap { flex: 1 1 0; min-width: 0; }
+  .app__controls .hand .card { width: 100%; padding: 0.4rem 0.2rem; }
+  .app__controls .card__name {
+    font-size: 0.72rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  .app__hint { max-width: 100%; }
 }

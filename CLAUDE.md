@@ -17,8 +17,8 @@ game that isn't a roguelike belongs here too, as long as it's a PWA.
 - **Language:** TypeScript throughout.
 - **Backend:** Firebase Realtime Database (project `roguelike-games`), through
   `packages/backend-client` — generic rooms with join codes, transactions,
-  presence and live fields; Firebase is lazy-loaded. Knock Hockey's online mode
-  uses it; duel-deck and root-and-ruin are meant to. Checkers and House Edge
+  presence and live fields; Firebase is lazy-loaded. Knock Hockey and Duel Deck
+  use it for online play; root-and-ruin is meant to. Checkers and House Edge
   are fully client-side, no backend. Database rules: `database.rules.json`,
   deployed with `firebase deploy --only database`; add a block under `rooms`
   for each game that uses it.

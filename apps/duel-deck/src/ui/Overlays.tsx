@@ -354,7 +354,8 @@ function Stat({ label, value, i, suffix = "", sub }: { label: string; value: num
   );
 }
 
-const DIFFICULTY_INFO: Record<string, { icon: string; blurb: string }> = {
+/** Shared with the title screen, which offers the same choice. */
+export const DIFFICULTY_INFO: Record<string, { icon: string; blurb: string }> = {
   easy: { icon: "🌱", blurb: "Picks cards at random and never arranges its row. Good for learning the units." },
   normal: { icon: "⚔️", blurb: "Builds sensibly: fills its row, merges, and takes upgrades that suit it." },
   hard: { icon: "🔥", blurb: "Simulates every pair of picks against your row, and predicts what you'll add." },
@@ -769,6 +770,7 @@ export function HelpPanel({ onClose }: HelpPanelProps) {
           <li>Every {AUGMENT_EVERY} rounds, before you pick units, you choose a persistent upgrade — a separate track from unit picks. They last this match only. The header shows when the next one is due.</li>
           <li><strong>Long-press</strong> (or hover with a mouse) any unit or offer card to see its ability and what is changing its numbers. Units also show a small icon for each upgrade currently boosting them, so you can see where their numbers come from. Conditional upgrades (Overwhelm, Desperate measures) only show while they're actually firing. Open <strong>Upgrades</strong> to match an icon to its name — the enemy's units are badged too.</li>
           <li>First player to 0 HP loses.</li>
+          <li><strong>Online duels.</strong> Host a duel from the main menu and share the 5-letter code (or the invite link). You both build your row at the same time — there are no turns — and the rows clash once you've both pressed Battle. You'll see "waiting for your opponent" if they're still arranging.</li>
         </ul>
       </div>
     </div>

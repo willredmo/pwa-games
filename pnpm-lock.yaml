@@ -38,6 +38,9 @@ importers:
 
   apps/duel-deck:
     dependencies:
+      '@pwa-games/backend-client':
+        specifier: workspace:*
+        version: link:../../packages/backend-client
       react:
         specifier: ^18.3.1
         version: 18.3.1

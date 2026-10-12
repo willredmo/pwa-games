@@ -28,6 +28,45 @@
           "left": { ".validate": "newData.isString()" },
           "$other": { ".validate": false }
         }
+      },
+      "duel-deck": {
+        "$code": {
+          ".read": "$code.length === 5",
+          ".write": "$code.length === 5",
+          ".validate": "newData.hasChildren(['host', 'createdAt'])",
+          "host": { ".validate": "newData.isString() && newData.val().length <= 40 && (!data.exists() || data.val() === newData.val())" },
+          "guest": { ".validate": "newData.isString() && newData.val().length <= 40" },
+          "createdAt": { ".validate": "newData.isNumber() && (!data.exists() || data.val() === newData.val())" },
+          "startedAt": { ".validate": "newData.isNumber()" },
+          "presence": {
+            "p1": { ".validate": "newData.isBoolean()" },
+            "p2": { ".validate": "newData.isBoolean()" },
+            "$other": { ".validate": false }
+          },
+          "commits": {
+            "$player": {
+              ".validate": "($player === 'p1' || $player === 'p2') && newData.hasChildren(['round'])",
+              "round": { ".validate": "newData.isNumber()" },
+              "lanes": {
+                "$lane": {
+                  "$spot": {
+                    ".validate": "newData.hasChildren(['key', 'baseAtk', 'baseMaxHp'])",
+                    "key": { ".validate": "newData.isString() && newData.val().length <= 24" },
+                    "baseAtk": { ".validate": "newData.isNumber()" },
+                    "baseMaxHp": { ".validate": "newData.isNumber()" },
+                    "merges": { ".validate": "newData.isNumber()" },
+                    "grant": { ".validate": "newData.hasChildren()" },
+                    "$other": { ".validate": false }
+                  }
+                }
+              },
+              "aug": { ".validate": "newData.hasChildren()" },
+              "$other": { ".validate": false }
+            }
+          },
+          "left": { ".validate": "newData.isString()" },
+          "$other": { ".validate": false }
+        }
       }
     }
   }

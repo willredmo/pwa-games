@@ -281,15 +281,22 @@ right-to-left with a `+N` overflow that adapts to the space the unit's name and
 level badge leave free.
 
 ### Battle playback is chained, not pre-scheduled
-The `⏩` HUD button toggles a 3× playback speed (`FAST_FACTOR`), persisted to
-`localStorage` so it outlives the match. Making it toggleable *mid-battle*
-dictated the playback structure: frames used to be scheduled up front at
-absolute offsets, which meant a speed change could only take effect by
-re-running the effect — restarting the round from the first blow. Playback now
-chains one timeout per frame and re-reads `speedRef` at each boundary, so
-toggling applies from the next beat with no replay. `speedRef` is a ref rather
-than the `fast` state precisely so it stays out of the effect's dependency
-array; putting `fast` in there would reintroduce the restart.
+The HUD speed button **cycles 1× → 2× → 3× → 1×** (`SPEEDS` in game/save.ts),
+persisted with the settings so it outlives the match. One button rather than
+three: it's pressed mid-battle and the HUD row is already tight on a phone, so
+the label always names the speed in force and the tooltip names the next one.
+Speed was a `fast` boolean (3× only) until 2× was added; `loadSettings`
+migrates both the old blob field and the older `duel-deck:fast` key to 3×,
+rather than quietly resetting anyone who had it on. Measured on one round:
+19.8s / 8.3s / 6.0s.
+
+Being changeable *mid-battle* dictated the playback structure: frames used to
+be scheduled up front at absolute offsets, which meant a speed change could
+only take effect by re-running the effect — restarting the round from the first
+blow. Playback now chains one timeout per frame and re-reads `speedRef` at each
+boundary, so a change applies from the next beat with no replay. `speedRef` is
+a ref rather than the `speed` prop precisely so it stays out of the effect's
+dependency array; putting `speed` in there would reintroduce the restart.
 
 ### Combat keywords and side mods
 Augments can grant more than stat deltas. `traits` puts combat keywords on a
@@ -413,6 +420,80 @@ each candidate against both the scouted and the predicted row. Without that it
 had slipped to 55-60% as units gained mid-round abilities and Normal improved.
 Sim (`--player=` / `--enemy=`, 2026-10-08): Normal beats Easy ~94%; Hard beats Normal ~68%.
 
+### Screens: App owns the match, Game plays it
+`App.tsx` is the shell — title screen, settings, the saved match, the online
+session — and `ui/Game.tsx` is one match from round 1 to the result. Starting a
+match mounts a fresh `Game` keyed by a run id; leaving unmounts it. That split
+is why "New match" doesn't reset state in place: resetting means reproducing
+every piece of match state by hand and missing one, whereas dropping the
+component can't. The opponent used to be chosen by `DifficultyPanel` *inside*
+the match; it's picked on the title screen now, so a match starts already
+knowing what it is. ☰ has both "Main menu" (keeps the save) and "New match"
+(clears it, with a confirm).
+
+### Online duel (online/room.ts, ui/Lobby.tsx, packages/backend-client)
+Firebase Realtime Database, project `roguelike-games`, via the shared
+`@pwa-games/backend-client` (lazy-loaded, so a CPU match never downloads it —
+the build puts it in its own chunks). Rooms at `rooms/duel-deck/<CODE>`,
+5-character codes, `?join=CODE` invite links, presence for disconnects, `left`
+to close a room. Host is `p1`.
+
+**Nothing is streamed and nobody is authoritative.** Duel Deck is simultaneous,
+so there are no turns to relay: both players build a row in private, press
+Battle, and each device writes only its own `commits/<p>`. Once both commits
+for the round are in, *each device assembles the same round itself* and runs
+`resolveRound`. The engine has no randomness (no `Math.random` anywhere under
+`src/engine`), so the two devices produce the same blows, deaths and HP loss —
+there is no result to send, and no host to trust. This is the
+`commit → resolveRound` boundary the tracker always named as the netcode seam.
+
+Three things make that safe, and none are obvious:
+- **The engine is side-symmetric.** Each device is `player` on its own screen,
+  so the two boards are mirror images. `combat.ts` does swing player-before-
+  enemy (`frontExchange`) and does break a mutual-zero in the player's favour
+  (`matchWinner`), but that branch is unreachable — only the round *winner*
+  damages a pool, so two pools can't empty in one round.
+- **Both sides' upgrades must travel**, because effective stats depend on them
+  (Sabotage hits the enemy front, Overwhelm reads relative unit counts), so the
+  commit carries the row *and* the `AugmentState`.
+- **Unit ids don't survive the trip.** Both devices number units from zero on
+  every page load, so the opponent's "u3" would collide with ours — and ids key
+  drags, poses, playback and augment grants. `unpackCommit` mints fresh local
+  ids. That breaks `AugmentState.grants`, which is id-keyed, so a grant travels
+  on the `WireUnit` that carries it and is re-keyed on arrival. Nothing sends an
+  id back, so local-only ids are safe.
+
+`pnpm netcheck` is the guard: it plays whole matches between two simulated
+devices exchanging commits through a JSON round-trip that strips empty values
+the way the database does, and fails on any disagreement. It currently reports
+0 desyncs over ~2800 rounds.
+
+Other notes: an online match is **not** saved to `localStorage` (half of it is
+the opponent's; `save()` is a no-op online) — a reload rejoins via the room, and
+`duel-deck:online` holds the code and side. Waiting on the other player is a
+`"waiting"` phase shown where the offer cards sit, so the board keeps its
+height. Each side rolls its own unit and upgrade offers; they're independent and
+need no shared RNG. There's no in-room rematch yet — both players return to the
+title and host again. Rules live in `database.rules.json` at the repo root and
+must be deployed (`firebase deploy --only database`) before online works at all;
+without the `duel-deck` block every write is a 401.
+
+### Sound (game/sound.ts)
+Synthesized, no audio files — oscillators and one noise buffer, like
+knock-hockey's. Call sites name the *event* (`sfx("death")`), never the
+waveform, so the palette can be retuned or swapped for samples without touching
+playback. Unlocked from the first real click (Play, or turning sound on), since
+browsers won't start audio otherwise; stored in `duel-deck:settings` and
+toggled in two places — the title screen and ☰, since a battle is exactly when
+you want to silence it and the title is a whole match away.
+
+One rule worth keeping: **one sound per beat, not per event.** Both fronts
+swing at once, so playing a clang per `attack` gives four overlapping hits that
+read as noise rather than as a big blow. The clash picks a single sound from
+the loudest damage in the beat (`BIG_HIT` switches it to the heavier one), and
+death is delayed ~90ms so the fall reads as the consequence of the impact.
+Knighting deliberately overrides the merge sound that triggers it.
+
 ### Save and resume
 The match is saved to `localStorage` (`duel-deck:match`) at the start of every
 pick phase — never mid-battle — so a reload lands back at the start of the
@@ -437,9 +518,9 @@ in the sim are not used in the game. Revisit only if late-round draws climb.
 
 ## Deferred (not v1)
 
-- Real 1v1 over Supabase/Firebase — the reason this app exists long-term.
-  The `commit → resolveRound` boundary is where it plugs in.
 - Ranged units, multi-lane boards, economy/currency, scaling/rarity tiers.
+- In-room rematch, and a turn timer (online currently waits indefinitely,
+  which was a deliberate call — see "Online duel").
 - Board-synergy-aware AI (picks that build toward an augment it holds).
 
 ## Open questions
@@ -486,5 +567,35 @@ keeps one size from picks through battle. Pinch and double-tap zoom are off
 Phones (≤480px, `COMPACT_QUERY` in App.tsx matches App.css) get a one-row HUD
 (Commit, speed, Undo, ⬆ upgrades), five offer cards across with smaller
 portraits, and a board sized so the pick phase fits a 375×667 screen without
-scrolling. Units, rules, AI difficulty and New match (with a confirm) live in
-the ☰ menu.
+scrolling. Units, rules, sound, AI difficulty, Main menu and New match (with a
+confirm) live in the ☰ menu.
+
+**The board's size is set by leftover *height*, never by width.** `layout()`
+takes `laneW = min(canvasWidth, MAX_LANE_W 320, rowH * MAX_LANE_ASPECT 8)`, and
+on one lane the 320px cap almost always wins — so a wider window adds nothing
+and the only lever is `rowH`, which is `canvasHeight / (depth * 2)`. Anything
+that frees vertical space makes the board bigger; anything else does not.
+
+That gives exactly two layouts, and they are complementary — there is no band
+with full-size chrome in a single column, which was the worst of both:
+
+- **Under 45rem (720px): one column, compact chrome.** The phone treatment
+  (one-row HUD, five small offer cards, smaller portraits) now runs all the way
+  up to the two-column breakpoint, not just to 480px. `COMPACT_QUERY` in
+  Game.tsx must match this query in App.css.
+- **45rem and up (and ≥34rem tall): two columns** — board on the left, HUD,
+  pick row, offer cards and hint stacked on the right (`.app__controls`).
+  720px is where the controls column can still hold five cards at full portrait
+  size (~340px) beside the 320px board; below that the cards are worse off than
+  the board gains. Below the breakpoint `.app__controls` is `display: contents`
+  so the wrapper vanishes and the column layout is exactly what it always was.
+
+Measured `rowH`: 42 at 500-719px (one column), 61 at 730px, 58 at 1024×768,
+71 at 1440×900, 84 at 768×1024. It now rises monotonically with available
+space instead of collapsing to 36 in the middle.
+
+Two gotchas the grid cost: `.app`'s flex `align-items: center` has to become
+`stretch`, or the stage centres in its track instead of absorbing the `1fr` row
+and collapses; and the fixed side panels were positioned for a ~34rem centre
+column (`calc(50% - 33rem)`), so against a ~52rem one they need both a wider
+offset and a higher breakpoint (88rem) or they sit on top of the board.
