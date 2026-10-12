@@ -6,6 +6,7 @@ import {
   controllerOf,
   other,
   playerName,
+  runLabel,
   saveMatch,
   TARGET,
   WIN_BY,
@@ -18,6 +19,7 @@ import {
 import { CPU_LOOKS, defaultLook, type StickLook } from "../game/stick";
 import { horn } from "../game/sound";
 import { CENTER } from "../physics/table";
+import { boardFor } from "../physics/board";
 import { MIN_POWER, Table, capture, type Controller, type Launch } from "../render/table";
 import {
   fixMatch,
@@ -76,6 +78,8 @@ interface Banner {
   sub?: string;
   /** Colour: the scorer's. */
   kind: Player;
+  /** "Hat trick!" and so on, for a run of goals. */
+  run?: string | null;
   key: number;
 }
 
@@ -180,7 +184,7 @@ export function Game(props: GameProps) {
       if (c !== "cpu") return;
       setThinking(true);
       const t0 = performance.now();
-      void thinkShot(m.puck, { difficulty: m.difficulty, attacksTop: false }).then((shot) => {
+      void thinkShot(m.puck, { difficulty: m.difficulty, attacksTop: false, boardSeed: m.boardSeed }).then((shot) => {
         const wait = Math.max(0, MIN_THINK_MS[m.difficulty] - (performance.now() - t0));
         window.setTimeout(() => {
           if (turnRef.current !== token) return;
@@ -227,6 +231,8 @@ export function Game(props: GameProps) {
               ? "Bank shot"
               : undefined,
         kind: scorer,
+        // Works the same for an online opponent's result: the run is in the match.
+        run: runLabel(m.stats.run?.p === scorer ? m.stats.run.n : 1),
         key: Date.now(),
       });
       const token = ++turnRef.current;
@@ -337,6 +343,7 @@ export function Game(props: GameProps) {
     );
     // The online guest sees the board turned round, so their goal is at the bottom.
     table.flipped = me === "p2";
+    table.board = boardFor(matchRef.current.boardSeed);
     table.aimLine = settings.aimLine;
     tableRef.current = table;
     startTurn(matchRef.current);
@@ -543,6 +550,7 @@ export function Game(props: GameProps) {
           <canvas ref={canvasRef} className="game__canvas" />
           {banner && (
             <div className={`goal-banner goal-banner--${banner.kind}`} key={banner.key}>
+              {banner.run && <em className="goal-banner__run">{banner.run}</em>}
               <strong>{banner.text}</strong>
               {banner.sub && <span>{banner.sub}</span>}
               {freshGoal !== null && (

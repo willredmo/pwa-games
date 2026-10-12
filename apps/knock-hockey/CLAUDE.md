@@ -18,6 +18,10 @@ behind it.
   on hits first. A new match starts with you. First to 10 (`TARGET`), win
   by 2 (`WIN_BY`; `hasWon`): at 10–9 play goes on. The header shows "Game
   point" when the next goal could win and "Win by 2" when level at 9+.
+- Runs: goals in a row for the same side with none against in between (an
+  opponent's own goal counts — it's your point). The goal banner calls out 2+
+  (`runLabel`: "Two in a row!", "Hat trick!", "Four in a row — on fire!",
+  "N in a row — unstoppable!"); the end screen shows each side's best run.
 - Goal kinds (`goalKind`, used for stats, banners and replay captions) are
   exclusive. Corner goal: the last real bounce was off a corner wedge. Bank
   goal: a real bounce off a rail or diamond. Otherwise straight in. Goal posts
@@ -47,6 +51,21 @@ shot isn't a sure thing twice. A perfectly aimed corner shot still scores ~91%
 constant slow-down plus speed-proportional drag; bounces keep 80% of head-on
 speed. Shot power maps to launch speed on a curve (`shotSpeed`) so low power
 gives fine control. No spin yet (planned: "English", where the stick strikes).
+
+## Board character (physics/board.ts)
+Each match gets a `boardSeed` (saved in `MatchState`) that gives its board a
+little character, fixed for the whole game:
+- Rails, wedges and diamonds: along each segment, bounciness varies up to
+  ±0.06 (of 0.8) and the bounce comes off up to ≈1.4° from true. Both scale
+  with how hard the puck hits (full strength at 900 units/s head-on).
+- Surface: a few smooth slow patches, up to +18% friction, never faster.
+It's deterministic from the seed and uses only + − × ÷ and sqrt in the step,
+so replays are exact, online devices agree, and the CPU plans on the real
+board (`boardSeed` goes to the worker). Older saves have no seed: a true
+board. `pnpm sim feel` measures it: no physics escapes; a shot's resting spot
+moves ~30 units vs a true board (the per-hit wobble moves it ~50); the
+perfectly aimed corner shot goes from ~93% to ~87%; CPU scoring unchanged.
+Strengths are in `FEEL`.
 
 ## CPU (ai/cpu.ts, runs in ai/worker.ts)
 Simulates candidate shots and scores where each ends: goal, own goal, or the
@@ -89,7 +108,7 @@ are open the match is paused: the next turn, the CPU's shot and an online
 opponent's incoming shot/result are held (`whenUnpaused` in ui/Game.tsx) and
 carried on when closed. Also opened from the ☰ menu mid-match and from the
 end screen: one goal after another (auto-play toggle), ⏮ ⏭, Again,
-Slow-mo (`Table.timeScale`, puck only). Keys: ← → previous/next, Space
+a speed button (½× by default, then ¼×, 1×; `Table.timeScale`, puck only). The stick lines up at the CPU's unhurried pace (`playRemote(launch, true)`), not an online opponent's quick one. Keys: ← → previous/next, Space
 again, Esc close. Goals sync online with the match, so both players can
 watch them. Saves from before replays simply have none.
 
@@ -141,8 +160,8 @@ every shot, cleared when a match ends or is abandoned), `knock-hockey:stick`,
 
 ## Commands
 - `pnpm dev` (port 5177 via the root launch config `knock-hockey`)
-- `pnpm sim fuzz | corner | wobble | rates | match` — physics checks and CPU
-  tuning
+- `pnpm sim fuzz | corner | wobble | feel | rates | match` — physics checks
+  and CPU tuning
 - `firebase deploy --only database` (repo root) — publish database rules
 - `pnpm run release` — build and deploy to Firebase Hosting target
   `knock-hockey`. PWA update flow, version.json and the ☰ About section are

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { playerName, type GoalRecord, type MatchState, type Player } from "../game/match";
 import type { StickLook } from "../game/stick";
 import { Table } from "../render/table";
+import { boardFor } from "../physics/board";
 
 // Goal replays. Each goal was saved with the exact shot that scored it (where
 // the puck was and how it left the stick), and the physics is deterministic,
@@ -10,8 +11,11 @@ import { Table } from "../render/table";
 // up and swings just as it did.
 
 /** Pause before the stick moves, and after the puck goes in before the next goal. */
-const LEAD_MS = 450;
-const AFTER_MS = 1400;
+const LEAD_MS = 600;
+const AFTER_MS = 1800;
+/** Replay speeds (share of real time for the puck), cycled by the speed button. Starts at the first. */
+const SPEEDS = [0.5, 0.25, 1] as const;
+const SPEED_LABEL: Record<(typeof SPEEDS)[number], string> = { 0.5: "½×", 0.25: "¼×", 1: "1×" };
 
 export interface ReplaysProps {
   match: MatchState;
@@ -32,7 +36,7 @@ export function Replays({ match, looks, me, start = 0, autoplay = true, onClose 
   const timer = useRef(0);
   const [index, setIndex] = useState(Math.min(start, Math.max(0, goals.length - 1)));
   const [auto, setAuto] = useState(autoplay);
-  const [slow, setSlow] = useState(false);
+  const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(SPEEDS[0]);
   /** Bumped to replay the current goal again. */
   const [take, setTake] = useState(0);
   const [done, setDone] = useState(false);
@@ -61,6 +65,8 @@ export function Replays({ match, looks, me, start = 0, autoplay = true, onClose 
       looks,
     );
     table.flipped = me === "p2";
+    // The same board the goals were scored on.
+    table.board = boardFor(match.boardSeed);
     table.aimLine = false;
     tableRef.current = table;
     return () => {
@@ -72,8 +78,8 @@ export function Replays({ match, looks, me, start = 0, autoplay = true, onClose 
   }, []);
 
   useEffect(() => {
-    if (tableRef.current) tableRef.current.timeScale = slow ? 0.4 : 1;
-  }, [slow]);
+    if (tableRef.current) tableRef.current.timeScale = speed;
+  }, [speed]);
 
   // Play the current goal.
   useEffect(() => {
@@ -84,7 +90,7 @@ export function Replays({ match, looks, me, start = 0, autoplay = true, onClose 
     setDone(false);
     table.placePuck(g.launch);
     table.beginTurn(g.by, "remote");
-    timer.current = window.setTimeout(() => tableRef.current?.playRemote(g.launch), LEAD_MS);
+    timer.current = window.setTimeout(() => tableRef.current?.playRemote(g.launch, true), LEAD_MS);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index, take]);
 
@@ -134,8 +140,12 @@ export function Replays({ match, looks, me, start = 0, autoplay = true, onClose 
               </button>
             </div>
             <div className="replay__toggles">
-              <button className={`ghost-btn ghost-btn--sm${slow ? " ghost-btn--on" : ""}`} aria-pressed={slow} onClick={() => setSlow(!slow)}>
-                🐢 Slow-mo
+              <button
+                className="ghost-btn ghost-btn--sm"
+                title="Replay speed"
+                onClick={() => setSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length])}
+              >
+                🐢 Speed {SPEED_LABEL[speed]}
               </button>
               <button
                 className={`ghost-btn ghost-btn--sm${auto ? " ghost-btn--on" : ""}`}

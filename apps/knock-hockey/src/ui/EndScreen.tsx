@@ -42,6 +42,7 @@ export function EndScreen({ match, me, onRematch, onExit, onReplays }: EndScreen
     { label: "Bank goals", p1: p1.bankGoals, p2: p2.bankGoals },
     { label: "Corner goals", p1: p1.cornerGoals, p2: p2.cornerGoals },
     { label: "Own goals", p1: p1.ownGoals, p2: p2.ownGoals, low: true },
+    { label: "Best run", p1: p1.bestRun ?? "—", p2: p2.bestRun ?? "—" },
     { label: "Hardest hit", p1: pct(p1.hardest), p2: pct(p2.hardest) },
   ];
 

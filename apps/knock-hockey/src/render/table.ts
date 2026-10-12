@@ -1,4 +1,5 @@
 import { DT, launch, moving, step, wobble, type Contact, type Launch, type Puck, type Shot } from "../physics/sim";
+import type { BoardFeel } from "../physics/board";
 import { GOAL_X0, GOAL_X1, H, PUCK_R, W, type GoalSide, type Vec } from "../physics/table";
 import type { Player, ShotOutcome } from "../game/match";
 import type { StickLook } from "../game/stick";
@@ -57,8 +58,10 @@ interface CpuMove {
   toAngle: number;
   fromPower: number;
   shot: Shot;
-  /** An online opponent's shot: exact launch to replay, and a quicker line-up. */
+  /** An exact launch to replay (online opponent, goal replay). */
   exact?: Launch;
+  /** Line up quickly (an online opponent, whose aim was already shown live). */
+  quick?: boolean;
 }
 
 interface Fade {
@@ -74,6 +77,8 @@ const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
 export class Table {
   aimLine = true;
+  /** This match's board character (physics/board.ts); null is a perfectly true board. */
+  board: BoardFeel | null = null;
   /** Draw the board turned 180°, so the top goal is at the bottom (online guest). */
   flipped = false;
   private ctx: CanvasRenderingContext2D;
@@ -223,7 +228,12 @@ export class Table {
   }
 
   /** Replay an online opponent's shot exactly as it left their stick. */
-  playRemote(l: Launch): void {
+  /**
+   * Replay an exact launch: an online opponent's shot, or a goal replay. An
+   * opponent's line-up was already shown live, so it settles quickly; a
+   * replay (`leisurely`) lines up at the CPU's unhurried pace.
+   */
+  playRemote(l: Launch, leisurely = false): void {
     if (this.phase !== "cpu" || this.controller !== "remote") return;
     // Start from exactly where their puck was.
     this.puck = { x: l.x, y: l.y, vx: 0, vy: 0 };
@@ -232,7 +242,7 @@ export class Table {
     while (to - this.aim > Math.PI) to -= Math.PI * 2;
     while (to - this.aim < -Math.PI) to += Math.PI * 2;
     this.remoteAim = null;
-    this.cpu = { t0: now(), fromAngle: this.aim, toAngle: to, fromPower: this.power, shot: { angle: to, power: l.power }, exact: l };
+    this.cpu = { t0: now(), fromAngle: this.aim, toAngle: to, fromPower: this.power, shot: { angle: to, power: l.power }, exact: l, quick: !leisurely };
   }
 
   // --- Input ---------------------------------------------------------------
@@ -315,7 +325,7 @@ export class Table {
     // opponent's line-up was already shown live, so theirs just settles quickly.
     if (this.cpu && this.phase === "cpu") {
       const e = t - this.cpu.t0;
-      const quick = !!this.cpu.exact;
+      const quick = !!this.cpu.quick;
       const TURN = quick ? 160 : 520;
       const PULL = quick ? 200 : 700;
       const HOLD = quick ? 80 : 220;
@@ -371,7 +381,7 @@ export class Table {
       while (this.acc >= DT && moving(this.puck)) {
         this.acc -= DT;
         const n = this.contacts.length;
-        scored = step(this.puck, this.contacts);
+        scored = step(this.puck, this.contacts, this.board);
         for (let i = n; i < this.contacts.length; i++) {
           const c = this.contacts[i];
           const s = Math.min(1, c.speed / 900);

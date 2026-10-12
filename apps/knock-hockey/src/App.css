@@ -200,6 +200,21 @@
 }
 .goal-banner strong { font-size: 2.2rem; font-weight: 900; letter-spacing: 0.02em; text-transform: uppercase; }
 .goal-banner span { font-size: 0.9rem; opacity: 0.9; }
+.goal-banner__run {
+  margin-bottom: 0.1rem;
+  padding: 0.15rem 0.7rem;
+  border-radius: 999px;
+  background: var(--gold);
+  color: #1d1608;
+  font-style: normal;
+  font-weight: 900;
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  box-shadow: 0 3px 0 #a9761a;
+  animation: run-pop 0.7s cubic-bezier(0.2, 1.8, 0.4, 1) 0.15s both;
+}
+@keyframes run-pop { from { opacity: 0; transform: scale(0.3) rotate(-8deg); } }
 .goal-banner__replay {
   margin-top: 0.35rem;
   padding: 0.35rem 0.9rem;
@@ -639,5 +654,5 @@ button.menu-item:hover, label.menu-item:hover { border-color: #556585; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .scoreboard__num, .scoreboard__to--hot, .goal-banner, .end, .menu-panel, .power--active .power__handle { animation: none; }
+  .scoreboard__num, .scoreboard__to--hot, .goal-banner, .goal-banner__run, .end, .menu-panel, .power--active .power__handle { animation: none; }
 }

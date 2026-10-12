@@ -1,7 +1,9 @@
 import { GOAL_X0, GOAL_X1, H, PUCK_R, SEGMENTS, W, type GoalSide, type SurfaceKind, type Vec } from "./table";
+import { FEEL, knot, slowness, type BoardFeel } from "./board";
 
 // The puck simulation. Fixed timestep and no randomness, so the same start
-// position and shot always play out exactly the same way. The CPU relies on
+// position and shot always play out exactly the same way on the same board
+// (a match's `BoardFeel`, from physics/board.ts; null is a perfectly true board). The CPU relies on
 // that: it picks shots by simulating candidates with `simulateShot`, and the
 // screen then plays the chosen one back with `step`, frame by frame.
 
@@ -92,13 +94,15 @@ export const moving = (p: Puck) => p.vx !== 0 || p.vy !== 0;
  * returns the goal the puck just crossed into, if any. The puck's centre
  * crossing the goal line scores; it stops there.
  */
-export function step(p: Puck, contacts?: Contact[]): GoalSide | null {
+export function step(p: Puck, contacts?: Contact[], board?: BoardFeel | null): GoalSide | null {
   // Only + − × ÷ and sqrt from here on: those are exactly rounded in every JS
   // engine, so online opponents on different browsers simulate a shot
   // identically (Math.hypot, sin, cos can differ in the last bit).
   const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
   if (speed === 0) return null;
-  const next = speed - (MU + DRAG * speed) * DT;
+  // Slow patches on this board's surface add friction.
+  const mu = board ? MU * (1 + FEEL.surface * slowness(board, p.x, p.y)) : MU;
+  const next = speed - (mu + DRAG * speed) * DT;
   if (next <= STOP_SPEED) {
     p.vx = p.vy = 0;
     return null;
@@ -109,7 +113,8 @@ export function step(p: Puck, contacts?: Contact[]): GoalSide | null {
   p.x += p.vx * DT;
   p.y += p.vy * DT;
 
-  for (const s of SEGMENTS) {
+  for (let si = 0; si < SEGMENTS.length; si++) {
+    const s = SEGMENTS[si];
     if (p.x < s.minX || p.x > s.maxX || p.y < s.minY || p.y > s.maxY) continue;
     // Closest point on the segment to the puck centre.
     const ex = s.bx - s.ax;
@@ -128,13 +133,37 @@ export function step(p: Puck, contacts?: Contact[]): GoalSide | null {
     // Push out of the surface, then bounce if still moving into it.
     p.x = cx + nx * PUCK_R;
     p.y = cy + ny * PUCK_R;
-    const vn = p.vx * nx + p.vy * ny;
+    let vn = p.vx * nx + p.vy * ny;
     if (vn < 0) {
-      const tx = p.vx - vn * nx;
-      const ty = p.vy - vn * ny;
-      p.vx = tx * (1 - WALL_GRIP) - vn * RESTITUTION * nx;
-      p.vy = ty * (1 - WALL_GRIP) - vn * RESTITUTION * ny;
-      contacts?.push({ kind: s.kind, speed: -vn, x: cx, y: cy });
+      const hit = -vn;
+      let e = RESTITUTION;
+      // This board's character at this spot on this rail: a little livelier or
+      // deader, a fraction of a degree off true. Stronger the harder the hit.
+      let bx = nx;
+      let by = ny;
+      if (board) {
+        const edge = board.edges[si];
+        const strength = hit >= FEEL.fullAt ? 1 : hit / FEEL.fullAt;
+        e += FEEL.restitution * strength * knot(edge.e, t);
+        const tilt = FEEL.tilt * strength * knot(edge.tilt, t);
+        // Turn the normal slightly toward the rail's direction (small-angle).
+        const tx0 = bx - tilt * ny;
+        const ty0 = by + tilt * nx;
+        const tl = Math.sqrt(tx0 * tx0 + ty0 * ty0);
+        bx = tx0 / tl;
+        by = ty0 / tl;
+        const vnTilted = p.vx * bx + p.vy * by;
+        if (vnTilted < 0) vn = vnTilted;
+        else {
+          bx = nx;
+          by = ny;
+        }
+      }
+      const tx = p.vx - vn * bx;
+      const ty = p.vy - vn * by;
+      p.vx = tx * (1 - WALL_GRIP) - vn * e * bx;
+      p.vy = ty * (1 - WALL_GRIP) - vn * e * by;
+      contacts?.push({ kind: s.kind, speed: hit, x: cx, y: cy });
     }
   }
 
@@ -170,13 +199,13 @@ export interface ShotResult {
 }
 
 /** Play a shot out to the end, headless. */
-export function simulateShot(at: Vec, shot: Shot): ShotResult {
+export function simulateShot(at: Vec, shot: Shot, board?: BoardFeel | null): ShotResult {
   const p = launch(at, shot);
   const contacts: Contact[] = [];
   let goal: GoalSide | null = null;
   let steps = 0;
   while (moving(p) && steps < MAX_STEPS) {
-    goal = step(p, contacts);
+    goal = step(p, contacts, board);
     steps++;
     if (goal) break;
   }
@@ -184,11 +213,11 @@ export function simulateShot(at: Vec, shot: Shot): ShotResult {
 }
 
 /** Cheaper version for the CPU's search: only the goal and resting point. */
-export function quickShot(at: Vec, shot: Shot): { goal: GoalSide | null; x: number; y: number } {
+export function quickShot(at: Vec, shot: Shot, board?: BoardFeel | null): { goal: GoalSide | null; x: number; y: number } {
   const p = launch(at, shot);
   let steps = 0;
   while (moving(p) && steps < MAX_STEPS) {
-    const goal = step(p);
+    const goal = step(p, undefined, board);
     steps++;
     if (goal) return { goal, x: p.x, y: p.y };
   }

@@ -32,9 +32,14 @@ export function HelpPanel({ onClose }: { onClose: () => void }) {
           You take turns, one hit each, and you can hit the puck wherever it stopped. Knock it into your own goal and
           the other side scores. After a goal the puck goes back to centre ice and whoever was scored on hits first.
         </p>
+        <p>
+          Like a real wooden board, every match's board has a little character: some stretches of rail are livelier
+          than others, bounces can come off a touch off true (more on hard hits), and a few spots play a bit slow. It
+          stays the same all match, so you can learn it.
+        </p>
         <h3>Replays</h3>
         <p>
-          Every goal is saved. Tap ▶ Watch replay right after a goal, or watch them all from the ☰ menu or the end screen — with slow-mo. The game waits while you watch.
+          Every goal is saved. Tap ▶ Watch replay right after a goal, or watch them all from the ☰ menu or the end screen. Replays play at half speed; tap Speed for ¼× or full speed. The game waits while you watch.
         </p>
         <h3>The board</h3>
         <p>

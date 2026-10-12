@@ -1,4 +1,5 @@
 import { quickShot, type Shot } from "../physics/sim";
+import { boardFor, type BoardFeel } from "../physics/board";
 import { BLOCK_D, H, PUCK_R, W, insideSolid, type GoalSide, type Vec } from "../physics/table";
 
 // The CPU picks a shot by trying candidates with the real (deterministic)
@@ -53,6 +54,8 @@ export interface ChooseOptions {
   difficulty: Difficulty;
   /** Which goal this shooter attacks. Player 1 (bottom) attacks the top. */
   attacksTop: boolean;
+  /** This match's board (physics/board.ts), so the CPU plans on the board it's playing. */
+  boardSeed?: number | null;
   rng?: () => number;
 }
 
@@ -67,12 +70,13 @@ interface Candidate {
 
 /** Pick a shot for the shooter at `at`. Synchronous: run it in a worker (see worker.ts). */
 export function chooseShot(at: Vec, opts: ChooseOptions): Shot {
+  const board = boardFor(opts.boardSeed);
   const level = LEVELS[opts.difficulty];
   const rng = opts.rng ?? Math.random;
   const mine: GoalSide = opts.attacksTop ? "top" : "bottom";
 
   const judge = (shot: Shot): Candidate => {
-    const r = quickShot(at, shot);
+    const r = quickShot(at, shot, board);
     const rest = { x: r.x, y: r.y };
     const value = r.goal === mine ? GOAL : r.goal ? -GOAL : restValue(rest, opts.attacksTop);
     return { shot, value, goal: r.goal, rest };
@@ -90,7 +94,7 @@ export function chooseShot(at: Vec, opts: ChooseOptions): Shot {
   cands.sort((a, b) => b.value - a.value);
 
   if (level.refine) cands = refine(cands, judge, mine);
-  if (level.lookahead) cands = lookahead(cands, opts.attacksTop);
+  if (level.lookahead) cands = lookahead(cands, opts.attacksTop, board);
 
   let pick = cands[0];
   if (level.sloppy && rng() < level.sloppy) pick = cands[Math.floor(rng() * cands.length)];
@@ -144,7 +148,7 @@ function refine(cands: Candidate[], judge: (s: Shot) => Candidate, mine: GoalSid
 }
 
 /** For the best non-scoring shots, check how easy a goal each leaves the opponent. */
-function lookahead(cands: Candidate[], attacksTop: boolean): Candidate[] {
+function lookahead(cands: Candidate[], attacksTop: boolean, board: BoardFeel | null): Candidate[] {
   if (cands[0].value >= GOAL * 0.75) return cands; // a reliable goal beats anything
   const theirs: GoalSide = attacksTop ? "bottom" : "top";
   const pool = cands.filter((c) => !c.goal).slice(0, 12);
@@ -155,7 +159,7 @@ function lookahead(cands: Candidate[], attacksTop: boolean): Candidate[] {
       const angle = (i / 72) * Math.PI * 2;
       for (const power of [0.45, 0.7, 0.95]) {
         tried++;
-        if (quickShot(c.rest, { angle, power }).goal === theirs) scored++;
+        if (quickShot(c.rest, { angle, power }, board).goal === theirs) scored++;
       }
     }
     c.value -= (scored / tried) * 600;
