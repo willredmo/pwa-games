@@ -8,7 +8,7 @@ export function HelpPanel({ onClose }: { onClose: () => void }) {
         </div>
         <h3>The goal</h3>
         <p>
-          Knock the puck into the CPU's goal at the top. You defend the blue goal at the bottom. First to <b>10</b> wins.
+          Knock the puck into the CPU's goal at the top. You defend the blue goal at the bottom. First to <b>10</b> wins, but you have to win by <b>2</b> — at 10–9 play goes on.
         </p>
         <p>
           In <b>2 Players</b>, pass the device: Blue shoots up from the bottom, Red shoots down from the top, same
@@ -31,6 +31,10 @@ export function HelpPanel({ onClose }: { onClose: () => void }) {
         <p>
           You take turns, one hit each, and you can hit the puck wherever it stopped. Knock it into your own goal and
           the other side scores. After a goal the puck goes back to centre ice and whoever was scored on hits first.
+        </p>
+        <h3>Replays</h3>
+        <p>
+          Every goal is saved. Watch them again from the ☰ menu during a match, or from the end screen — with slow-mo.
         </p>
         <h3>The board</h3>
         <p>

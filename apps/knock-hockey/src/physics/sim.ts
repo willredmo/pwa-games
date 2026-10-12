@@ -27,6 +27,17 @@ export interface Puck {
   vy: number;
 }
 
+/** A shot as it actually left the stick: where from, and the exact launch
+ * velocity. Replaying this with `step` reproduces the shot bit for bit. */
+export interface Launch {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  angle: number;
+  power: number;
+}
+
 /** A shot: direction in radians (0 = right, −π/2 = up the screen) and power 0–1. */
 export interface Shot {
   angle: number;

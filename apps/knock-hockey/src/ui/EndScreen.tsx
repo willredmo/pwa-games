@@ -23,9 +23,10 @@ export interface EndScreenProps {
   me?: Player;
   onRematch: () => void;
   onExit: () => void;
+  onReplays: () => void;
 }
 
-export function EndScreen({ match, me, onRematch, onExit }: EndScreenProps) {
+export function EndScreen({ match, me, onRematch, onExit, onReplays }: EndScreenProps) {
   const pvp = match.mode === "pvp";
   const online = match.mode === "online";
   // In 2-player there's no loser's view: always celebrate the winner.
@@ -87,6 +88,11 @@ export function EndScreen({ match, me, onRematch, onExit }: EndScreenProps) {
         <p className="end__extra">
           {match.shots} shots · longest rally {match.stats.longestRally} · most bounces {match.stats.mostBounces} · {mins} min
         </p>
+        {(match.goals?.length ?? 0) > 0 && (
+          <button className="ghost-btn ghost-btn--wide end__replays" onClick={onReplays}>
+            🎬 Watch all {match.goals!.length} goals
+          </button>
+        )}
         <div className="end__actions">
           <button
             className="primary-btn"

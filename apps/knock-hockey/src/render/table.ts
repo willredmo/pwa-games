@@ -1,4 +1,4 @@
-import { DT, launch, moving, step, wobble, type Contact, type Puck, type Shot } from "../physics/sim";
+import { DT, launch, moving, step, wobble, type Contact, type Launch, type Puck, type Shot } from "../physics/sim";
 import { GOAL_X0, GOAL_X1, H, PUCK_R, W, type GoalSide, type Vec } from "../physics/table";
 import type { Player, ShotOutcome } from "../game/match";
 import type { StickLook } from "../game/stick";
@@ -29,15 +29,7 @@ export const MIN_POWER = 0.04;
 /** Who is taking the current shot. */
 export type Controller = "local" | "cpu" | "remote";
 
-/** A shot as it actually left the stick: where from, and the exact launch velocity. */
-export interface Launch {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  angle: number;
-  power: number;
-}
+export type { Launch };
 
 export interface TableEvents {
   /** Pull-back changed (0–1), so the power bar can follow. */
@@ -106,7 +98,10 @@ export class Table {
   private cpu: CpuMove | null = null;
   private fade: Fade | null = null;
   private contacts: Contact[] = [];
-  private shotPower = 0;
+  /** The shot now rolling, as it left the stick (kept for goal replays). */
+  private lastLaunch: Launch | null = null;
+  /** Slow motion for replays: 1 is real time. Only the puck slows; the stick doesn't. */
+  timeScale = 1;
   private trail: Vec[] = [];
   private sparks: { x: number; y: number; t0: number; s: number }[] = [];
   private goal: { side: GoalSide; t0: number } | null = null;
@@ -150,6 +145,11 @@ export class Table {
 
   /** Put the puck down (match start, a goal's restart, a resumed save). */
   placePuck(at: Vec): void {
+    // Anything still in motion is dropped (a replay skipping ahead).
+    if (this.phase === "rolling" || this.phase === "striking") this.phase = "waiting";
+    this.strike = null;
+    this.cpu = null;
+    this.fade = null;
     this.puck = { x: at.x, y: at.y, vx: 0, vy: 0 };
     this.trail = [];
     this.goal = null;
@@ -357,7 +357,7 @@ export class Table {
         this.fade = { t0: t, player: this.shooter!, angle: l.angle, at: { x: l.x, y: l.y } };
         this.puck = { x: l.x, y: l.y, vx: l.vx, vy: l.vy };
         this.contacts = [];
-        this.shotPower = l.power;
+        this.lastLaunch = l;
         this.trail = [];
         this.acc = 0;
         this.phase = "rolling";
@@ -366,7 +366,7 @@ export class Table {
     }
 
     if (this.phase === "rolling") {
-      this.acc += dt;
+      this.acc += dt * this.timeScale;
       let scored: GoalSide | null = null;
       while (this.acc >= DT && moving(this.puck)) {
         this.acc -= DT;
@@ -390,7 +390,8 @@ export class Table {
           goal: scored,
           rest: { x: this.puck.x, y: this.puck.y },
           contacts: this.contacts,
-          power: this.shotPower,
+          power: this.lastLaunch?.power ?? 0,
+          launch: this.lastLaunch ?? undefined,
         });
       }
     } else if (this.trail.length) {

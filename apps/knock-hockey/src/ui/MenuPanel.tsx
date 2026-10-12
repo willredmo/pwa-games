@@ -23,6 +23,9 @@ export interface MenuPanelProps {
   opponentLabel: string;
   /** Online match: "New match" becomes "Leave game" (the opponent is told). */
   online?: boolean;
+  /** Goals so far, for the replays item. */
+  goalCount: number;
+  onReplays: () => void;
   settings: Settings;
   onSettings: (f: (s: Settings) => Settings) => void;
 }
@@ -30,7 +33,7 @@ export interface MenuPanelProps {
 type CheckState = "idle" | "checking" | "done";
 
 export function MenuPanel(props: MenuPanelProps) {
-  const { onClose, onHelp, onLocker, onNewMatch, opponentLabel, online, settings, onSettings } = props;
+  const { onClose, onHelp, onLocker, onNewMatch, opponentLabel, online, goalCount, onReplays, settings, onSettings } = props;
   const waiting = usePwaUpdate();
   const [latest, setLatest] = useState<DeployInfo | null>(null);
   const [check, setCheck] = useState<CheckState>("idle");
@@ -61,6 +64,13 @@ export function MenuPanel(props: MenuPanelProps) {
           <button className="menu-item" onClick={onHelp}>
             <span className="menu-item__icon">❓</span>
             <span>How to play<small>Power, aim, hit, and the corner shot</small></span>
+          </button>
+          <button className="menu-item" onClick={onReplays} disabled={goalCount === 0}>
+            <span className="menu-item__icon">🎬</span>
+            <span>
+              Goal replays
+              <small>{goalCount === 0 ? "No goals yet" : `Watch ${goalCount === 1 ? "the goal" : `all ${goalCount} goals`} again`}</small>
+            </span>
           </button>
           <button className="menu-item" onClick={onLocker}>
             <span className="menu-item__icon">🏒</span>

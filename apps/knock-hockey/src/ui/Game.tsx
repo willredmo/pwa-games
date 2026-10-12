@@ -8,6 +8,7 @@ import {
   playerName,
   saveMatch,
   TARGET,
+  WIN_BY,
   type MatchState,
   type Player,
   type Settings,
@@ -38,6 +39,7 @@ import type { Looks } from "../App";
 import { PowerBar } from "./PowerBar";
 import { MenuPanel } from "./MenuPanel";
 import { EndScreen } from "./EndScreen";
+import { Replays } from "./Replays";
 
 // One match: vs the CPU, two people passing one device, or two devices
 // online. The Table (render/table.ts) runs the canvas; this component runs
@@ -114,6 +116,8 @@ export function Game(props: GameProps) {
   const [oppLook, setOppLook] = useState<StickLook | null>(null);
   const [oppOnline, setOppOnline] = useState(true);
   const [oppLeft, setOppLeft] = useState(false);
+  /** Goal replays open, at this goal. */
+  const [replay, setReplay] = useState<number | null>(null);
 
   // Online bookkeeping, in a ref so the table's callbacks always see the latest.
   const remote = useRef({
@@ -463,7 +467,7 @@ export function Game(props: GameProps) {
     if (!yourTurn) stopHold();
   }, [yourTurn]);
   // Keys only act on your turn, and not under the menu or end screen.
-  keyState.current = { yourTurn, blocked: menu || !!match.winner };
+  keyState.current = { yourTurn, blocked: menu || !!match.winner || replay !== null };
 
   /** Leave the match: online, for good (the opponent is told); otherwise the save is dropped. */
   const leave = () => {
@@ -488,7 +492,13 @@ export function Game(props: GameProps) {
               {match.score.p1}
             </span>
           </span>
-          <span className="scoreboard__to">first to {TARGET}</span>
+          {matchPoint(match) ? (
+            <span className="scoreboard__to scoreboard__to--hot">{matchPoint(match)}</span>
+          ) : (
+            <span className="scoreboard__to">
+              to {TARGET} · win by {WIN_BY}
+            </span>
+          )}
           <span className={`scoreboard__side scoreboard__side--p2${match.turn === "p2" && !match.winner ? " scoreboard__side--up" : ""}`}>
             <span className="scoreboard__num" key={`p2-${match.score.p2}`}>
               {match.score.p2}
@@ -579,6 +589,11 @@ export function Game(props: GameProps) {
             props.onLocker();
           }}
           onNewMatch={leave}
+          goalCount={match.goals?.length ?? 0}
+          onReplays={() => {
+            setMenu(false);
+            setReplay(0);
+          }}
           online={!!online}
           opponentLabel={
             mode === "pvp" ? "2 players · pass and play" : online ? `Online · room ${online.code}` : `CPU · ${DIFFICULTY_LABEL[match.difficulty]}`
@@ -588,10 +603,27 @@ export function Game(props: GameProps) {
         />
       )}
       {match.winner && !banner && (
-        <EndScreen match={match} me={me} onRematch={online ? () => void rematch(online) : props.onRematch} onExit={online ? leave : props.onExit} />
+        <EndScreen
+          match={match}
+          me={me}
+          onReplays={() => setReplay(0)}
+          onRematch={online ? () => void rematch(online) : props.onRematch}
+          onExit={online ? leave : props.onExit}
+        />
       )}
+      {replay !== null && <Replays match={match} looks={looks()} me={me} start={replay} onClose={() => setReplay(null)} />}
     </div>
   );
+}
+
+/** Near the end: "Game point" when the next goal could win, "Win by 2" when level past it. */
+function matchPoint(m: MatchState): string | null {
+  if (m.winner) return null;
+  const { p1, p2 } = m.score;
+  const could = (a: number, b: number) => a + 1 >= TARGET && a + 1 - b >= WIN_BY;
+  if (could(p1, p2) || could(p2, p1)) return "Game point";
+  if (p1 === p2 && p1 >= TARGET - 1) return `Win by ${WIN_BY}`;
+  return null;
 }
 
 function toResult(r: ShotReport): ResultMsg {

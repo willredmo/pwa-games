@@ -108,7 +108,9 @@ if (mode === "match") {
     let puck: Vec = { ...CENTER };
     let sa = 0;
     let sb = 0;
-    while (sa < to && sb < to) {
+    // First to `to`, win by 2.
+    const won = (x: number, y: number) => x >= to && x - y >= 2;
+    while (!won(sa, sb) && !won(sb, sa)) {
       const diff = turnA ? a : b;
       const attacksTop = turnA ? aTop : !aTop;
       const shot = chooseShot(puck, { difficulty: diff, attacksTop, rng });

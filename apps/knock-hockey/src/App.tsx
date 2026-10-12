@@ -8,7 +8,7 @@ import { Locker } from "./ui/Locker";
 import { HelpPanel } from "./ui/HelpPanel";
 import { UpdatePrompt } from "./ui/UpdatePrompt";
 import { Lobby, type LobbyProps } from "./ui/Lobby";
-import { loadSession, readSession, saveSession, type Session } from "./online/room";
+import { fixMatch, loadSession, readSession, saveSession, type Session } from "./online/room";
 import "./App.css";
 
 type Screen = "title" | "game";
@@ -94,7 +94,7 @@ export default function App() {
         return;
       }
       if (s.me === "p1" && !room.guest) setLobby({ kind: "host", session: s });
-      else startOnline(s, { ...room.match, winner: room.match.winner ?? null, mode: "online" });
+      else startOnline(s, fixMatch(room.match));
     } catch {
       setNotice("Couldn't reach the server. Check your connection.");
     }

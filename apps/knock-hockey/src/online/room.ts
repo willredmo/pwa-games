@@ -78,7 +78,9 @@ export interface Session {
 
 /** The database drops nulls; put back what MatchState expects. */
 export function fixMatch(m: MatchState): MatchState {
-  return { ...m, winner: m.winner ?? null, mode: "online" };
+  // Lists come back as arrays, or not at all when empty.
+  const goals = m.goals ? Object.values(m.goals) : [];
+  return { ...m, goals, winner: m.winner ?? null, mode: "online" };
 }
 
 export async function hostRoom(look: StickLook): Promise<Session> {

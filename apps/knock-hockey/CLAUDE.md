@@ -15,7 +15,13 @@ behind it.
   rotates. Names, banners, Hit button colour and the end screen follow
   `playerName` / `isHuman` in match.ts.
 - After a goal the puck goes back to centre ice and the side that was scored
-  on hits first. A new match starts with you. First to 10 (`TARGET`).
+  on hits first. A new match starts with you. First to 10 (`TARGET`), win
+  by 2 (`WIN_BY`; `hasWon`): at 10–9 play goes on. The header shows "Game
+  point" when the next goal could win and "Win by 2" when level at 9+.
+- Goal kinds (`goalKind`, used for stats, banners and replay captions) are
+  exclusive. Corner goal: the last real bounce was off a corner wedge. Bank
+  goal: a real bounce off a rail or diamond. Otherwise straight in. Goal posts
+  and glancing touches (head-on speed under 60) don't count.
 
 ## Board (physics/table.ts)
 Portrait rectangle, W×H = 300×600 board units, no centre wall. Every surface is
@@ -69,6 +75,18 @@ stick, plays shots. React (ui/Game.tsx) owns the rules and the turn loop.
   set). Every turn starts at zero power.
 - The CPU's stick visibly turns, pulls back and swings with the same pose.
 - The aim line is short and never shows bounces. It can be turned off in ☰.
+
+## Goal replays (ui/Replays.tsx)
+Every goal is saved in `match.goals` with the exact `Launch` that scored it
+(start position and launch velocity, wobble already applied), who shot, who
+scored, how (own goal / bank / corner) and the score after. Because the
+physics is deterministic, replaying that launch on a fresh `Table`
+(`beginTurn(by, "remote")` + `playRemote(launch)`) reproduces the goal
+exactly, stick swing included. Opened from the ☰ menu mid-match and from the
+end screen: one goal after another (auto-play toggle), ⏮ ⏭, Again,
+Slow-mo (`Table.timeScale`, puck only). Keys: ← → previous/next, Space
+again, Esc close. Goals sync online with the match, so both players can
+watch them. Saves from before replays simply have none.
 
 ## Online (online/room.ts, ui/Lobby.tsx, packages/backend-client)
 Firebase Realtime Database, project `roguelike-games`, via the shared

@@ -35,7 +35,7 @@ export function Title(props: TitleProps) {
         <h1>
           Knock <span>Hockey</span>
         </h1>
-        <p>Take turns. Bank it off the boards. First to 10.</p>
+        <p>Take turns. Bank it off the boards. First to 10, win by 2.</p>
         <button className="title__stick" onClick={props.onLocker} aria-label="Customize your stick">
           <StickPreview look={props.look} />
           <span>Customize stick</span>

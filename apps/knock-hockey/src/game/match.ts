@@ -1,5 +1,5 @@
 import type { Difficulty } from "../ai/cpu";
-import type { Contact } from "../physics/sim";
+import type { Contact, Launch } from "../physics/sim";
 import { CENTER, type GoalSide, type Vec } from "../physics/table";
 
 // Match rules. Players take turns, one hit each, and may hit the puck
@@ -7,7 +7,7 @@ import { CENTER, type GoalSide, type Vec } from "../physics/table";
 // Player 2 (red — the CPU, or a second person passing the device) at the
 // bottom one. A goal into your own net counts for
 // the other side. After a goal the puck goes back to centre ice and whoever
-// was scored on hits first. First to 10 wins.
+// was scored on hits first. First to 10 wins, but you must be 2 ahead.
 
 export type Player = "p1" | "p2";
 export const other = (p: Player): Player => (p === "p1" ? "p2" : "p1");
@@ -15,6 +15,27 @@ export const attacksTop = (p: Player) => p === "p1";
 export const goalFor = (goal: GoalSide): Player => (goal === "top" ? "p1" : "p2");
 
 export const TARGET = 10;
+/** You also need this big a lead: at 10–9 play goes on until someone is 2 up. */
+export const WIN_BY = 2;
+
+/** Whether `p` has won: at least TARGET goals and WIN_BY clear. */
+export const hasWon = (score: Record<Player, number>, p: Player) => score[p] >= TARGET && score[p] - score[other(p)] >= WIN_BY;
+
+/** Bounces slower than this (head-on, units/s) are the puck brushing a rail, not a real bank. */
+const REAL_BOUNCE = 60;
+
+/**
+ * How a goal went in, from what the puck hit on the way. Exclusive: a corner
+ * goal's last real bounce was off a corner wedge (the side-to-corner shot); a
+ * bank goal bounced off a rail or diamond; anything else went straight in.
+ * Goal posts and glancing touches don't count as bounces.
+ */
+export function goalKind(contacts: Contact[]): { bank: boolean; corner: boolean } {
+  const real = contacts.filter((c) => c.kind !== "post" && c.speed >= REAL_BOUNCE);
+  const lastReal = real[real.length - 1];
+  const corner = lastReal?.kind === "wedge";
+  return { corner, bank: real.length > 0 && !corner };
+}
 
 /**
  * vs the CPU, two people taking turns on one device, or two devices online
@@ -40,9 +61,9 @@ export interface PlayerStats {
   shots: number;
   goals: number;
   ownGoals: number;
-  /** Goals that came off at least one wall or block first. */
+  /** Goals that bounced off a rail or diamond on the way in (not corner goals). */
   bankGoals: number;
-  /** Goals that came off a corner wedge. */
+  /** Goals whose last bounce was off a corner wedge. */
   cornerGoals: number;
   /** Hardest hit, as a share of full power. */
   hardest: number;
@@ -58,8 +79,23 @@ export interface MatchStats {
   mostBounces: number;
 }
 
+/** One goal, with the exact shot that scored it, for replays. */
+export interface GoalRecord {
+  launch: Launch;
+  /** Who took the shot (differs from the scorer on an own goal). */
+  by: Player;
+  scorer: Player;
+  ownGoal: boolean;
+  bank: boolean;
+  corner: boolean;
+  /** The score just after this goal. */
+  score: Record<Player, number>;
+}
+
 export interface MatchState {
   mode: Mode;
+  /** Every goal so far, oldest first. Absent in saves from before replays. */
+  goals?: GoalRecord[];
   /** The CPU's level (unused in 2-player). */
   difficulty: Difficulty;
   score: Record<Player, number>;
@@ -82,6 +118,7 @@ export function newMatch(mode: Mode, difficulty: Difficulty, first: Player = "p1
     puck: { ...CENTER },
     shots: 0,
     winner: null,
+    goals: [],
     stats: { p1: emptyPlayer(), p2: emptyPlayer(), longestRally: 0, rally: 0, mostBounces: 0 },
     startedAt: Date.now(),
   };
@@ -92,6 +129,8 @@ export interface ShotOutcome {
   rest: Vec;
   contacts: Contact[];
   power: number;
+  /** The shot as it left the stick (recorded with goals for replays). */
+  launch?: Launch;
 }
 
 export interface ShotReport {
@@ -123,8 +162,7 @@ export function applyShot(prev: MatchState, out: ShotOutcome): ShotReport {
 
   const scorer = goalFor(out.goal);
   const ownGoal = scorer !== shooter;
-  const bank = out.contacts.length > 0;
-  const corner = out.contacts.some((c) => c.kind === "wedge");
+  const { bank, corner } = goalKind(out.contacts);
   s.score[scorer]++;
   s.stats.rally++;
   s.stats.longestRally = Math.max(s.stats.longestRally, s.stats.rally);
@@ -135,9 +173,13 @@ export function applyShot(prev: MatchState, out: ShotOutcome): ShotReport {
     if (bank) me.bankGoals++;
     if (corner) me.cornerGoals++;
   }
+  if (out.launch) {
+    // The database stores no empty arrays, so a fresh match may come back without one.
+    s.goals = [...(s.goals ?? []), { launch: out.launch, by: shooter, scorer, ownGoal, bank, corner, score: { ...s.score } }];
+  }
   s.puck = { ...CENTER };
   s.turn = other(scorer);
-  if (s.score[scorer] >= TARGET) s.winner = scorer;
+  if (hasWon(s.score, scorer)) s.winner = scorer;
   return { state: s, scorer, ownGoal, bank, corner };
 }
 
