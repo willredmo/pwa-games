@@ -82,7 +82,12 @@ Every goal is saved in `match.goals` with the exact `Launch` that scored it
 scored, how (own goal / bank / corner) and the score after. Because the
 physics is deterministic, replaying that launch on a fresh `Table`
 (`beginTurn(by, "remote")` + `playRemote(launch)`) reproduces the goal
-exactly, stick swing included. Opened from the ☰ menu mid-match and from the
+exactly, stick swing included. Right after a goal, the banner has a
+"▶ Watch replay" button, and a "▶ Replay last goal" chip stays on the board
+until the next shot (both open just that goal, auto-play off). While replays
+are open the match is paused: the next turn, the CPU's shot and an online
+opponent's incoming shot/result are held (`whenUnpaused` in ui/Game.tsx) and
+carried on when closed. Also opened from the ☰ menu mid-match and from the
 end screen: one goal after another (auto-play toggle), ⏮ ⏭, Again,
 Slow-mo (`Table.timeScale`, puck only). Keys: ← → previous/next, Space
 again, Esc close. Goals sync online with the match, so both players can

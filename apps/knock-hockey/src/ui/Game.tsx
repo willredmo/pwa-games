@@ -116,8 +116,15 @@ export function Game(props: GameProps) {
   const [oppLook, setOppLook] = useState<StickLook | null>(null);
   const [oppOnline, setOppOnline] = useState(true);
   const [oppLeft, setOppLeft] = useState(false);
-  /** Goal replays open, at this goal. */
-  const [replay, setReplay] = useState<number | null>(null);
+  /** Goal replays open: at which goal, and whether to roll on to the next ones. */
+  const [replay, setReplay] = useState<{ start: number; auto: boolean } | null>(null);
+  /** The goal just scored (index into match.goals), offered as a replay until the next shot. */
+  const [freshGoal, setFreshGoal] = useState<number | null>(null);
+  // While replays are open the match waits: the next turn, the CPU's shot and
+  // an online opponent's incoming shot are held, then carried on when closed.
+  const paused = useRef(false);
+  const held = useRef<(() => void)[]>([]);
+  const whenUnpaused = (fn: () => void) => (paused.current ? held.current.push(fn) : fn());
 
   // Online bookkeeping, in a ref so the table's callbacks always see the latest.
   const remote = useRef({
@@ -177,8 +184,11 @@ export function Game(props: GameProps) {
         const wait = Math.max(0, MIN_THINK_MS[m.difficulty] - (performance.now() - t0));
         window.setTimeout(() => {
           if (turnRef.current !== token) return;
-          setThinking(false);
-          tableRef.current?.playCpu(shot);
+          whenUnpaused(() => {
+            if (turnRef.current !== token) return;
+            setThinking(false);
+            tableRef.current?.playCpu(shot);
+          });
         }, wait);
       });
     },
@@ -194,9 +204,10 @@ export function Game(props: GameProps) {
       saveMatch(m);
       setBusy(true);
       if (!report.scorer) {
-        window.setTimeout(() => startTurn(m), TURN_GAP_MS);
+        window.setTimeout(() => whenUnpaused(() => startTurn(m)), TURN_GAP_MS);
         return;
       }
+      setFreshGoal((m.goals?.length ?? 0) - 1);
       const scorer = report.scorer;
       const offender = other(scorer);
       const name = (p: Player) => playerName(m, p, me);
@@ -221,13 +232,16 @@ export function Game(props: GameProps) {
       const token = ++turnRef.current;
       window.setTimeout(() => {
         if (turnRef.current !== token) return;
-        setBanner(null);
-        if (m.winner) {
-          tableRef.current?.idle();
-          return;
-        }
-        tableRef.current?.placePuck(CENTER);
-        startTurn(m);
+        whenUnpaused(() => {
+          if (turnRef.current !== token) return;
+          setBanner(null);
+          if (m.winner) {
+            tableRef.current?.idle();
+            return;
+          }
+          tableRef.current?.placePuck(CENTER);
+          startTurn(m);
+        });
       }, GOAL_PAUSE_MS);
     },
     [startTurn, pvp, you, me, oppName],
@@ -236,7 +250,7 @@ export function Game(props: GameProps) {
   /** Apply the opponent's shot once their result is in and our replay has finished. */
   const tryRemoteResult = useCallback(() => {
     const r = remote.current;
-    if (!r.pendingResult || r.rolling) return;
+    if (!r.pendingResult || r.rolling || paused.current) return;
     const res = r.pendingResult;
     r.pendingResult = null;
     r.localOut = null;
@@ -279,6 +293,7 @@ export function Game(props: GameProps) {
   const onFire = useCallback(
     (l: Launch, by: Controller) => {
       setBusy(true);
+      setFreshGoal(null);
       if (online && by === "local") void sendShot(online, { ...l, seq: matchRef.current.shots + 1, by: online.me });
     },
     [online],
@@ -349,8 +364,8 @@ export function Game(props: GameProps) {
       watchRoom<ShotMsg>(online, "shot", (s) => {
         if (!s || s.by !== theirs || s.seq !== matchRef.current.shots + 1) return;
         if (r.rolling || r.pendingShot?.seq === s.seq) return; // already have it
-        if (r.awaiting === s.seq) playRemoteShot(s);
-        else r.pendingShot = s; // their turn hasn't started here yet
+        if (r.awaiting === s.seq && !paused.current) playRemoteShot(s);
+        else r.pendingShot = s; // their turn hasn't started here yet (or we're watching a replay)
       }),
       watchRoom<ResultMsg>(online, "result", (res) => {
         if (!res || res.seq !== matchRef.current.shots + 1 || res.match?.startedAt !== matchRef.current.startedAt) return;
@@ -469,6 +484,21 @@ export function Game(props: GameProps) {
   // Keys only act on your turn, and not under the menu or end screen.
   keyState.current = { yourTurn, blocked: menu || !!match.winner || replay !== null };
 
+  const openReplays = (start: number, auto: boolean) => {
+    paused.current = true;
+    setReplay({ start, auto });
+  };
+  const closeReplays = () => {
+    setReplay(null);
+    paused.current = false;
+    const queued = held.current.splice(0);
+    queued.forEach((fn) => fn());
+    // Anything from an online opponent that arrived meanwhile.
+    const r = remote.current;
+    if (r.pendingShot && r.awaiting === r.pendingShot.seq) playRemoteShot(r.pendingShot);
+    tryRemoteResult();
+  };
+
   /** Leave the match: online, for good (the opponent is told); otherwise the save is dropped. */
   const leave = () => {
     if (online) {
@@ -515,7 +545,18 @@ export function Game(props: GameProps) {
             <div className={`goal-banner goal-banner--${banner.kind}`} key={banner.key}>
               <strong>{banner.text}</strong>
               {banner.sub && <span>{banner.sub}</span>}
+              {freshGoal !== null && (
+                <button className="goal-banner__replay" onClick={() => openReplays(freshGoal, false)}>
+                  ▶ Watch replay
+                </button>
+              )}
             </div>
+          )}
+          {/* After the banner, the goal stays offered until the next shot. */}
+          {!banner && freshGoal !== null && !match.winner && (
+            <button className="replay-chip" onClick={() => openReplays(freshGoal, false)}>
+              ▶ Replay last goal
+            </button>
           )}
           {online && (oppLeft || !oppOnline) && !match.winner && (
             <div className="net-pill" role="status">
@@ -592,7 +633,7 @@ export function Game(props: GameProps) {
           goalCount={match.goals?.length ?? 0}
           onReplays={() => {
             setMenu(false);
-            setReplay(0);
+            openReplays(0, true);
           }}
           online={!!online}
           opponentLabel={
@@ -606,12 +647,14 @@ export function Game(props: GameProps) {
         <EndScreen
           match={match}
           me={me}
-          onReplays={() => setReplay(0)}
+          onReplays={() => openReplays(0, true)}
           onRematch={online ? () => void rematch(online) : props.onRematch}
           onExit={online ? leave : props.onExit}
         />
       )}
-      {replay !== null && <Replays match={match} looks={looks()} me={me} start={replay} onClose={() => setReplay(null)} />}
+      {replay !== null && (
+        <Replays match={match} looks={looks()} me={me} start={replay.start} autoplay={replay.auto} onClose={closeReplays} />
+      )}
     </div>
   );
 }

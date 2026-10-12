@@ -20,16 +20,18 @@ export interface ReplaysProps {
   me?: Player;
   /** Start at this goal (index into match.goals). */
   start?: number;
+  /** Roll on to the next goal after each one (off when replaying just the latest). */
+  autoplay?: boolean;
   onClose: () => void;
 }
 
-export function Replays({ match, looks, me, start = 0, onClose }: ReplaysProps) {
+export function Replays({ match, looks, me, start = 0, autoplay = true, onClose }: ReplaysProps) {
   const goals = match.goals ?? [];
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const tableRef = useRef<Table | null>(null);
   const timer = useRef(0);
   const [index, setIndex] = useState(Math.min(start, Math.max(0, goals.length - 1)));
-  const [auto, setAuto] = useState(true);
+  const [auto, setAuto] = useState(autoplay);
   const [slow, setSlow] = useState(false);
   /** Bumped to replay the current goal again. */
   const [take, setTake] = useState(0);

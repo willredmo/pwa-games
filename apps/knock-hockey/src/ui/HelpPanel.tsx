@@ -34,7 +34,7 @@ export function HelpPanel({ onClose }: { onClose: () => void }) {
         </p>
         <h3>Replays</h3>
         <p>
-          Every goal is saved. Watch them again from the ☰ menu during a match, or from the end screen — with slow-mo.
+          Every goal is saved. Tap ▶ Watch replay right after a goal, or watch them all from the ☰ menu or the end screen — with slow-mo. The game waits while you watch.
         </p>
         <h3>The board</h3>
         <p>

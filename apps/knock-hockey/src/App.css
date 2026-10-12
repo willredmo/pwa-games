@@ -200,6 +200,36 @@
 }
 .goal-banner strong { font-size: 2.2rem; font-weight: 900; letter-spacing: 0.02em; text-transform: uppercase; }
 .goal-banner span { font-size: 0.9rem; opacity: 0.9; }
+.goal-banner__replay {
+  margin-top: 0.35rem;
+  padding: 0.35rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.18);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  pointer-events: auto; /* the banner itself lets taps through */
+}
+.goal-banner__replay:hover { background: rgba(0, 0, 0, 0.3); }
+.replay-chip {
+  /* Top-left, over the corner wedge, clear of the goal mouth. */
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(20, 27, 39, 0.88);
+  color: var(--fg);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  animation: fade-in 0.3s both;
+}
+.replay-chip:hover { border-color: var(--gold); }
 .goal-banner--p1 { background: var(--p1); color: #fff; }
 .goal-banner--p2 { background: var(--p2); color: #fff; }
 @keyframes banner-in { from { opacity: 0; transform: translate(-50%, -50%) scale(0.5) rotate(-6deg); } }
