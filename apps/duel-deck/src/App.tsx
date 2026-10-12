@@ -127,6 +127,8 @@ export default function App() {
             if (sound) unlockSound();
             setSettings((s) => ({ ...s, sound }));
           }}
+          battleLog={settings.battleLog}
+          onBattleLog={(battleLog) => setSettings((s) => ({ ...s, battleLog }))}
           onExit={toTitle}
         />
       ) : (

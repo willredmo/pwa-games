@@ -250,6 +250,14 @@ the board, and not over the hint, which carries the replace warning. It is
   names coloured by side. Fed from the same playback beats as the effects
   (`pushFeed` in `clash`, the side-hit sequence and `abilityLabel`), so it is
   in step with the board. Side-hit victims are announced after their own hit.
+  It can be turned off in ☰ (`Settings.battleLog`); the board and damage
+  numbers still carry everything it says. Two details: the row **keeps its
+  reserved height** when the feed is hidden, because collapsing it would
+  resize the board mid-battle — the one thing the layout exists to prevent;
+  and `pushFeed` itself is gated on the setting rather than the render, since
+  it fires several times a beat and would otherwise be a stream of state
+  updates whose result is never shown. (The one-line round summary under the
+  board, `.app__log`, is a separate thing and always shown.)
 - **Level tiers** (`LEVEL_TIERS` in `board/render.ts`) colour the level badge:
   1 faint grey, 2 green, 5 blue, 10 purple, 15 gold, 20 red. Set from
   `pnpm sim`'s level report: median unit ends at 5, a row's strongest at 13

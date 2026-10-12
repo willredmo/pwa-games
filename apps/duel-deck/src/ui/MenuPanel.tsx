@@ -22,6 +22,8 @@ export interface MenuPanelProps {
   onExit: () => void;
   sound: boolean;
   onSound: (on: boolean) => void;
+  battleLog: boolean;
+  onBattleLog: (on: boolean) => void;
   /** This match's opponent, for display (it's chosen on the title screen). */
   difficultyLabel: string;
 }
@@ -29,7 +31,7 @@ export interface MenuPanelProps {
 type CheckState = "idle" | "checking" | "done";
 
 export function MenuPanel(props: MenuPanelProps) {
-  const { onClose, onUnits, onHelp, onNewMatch, onExit, sound, onSound, difficultyLabel } = props;
+  const { onClose, onUnits, onHelp, onNewMatch, onExit, sound, onSound, battleLog, onBattleLog, difficultyLabel } = props;
   const waiting = usePwaUpdate();
   const [latest, setLatest] = useState<DeployInfo | null>(null);
   const [check, setCheck] = useState<CheckState>("idle");
@@ -72,6 +74,17 @@ export function MenuPanel(props: MenuPanelProps) {
             <span>
               Sound: {sound ? "on" : "off"}
               <small>{sound ? "Tap to mute battle and menu sounds" : "Tap to turn sounds back on"}</small>
+            </span>
+          </button>
+          <button className="menu-item" onClick={() => onBattleLog(!battleLog)} aria-pressed={battleLog}>
+            <span className="menu-item__icon">{battleLog ? "📜" : "🚫"}</span>
+            <span>
+              Battle log: {battleLog ? "on" : "off"}
+              <small>
+                {battleLog
+                  ? "The blow-by-blow under the board during a battle"
+                  : "Hidden — the board and damage numbers still show everything"}
+              </small>
             </span>
           </button>
           <div className="menu-item menu-item--locked">

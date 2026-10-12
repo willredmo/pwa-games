@@ -80,9 +80,11 @@ export interface Settings {
   /** Battle playback multiplier. */
   speed: Speed;
   sound: boolean;
+  /** The running blow-by-blow shown where the offer cards sit during a battle. */
+  battleLog: boolean;
 }
 
-const DEFAULTS: Settings = { difficulty: "normal", speed: 1, sound: true };
+const DEFAULTS: Settings = { difficulty: "normal", speed: 1, sound: true, battleLog: true };
 
 /**
  * Read the saved settings, falling back per field so a partial or older blob
@@ -111,6 +113,7 @@ export function loadSettings(): Settings {
     difficulty: saved.difficulty ?? (read("duel-deck:difficulty") as Difficulty | null) ?? DEFAULTS.difficulty,
     speed,
     sound: saved.sound ?? DEFAULTS.sound,
+    battleLog: saved.battleLog ?? DEFAULTS.battleLog,
   };
 }
 

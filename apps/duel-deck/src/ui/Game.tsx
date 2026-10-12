@@ -257,13 +257,15 @@ export interface GameProps {
   onSpeed: (speed: Speed) => void;
   sound: boolean;
   onSound: (on: boolean) => void;
+  battleLog: boolean;
+  onBattleLog: (on: boolean) => void;
   /** Back to the title screen (New match, or leaving a finished one). */
   onExit: () => void;
   /** Set for an online match: the opponent is a person, not `aiCommit`. */
   online?: Session;
 }
 
-export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, sound, onSound, onExit, online }: GameProps) {
+export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, sound, onSound, battleLog, onBattleLog, onExit, online }: GameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   /** The match being resumed, if any; resuming always lands in the pick phase. */
@@ -379,8 +381,17 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
    */
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const feedId = useRef(0);
-  const pushFeed = (tone: FeedItem["tone"], parts: FeedItem["parts"]) =>
+  /**
+   * Append a line to the battle feed. Gated here rather than at the render:
+   * with the log off this is called several times a beat and every call would
+   * be a state update whose result is never shown.
+   */
+  const logRef = useRef(battleLog);
+  logRef.current = battleLog;
+  const pushFeed = (tone: FeedItem["tone"], parts: FeedItem["parts"]) => {
+    if (!logRef.current) return;
     setFeed((f) => [...f.slice(-(FEED_MAX - 1)), { id: feedId.current++, tone, parts }]);
+  };
   const nameOf = (u: Unit): FeedPart => ({ text: u.name, side: u.side });
 
   /** The hint line: a click-selection's details card docks just above it. */
@@ -1834,6 +1845,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
             }}
             sound={sound}
             onSound={onSound}
+            battleLog={battleLog}
+            onBattleLog={onBattleLog}
             difficultyLabel={DIFFICULTY_LABEL[difficulty]}
           />
         )}
@@ -2009,6 +2022,10 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           </div>
         ) : (
           phase === "battle" || phase === "over" ? (
+            // Hidden by the setting, but the row still reserves its height:
+            // collapsing it would resize the board mid-battle, which the whole
+            // layout is built to avoid.
+            !battleLog ? null : (
             <ol className="feed" aria-live="polite">
               {feed.length === 0 && <li className="feed__line feed__line--idle">⚔ The rows close in…</li>}
               {feed.map((item, k) => (
@@ -2030,6 +2047,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
                 </li>
               ))}
             </ol>
+            )
           ) : (
             <p className="hand__empty">{phase === "augment" ? "Choose an upgrade above." : ""}</p>
           )
