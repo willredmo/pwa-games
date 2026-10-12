@@ -3,6 +3,7 @@ import { playerName, type GoalRecord, type MatchState, type Player } from "../ga
 import type { StickLook } from "../game/stick";
 import { Table } from "../render/table";
 import { boardFor } from "../physics/board";
+import { layoutFor } from "../physics/table";
 
 // Goal replays. Each goal was saved with the exact shot that scored it (where
 // the puck was and how it left the stick), and the physics is deterministic,
@@ -66,7 +67,8 @@ export function Replays({ match, looks, me, start = 0, autoplay = true, onClose 
     );
     table.flipped = me === "p2";
     // The same board the goals were scored on.
-    table.board = boardFor(match.boardSeed);
+    table.board = boardFor(match.boardSeed, match.corners);
+    table.layout = layoutFor(match.corners);
     table.aimLine = false;
     tableRef.current = table;
     return () => {

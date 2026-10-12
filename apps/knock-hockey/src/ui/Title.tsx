@@ -1,6 +1,7 @@
 import { DIFFICULTIES, DIFFICULTY_LABEL, type Difficulty } from "../ai/cpu";
 import { playerName, type MatchState } from "../game/match";
 import type { Session } from "../online/room";
+import type { Corners } from "../physics/table";
 import type { StickLook } from "../game/stick";
 import { StickPreview } from "./StickPreview";
 
@@ -13,6 +14,12 @@ const BLURB: Record<Difficulty, string> = {
 export interface TitleProps {
   difficulty: Difficulty;
   onDifficulty: (d: Difficulty) => void;
+  /** New matches (every mode) get a natural board. */
+  naturalBoard: boolean;
+  onNaturalBoard: (on: boolean) => void;
+  /** New matches' corners. */
+  corners: Corners;
+  onCorners: (c: Corners) => void;
   look: StickLook;
   saved: MatchState | null;
   onPlay: () => void;
@@ -85,6 +92,38 @@ export function Title(props: TitleProps) {
           </button>
         </div>
         {props.notice && <p className="title__notice" role="status">{props.notice}</p>}
+        <label className="toggle-row">
+          <span>
+            🪵 Natural board
+            <small>
+              {props.naturalBoard
+                ? "Rails and surface have a little character, like real wood"
+                : "Perfectly true: every bounce exactly the same"}
+            </small>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={props.naturalBoard}
+            onChange={(e) => props.onNaturalBoard(e.target.checked)}
+          />
+        </label>
+        <label className="toggle-row">
+          <span>
+            📐 45° corners
+            <small>
+              {props.corners === "45"
+                ? "Square-cut corners: a shot up the side runs across the end"
+                : "Standard steep corners: up the side, off the corner, behind the diamond"}
+            </small>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={props.corners === "45"}
+            onChange={(e) => props.onCorners(e.target.checked ? "45" : "steep")}
+          />
+        </label>
         <div className="title__links">
           <button className="link-btn" onClick={props.onHelp}>How to play</button>
           <button className="link-btn" onClick={props.onLocker}>Locker</button>

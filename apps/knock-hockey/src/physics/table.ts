@@ -45,14 +45,32 @@ export const GOAL_X0 = (W - GOAL_W) / 2;
 export const GOAL_X1 = (W + GOAL_W) / 2;
 
 /**
- * Corner wedges: a slanted board across each corner. WEDGE_X is how far it
- * runs along the end rail, WEDGE_Y along the side rail. Steeper than 45° on
- * purpose: a puck sent straight up a side rail glances off it at a shallow
- * angle *toward the end rail*, behind the diamond, and into the goal. That's
- * the game's signature shot — `pnpm sim corner` checks it still works.
+ * Corner wedges: a slanted board across each corner. `wedgeX` is how far it
+ * runs along the end rail, `wedgeY` along the side rail. The standard board's
+ * are steeper than 45° (≈54° to the end rail) on purpose: a puck sent straight
+ * up a side rail glances off at a shallow angle *toward the end rail*, behind
+ * the diamond, and into the goal — the game's signature shot (`pnpm sim
+ * corner` checks it). A match can choose true 45° corners instead, where that
+ * shot runs across the end of the board rather than into the goal.
  */
-export const WEDGE_X = 42;
-export const WEDGE_Y = 58;
+export type Corners = "steep" | "45";
+export const CORNERS: Corners[] = ["steep", "45"];
+
+export interface Layout {
+  corners: Corners;
+  wedgeX: number;
+  wedgeY: number;
+  /** Every surface the puck can hit. */
+  segments: readonly Segment[];
+}
+
+const WEDGES: Record<Corners, { x: number; y: number }> = {
+  steep: { x: 42, y: 58 },
+  "45": { x: 50, y: 50 },
+};
+/** The standard (steep) corner's size, for code that doesn't care about layouts. */
+export const WEDGE_X = WEDGES.steep.x;
+export const WEDGE_Y = WEDGES.steep.y;
 
 /** Diamond blocks: centre distance from each end rail, and half-diagonal. */
 export const BLOCK_D = 50;
@@ -77,7 +95,7 @@ function seg(ax: number, ay: number, bx: number, by: number, kind: SurfaceKind):
 /** How deep the goal slot runs through the end rail. */
 export const SLOT = RAIL;
 
-function buildSegments(): Segment[] {
+function buildSegments(WEDGE_X: number, WEDGE_Y: number): Segment[] {
   const s: Segment[] = [];
   // End rails, split by the goal slots.
   for (const y of [0, H]) {
@@ -119,25 +137,33 @@ export function blockPoints(cy: number): Vec[] {
   ];
 }
 
-export const SEGMENTS: readonly Segment[] = buildSegments();
+export const LAYOUTS: Record<Corners, Layout> = {
+  steep: { corners: "steep", wedgeX: WEDGES.steep.x, wedgeY: WEDGES.steep.y, segments: buildSegments(WEDGES.steep.x, WEDGES.steep.y) },
+  "45": { corners: "45", wedgeX: WEDGES["45"].x, wedgeY: WEDGES["45"].y, segments: buildSegments(WEDGES["45"].x, WEDGES["45"].y) },
+};
+/** A match's layout (older saves have none: the standard steep corners). */
+export const layoutFor = (corners?: Corners | null): Layout => LAYOUTS[corners ?? "steep"];
+export const STANDARD = LAYOUTS.steep;
+/** The standard layout's surfaces. */
+export const SEGMENTS = STANDARD.segments;
 
 /**
  * Whether a puck centred at `p` would overlap a diamond, wedge or rail by
  * more than `pad` short of touching (pad = PUCK_R means "any overlap").
  */
-export function insideSolid(p: Vec, pad = 0): boolean {
+export function insideSolid(p: Vec, pad = 0, layout: Layout = STANDARD): boolean {
   for (const cy of [BLOCK_D, H - BLOCK_D]) {
     if (Math.abs(p.x - W / 2) + Math.abs(p.y - cy) < BLOCK_S) return true;
   }
-  const wedge = (dx: number, dy: number) => dx / WEDGE_X + dy / WEDGE_Y < 1;
+  const wedge = (dx: number, dy: number) => dx / layout.wedgeX + dy / layout.wedgeY < 1;
   if (wedge(p.x, p.y) || wedge(W - p.x, p.y) || wedge(p.x, H - p.y) || wedge(W - p.x, H - p.y)) return true;
-  return pad > 0 && distToWalls(p) < pad;
+  return pad > 0 && distToWalls(p, layout) < pad;
 }
 
 /** Distance from `p` to the nearest surface. */
-export function distToWalls(p: Vec): number {
+export function distToWalls(p: Vec, layout: Layout = STANDARD): number {
   let best = Infinity;
-  for (const s of SEGMENTS) {
+  for (const s of layout.segments) {
     const ex = s.bx - s.ax;
     const ey = s.by - s.ay;
     const t = Math.max(0, Math.min(1, ((p.x - s.ax) * ex + (p.y - s.ay) * ey) / (ex * ex + ey * ey)));

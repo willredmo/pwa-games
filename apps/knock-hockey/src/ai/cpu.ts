@@ -1,6 +1,6 @@
 import { quickShot, type Shot } from "../physics/sim";
 import { boardFor, type BoardFeel } from "../physics/board";
-import { BLOCK_D, H, PUCK_R, W, insideSolid, type GoalSide, type Vec } from "../physics/table";
+import { BLOCK_D, H, PUCK_R, W, insideSolid, layoutFor, type Corners, type GoalSide, type Layout, type Vec } from "../physics/table";
 
 // The CPU picks a shot by trying candidates with the real (deterministic)
 // physics and scoring where each one ends up. Levels differ in how many shots
@@ -54,8 +54,9 @@ export interface ChooseOptions {
   difficulty: Difficulty;
   /** Which goal this shooter attacks. Player 1 (bottom) attacks the top. */
   attacksTop: boolean;
-  /** This match's board (physics/board.ts), so the CPU plans on the board it's playing. */
+  /** This match's board (physics/board.ts) and corners, so the CPU plans on the board it's playing. */
   boardSeed?: number | null;
+  corners?: Corners | null;
   rng?: () => number;
 }
 
@@ -70,13 +71,14 @@ interface Candidate {
 
 /** Pick a shot for the shooter at `at`. Synchronous: run it in a worker (see worker.ts). */
 export function chooseShot(at: Vec, opts: ChooseOptions): Shot {
-  const board = boardFor(opts.boardSeed);
+  const board = boardFor(opts.boardSeed, opts.corners);
+  const layout = layoutFor(opts.corners);
   const level = LEVELS[opts.difficulty];
   const rng = opts.rng ?? Math.random;
   const mine: GoalSide = opts.attacksTop ? "top" : "bottom";
 
   const judge = (shot: Shot): Candidate => {
-    const r = quickShot(at, shot, board);
+    const r = quickShot(at, shot, board, layout);
     const rest = { x: r.x, y: r.y };
     const value = r.goal === mine ? GOAL : r.goal ? -GOAL : restValue(rest, opts.attacksTop);
     return { shot, value, goal: r.goal, rest };
@@ -94,7 +96,7 @@ export function chooseShot(at: Vec, opts: ChooseOptions): Shot {
   cands.sort((a, b) => b.value - a.value);
 
   if (level.refine) cands = refine(cands, judge, mine);
-  if (level.lookahead) cands = lookahead(cands, opts.attacksTop, board);
+  if (level.lookahead) cands = lookahead(cands, opts.attacksTop, board, layout);
 
   let pick = cands[0];
   if (level.sloppy && rng() < level.sloppy) pick = cands[Math.floor(rng() * cands.length)];
@@ -148,7 +150,7 @@ function refine(cands: Candidate[], judge: (s: Shot) => Candidate, mine: GoalSid
 }
 
 /** For the best non-scoring shots, check how easy a goal each leaves the opponent. */
-function lookahead(cands: Candidate[], attacksTop: boolean, board: BoardFeel | null): Candidate[] {
+function lookahead(cands: Candidate[], attacksTop: boolean, board: BoardFeel | null, layout: Layout): Candidate[] {
   if (cands[0].value >= GOAL * 0.75) return cands; // a reliable goal beats anything
   const theirs: GoalSide = attacksTop ? "bottom" : "top";
   const pool = cands.filter((c) => !c.goal).slice(0, 12);
@@ -159,7 +161,7 @@ function lookahead(cands: Candidate[], attacksTop: boolean, board: BoardFeel | n
       const angle = (i / 72) * Math.PI * 2;
       for (const power of [0.45, 0.7, 0.95]) {
         tried++;
-        if (quickShot(c.rest, { angle, power }, board).goal === theirs) scored++;
+        if (quickShot(c.rest, { angle, power }, board, layout).goal === theirs) scored++;
       }
     }
     c.value -= (scored / tried) * 600;
@@ -186,9 +188,9 @@ export function mulberry(seed: number): () => number {
 }
 
 /** A random legal resting spot on the board. */
-export function randomSpot(rng: () => number): Vec {
+export function randomSpot(rng: () => number, layout?: Layout): Vec {
   for (;;) {
     const p = { x: PUCK_R + rng() * (W - 2 * PUCK_R), y: PUCK_R + rng() * (H - 2 * PUCK_R) };
-    if (!insideSolid(p, PUCK_R)) return p;
+    if (!insideSolid(p, PUCK_R, layout)) return p;
   }
 }

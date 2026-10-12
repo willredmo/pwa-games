@@ -1,4 +1,4 @@
-import { GOAL_X0, GOAL_X1, H, PUCK_R, SEGMENTS, W, type GoalSide, type SurfaceKind, type Vec } from "./table";
+import { GOAL_X0, GOAL_X1, H, PUCK_R, STANDARD, W, type GoalSide, type Layout, type SurfaceKind, type Vec } from "./table";
 import { FEEL, knot, slowness, type BoardFeel } from "./board";
 
 // The puck simulation. Fixed timestep and no randomness, so the same start
@@ -94,7 +94,8 @@ export const moving = (p: Puck) => p.vx !== 0 || p.vy !== 0;
  * returns the goal the puck just crossed into, if any. The puck's centre
  * crossing the goal line scores; it stops there.
  */
-export function step(p: Puck, contacts?: Contact[], board?: BoardFeel | null): GoalSide | null {
+export function step(p: Puck, contacts?: Contact[], board?: BoardFeel | null, layout: Layout = STANDARD): GoalSide | null {
+  const SEGMENTS = layout.segments;
   // Only + − × ÷ and sqrt from here on: those are exactly rounded in every JS
   // engine, so online opponents on different browsers simulate a shot
   // identically (Math.hypot, sin, cos can differ in the last bit).
@@ -199,13 +200,13 @@ export interface ShotResult {
 }
 
 /** Play a shot out to the end, headless. */
-export function simulateShot(at: Vec, shot: Shot, board?: BoardFeel | null): ShotResult {
+export function simulateShot(at: Vec, shot: Shot, board?: BoardFeel | null, layout: Layout = STANDARD): ShotResult {
   const p = launch(at, shot);
   const contacts: Contact[] = [];
   let goal: GoalSide | null = null;
   let steps = 0;
   while (moving(p) && steps < MAX_STEPS) {
-    goal = step(p, contacts, board);
+    goal = step(p, contacts, board, layout);
     steps++;
     if (goal) break;
   }
@@ -213,11 +214,16 @@ export function simulateShot(at: Vec, shot: Shot, board?: BoardFeel | null): Sho
 }
 
 /** Cheaper version for the CPU's search: only the goal and resting point. */
-export function quickShot(at: Vec, shot: Shot, board?: BoardFeel | null): { goal: GoalSide | null; x: number; y: number } {
+export function quickShot(
+  at: Vec,
+  shot: Shot,
+  board?: BoardFeel | null,
+  layout: Layout = STANDARD,
+): { goal: GoalSide | null; x: number; y: number } {
   const p = launch(at, shot);
   let steps = 0;
   while (moving(p) && steps < MAX_STEPS) {
-    const goal = step(p, undefined, board);
+    const goal = step(p, undefined, board, layout);
     steps++;
     if (goal) return { goal, x: p.x, y: p.y };
   }

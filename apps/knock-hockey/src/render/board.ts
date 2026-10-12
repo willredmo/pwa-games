@@ -6,9 +6,9 @@ import {
   PUCK_R,
   RAIL,
   W,
-  WEDGE_X,
-  WEDGE_Y,
+  STANDARD,
   blockPoints,
+  type Layout,
   type Vec,
 } from "../physics/table";
 
@@ -70,7 +70,9 @@ function grain(ctx: CanvasRenderingContext2D, base: string, dark: string, light:
   return ctx.createPattern(c, "repeat");
 }
 
-export function drawBoard(ctx: CanvasRenderingContext2D): void {
+export function drawBoard(ctx: CanvasRenderingContext2D, layout: Layout = STANDARD): void {
+  const WEDGE_X = layout.wedgeX;
+  const WEDGE_Y = layout.wedgeY;
   floorPattern ??= grain(ctx, "#ecd2a2", "#c99f63", "#f7e6c4", 96);
   railPattern ??= grain(ctx, "#9c5f2c", "#6e3d16", "#b97a42", 64);
 

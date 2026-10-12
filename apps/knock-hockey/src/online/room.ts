@@ -10,7 +10,7 @@ import {
   updateRoom,
   watch,
 } from "@pwa-games/backend-client";
-import { newMatch, other, type MatchState, type Player } from "../game/match";
+import { newMatch, other, setupOf, type BoardSetup, type MatchState, type Player } from "../game/match";
 import type { StickLook } from "../game/stick";
 import type { Launch } from "../render/table";
 
@@ -83,9 +83,10 @@ export function fixMatch(m: MatchState): MatchState {
   return { ...m, goals, winner: m.winner ?? null, mode: "online" };
 }
 
-export async function hostRoom(look: StickLook): Promise<Session> {
+export async function hostRoom(look: StickLook, setup: BoardSetup): Promise<Session> {
   const me = clientId();
-  const match = newMatch("online", "medium");
+  // The host's board setup applies to both players.
+  const match = newMatch("online", "medium", setup);
   const code = await createRoom(GAME, { host: me, looks: { p1: look }, match });
   return { code, me: "p1" };
 }
@@ -132,7 +133,7 @@ export async function rematch(s: Session): Promise<void> {
   await transactRoom<Room>(GAME, s.code, (cur) => {
     if (!cur) return null;
     if (!cur.match?.winner) return undefined; // someone already started one
-    const fresh = newMatch("online", "medium", other(cur.match.winner));
+    const fresh = newMatch("online", "medium", setupOf(cur.match), other(cur.match.winner));
     // Drop the old turn's messages (the database can't store undefined).
     const { shot: _s, result: _r, aim: _a, ...rest } = cur;
     return { ...rest, match: fresh };

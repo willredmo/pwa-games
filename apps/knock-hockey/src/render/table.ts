@@ -1,6 +1,6 @@
 import { DT, launch, moving, step, wobble, type Contact, type Launch, type Puck, type Shot } from "../physics/sim";
 import type { BoardFeel } from "../physics/board";
-import { GOAL_X0, GOAL_X1, H, PUCK_R, W, type GoalSide, type Vec } from "../physics/table";
+import { GOAL_X0, GOAL_X1, H, PUCK_R, STANDARD, W, type GoalSide, type Layout, type Vec } from "../physics/table";
 import type { Player, ShotOutcome } from "../game/match";
 import type { StickLook } from "../game/stick";
 import { clack, unlockSound } from "../game/sound";
@@ -79,6 +79,8 @@ export class Table {
   aimLine = true;
   /** This match's board character (physics/board.ts); null is a perfectly true board. */
   board: BoardFeel | null = null;
+  /** This match's corners (steep by default, or 45°). */
+  layout: Layout = STANDARD;
   /** Draw the board turned 180°, so the top goal is at the bottom (online guest). */
   flipped = false;
   private ctx: CanvasRenderingContext2D;
@@ -381,7 +383,7 @@ export class Table {
       while (this.acc >= DT && moving(this.puck)) {
         this.acc -= DT;
         const n = this.contacts.length;
-        scored = step(this.puck, this.contacts, this.board);
+        scored = step(this.puck, this.contacts, this.board, this.layout);
         for (let i = n; i < this.contacts.length; i++) {
           const c = this.contacts[i];
           const s = Math.min(1, c.speed / 900);
@@ -431,7 +433,7 @@ export class Table {
       ctx.translate(W, H);
       ctx.scale(-1, -1);
     }
-    drawBoard(ctx);
+    drawBoard(ctx, this.layout);
 
     // Trail behind a moving puck.
     for (let i = 0; i < this.trail.length; i++) {

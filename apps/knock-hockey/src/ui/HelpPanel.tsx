@@ -35,7 +35,7 @@ export function HelpPanel({ onClose }: { onClose: () => void }) {
         <p>
           Like a real wooden board, every match's board has a little character: some stretches of rail are livelier
           than others, bounces can come off a touch off true (more on hard hits), and a few spots play a bit slow. It
-          stays the same all match, so you can learn it.
+          stays the same all match, so you can learn it. Prefer every bounce exactly the same? Turn off Natural board on the start screen. The start screen can also give the next match square-cut 45° corners, where a shot straight up the side runs across the end instead of slipping behind the diamond.
         </p>
         <h3>Replays</h3>
         <p>

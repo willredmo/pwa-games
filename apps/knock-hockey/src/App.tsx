@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { loadMatch, loadSettings, newMatch, saveMatch, saveSettings, type MatchState, type Mode, type Settings } from "./game/match";
+import { setupOf, loadMatch, loadSettings, newMatch, saveMatch, saveSettings, type MatchState, type Mode, type Settings } from "./game/match";
 import { loadLook, saveLook, type LookSlot, type StickLook } from "./game/stick";
 import { setSoundEnabled } from "./game/sound";
 import { Game } from "./ui/Game";
@@ -54,7 +54,7 @@ export default function App() {
   useEffect(() => saveLook("p2", looks.p2), [looks.p2]);
 
   const start = (mode: Mode) => {
-    const m = newMatch(mode, settings.difficulty);
+    const m = newMatch(mode, settings.difficulty, { naturalBoard: settings.naturalBoard, corners: settings.corners });
     saveMatch(m);
     setSaved(m);
     setMatch(m);
@@ -106,6 +106,10 @@ export default function App() {
         <Title
           difficulty={settings.difficulty}
           onDifficulty={(difficulty) => setSettings((s) => ({ ...s, difficulty }))}
+          naturalBoard={settings.naturalBoard}
+          onNaturalBoard={(naturalBoard) => setSettings((s) => ({ ...s, naturalBoard }))}
+          corners={settings.corners}
+          onCorners={(corners) => setSettings((s) => ({ ...s, corners }))}
           look={looks.p1}
           saved={saved}
           savedOnline={savedOnline}
@@ -138,7 +142,7 @@ export default function App() {
           onHelp={() => setHelp(true)}
           onRematch={() => {
             // Same mode and opponent as the match that just ended.
-            const m = newMatch(match.mode, match.difficulty);
+            const m = newMatch(match.mode, match.difficulty, setupOf(match));
             saveMatch(m);
             setMatch(m);
           }}
@@ -151,6 +155,7 @@ export default function App() {
         <Lobby
           {...lobby}
           look={looks.p1}
+          setup={{ naturalBoard: settings.naturalBoard, corners: settings.corners }}
           onReady={startOnline}
           onClose={() => {
             setLobby(null);

@@ -23,6 +23,10 @@ export interface MenuPanelProps {
   opponentLabel: string;
   /** Online match: "New match" becomes "Leave game" (the opponent is told). */
   online?: boolean;
+  /** This match's board: natural (with character) or perfectly true. */
+  naturalBoard: boolean;
+  /** This match has 45° corners (not the standard steep ones). */
+  corners45: boolean;
   /** Goals so far, for the replays item. */
   goalCount: number;
   onReplays: () => void;
@@ -33,7 +37,7 @@ export interface MenuPanelProps {
 type CheckState = "idle" | "checking" | "done";
 
 export function MenuPanel(props: MenuPanelProps) {
-  const { onClose, onHelp, onLocker, onNewMatch, opponentLabel, online, goalCount, onReplays, settings, onSettings } = props;
+  const { onClose, onHelp, onLocker, onNewMatch, opponentLabel, online, goalCount, onReplays, naturalBoard, corners45, settings, onSettings } = props;
   const waiting = usePwaUpdate();
   const [latest, setLatest] = useState<DeployInfo | null>(null);
   const [check, setCheck] = useState<CheckState>("idle");
@@ -99,6 +103,13 @@ export function MenuPanel(props: MenuPanelProps) {
             <span>
               Opponent: {opponentLabel}
               <small>{online ? "Leave to play someone else." : "Chosen when the match started. New match to pick again."}</small>
+            </span>
+          </div>
+          <div className="menu-item menu-item--locked">
+            <span className="menu-item__icon">🪵</span>
+            <span>
+              Board: {naturalBoard ? "natural" : "perfectly true"}, {corners45 ? "45° corners" : "standard corners"}
+              <small>Set for this match. Change it on the start screen for the next one.</small>
             </span>
           </div>
           {confirmNew ? (

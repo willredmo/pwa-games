@@ -4,6 +4,7 @@ import { thinkShot } from "../ai/client";
 import {
   applyShot,
   controllerOf,
+  hasNaturalBoard,
   other,
   playerName,
   runLabel,
@@ -18,7 +19,7 @@ import {
 } from "../game/match";
 import { CPU_LOOKS, defaultLook, type StickLook } from "../game/stick";
 import { horn } from "../game/sound";
-import { CENTER } from "../physics/table";
+import { CENTER, layoutFor } from "../physics/table";
 import { boardFor } from "../physics/board";
 import { MIN_POWER, Table, capture, type Controller, type Launch } from "../render/table";
 import {
@@ -184,7 +185,7 @@ export function Game(props: GameProps) {
       if (c !== "cpu") return;
       setThinking(true);
       const t0 = performance.now();
-      void thinkShot(m.puck, { difficulty: m.difficulty, attacksTop: false, boardSeed: m.boardSeed }).then((shot) => {
+      void thinkShot(m.puck, { difficulty: m.difficulty, attacksTop: false, boardSeed: m.boardSeed, corners: m.corners }).then((shot) => {
         const wait = Math.max(0, MIN_THINK_MS[m.difficulty] - (performance.now() - t0));
         window.setTimeout(() => {
           if (turnRef.current !== token) return;
@@ -231,8 +232,8 @@ export function Game(props: GameProps) {
               ? "Bank shot"
               : undefined,
         kind: scorer,
-        // Works the same for an online opponent's result: the run is in the match.
-        run: runLabel(m.stats.run?.p === scorer ? m.stats.run.n : 1),
+        // Read from the match, so it works the same for an online opponent's result.
+        run: report.ownGoal ? null : runLabel(m.stats.runs?.[scorer]),
         key: Date.now(),
       });
       const token = ++turnRef.current;
@@ -343,7 +344,8 @@ export function Game(props: GameProps) {
     );
     // The online guest sees the board turned round, so their goal is at the bottom.
     table.flipped = me === "p2";
-    table.board = boardFor(matchRef.current.boardSeed);
+    table.board = boardFor(matchRef.current.boardSeed, matchRef.current.corners);
+    table.layout = layoutFor(matchRef.current.corners);
     table.aimLine = settings.aimLine;
     tableRef.current = table;
     startTurn(matchRef.current);
@@ -639,6 +641,8 @@ export function Game(props: GameProps) {
           }}
           onNewMatch={leave}
           goalCount={match.goals?.length ?? 0}
+          naturalBoard={hasNaturalBoard(match)}
+          corners45={match.corners === "45"}
           onReplays={() => {
             setMenu(false);
             openReplays(0, true);

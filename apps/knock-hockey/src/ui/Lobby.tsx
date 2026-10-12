@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { MatchState } from "../game/match";
+import type { BoardSetup, MatchState } from "../game/match";
 import type { StickLook } from "../game/stick";
 import {
   fixMatch,
@@ -24,6 +24,8 @@ export interface LobbyProps {
   /** Join: code from a shared link. */
   code?: string;
   look: StickLook;
+  /** Host: how the room's matches set up the board. */
+  setup: BoardSetup;
   onReady: (s: Session, m: MatchState) => void;
   onClose: () => void;
 }
@@ -34,7 +36,7 @@ const JOIN_ERROR: Record<JoinError, string> = {
   ended: "That game has ended.",
 };
 
-export function Lobby({ kind, session: initialSession, code: initialCode, look, onReady, onClose }: LobbyProps) {
+export function Lobby({ kind, session: initialSession, code: initialCode, look, setup, onReady, onClose }: LobbyProps) {
   const [session, setSession] = useState<Session | null>(initialSession ?? null);
   const [code, setCode] = useState(initialCode ?? "");
   const [busy, setBusy] = useState(false);
@@ -47,13 +49,14 @@ export function Lobby({ kind, session: initialSession, code: initialCode, look, 
     if (kind !== "host" || session || started.current) return;
     started.current = true;
     setBusy(true);
-    hostRoom(look)
+    hostRoom(look, setup)
       .then((s) => {
         saveSession(s);
         setSession(s);
       })
       .catch(() => setError("Couldn't reach the server. Check your connection and try again."))
       .finally(() => setBusy(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, session, look]);
 
   // Host: start when the guest arrives.
@@ -149,7 +152,10 @@ export function Lobby({ kind, session: initialSession, code: initialCode, look, 
                 "Making a room…"
               ) : null}
             </p>
-            <p className="lobby__small">You're blue and take the first shot.</p>
+            <p className="lobby__small">
+              You're blue and take the first shot. {setup.naturalBoard ? "Natural board" : "True board"}
+              {setup.corners === "45" ? ", 45° corners" : ""} (set on the start screen).
+            </p>
           </>
         ) : (
           <form

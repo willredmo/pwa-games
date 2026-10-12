@@ -18,8 +18,10 @@ behind it.
   on hits first. A new match starts with you. First to 10 (`TARGET`), win
   by 2 (`WIN_BY`; `hasWon`): at 10–9 play goes on. The header shows "Game
   point" when the next goal could win and "Win by 2" when level at 9+.
-- Runs: goals in a row for the same side with none against in between (an
-  opponent's own goal counts — it's your point). The goal banner calls out 2+
+- Runs (`stats.runs`): each player's own shots that scored, back to back. A
+  shot of theirs that doesn't score (an own goal included) resets it; the
+  other side scoring doesn't, and an opponent's own goal doesn't add to it.
+  The goal banner calls out 2+
   (`runLabel`: "Two in a row!", "Hat trick!", "Four in a row — on fire!",
   "N in a row — unstoppable!"); the end screen shows each side's best run.
 - Goal kinds (`goalKind`, used for stats, banners and replay captions) are
@@ -34,8 +36,14 @@ a line segment; segment ends act as round posts.
   goal line scores.
 - Diamond block (square on its point) in front of each goal, centred 50
   units off the end rail, leaving a 26-unit gap behind it (the puck is 18).
-- Corner wedges, steeper than 45° (WEDGE_X 42 along the end rail, WEDGE_Y 58
-  along the side). **The signature shot depends on this:** from beside a side
+- Corner wedges, steeper than 45° on the standard board (42 along the end
+  rail, 58 along the side; ≈54° to the end rail). A match can use true 45°
+  corners instead (50 × 50): the start screen's "📐 45° corners" switch
+  (`Settings.corners`, saved as `MatchState.corners`, absent = steep). Each
+  variant is a `Layout` in `LAYOUTS` (physics/table.ts) with its own
+  segments; the physics, drawing, CPU (`corners` to the worker), board
+  character and replays all take the match's layout. Like the natural board
+  it's fixed per match, kept by a rematch, and the host's choice online. **The signature shot depends on this:** from beside a side
   rail, hit straight up into the wedge; it glances off behind the diamond and
   into the goal. If you change the wedges, diamonds, goal width or friction,
   run `pnpm sim corner` — it fails if the shot stops working.
@@ -53,8 +61,12 @@ speed. Shot power maps to launch speed on a curve (`shotSpeed`) so low power
 gives fine control. No spin yet (planned: "English", where the stick strikes).
 
 ## Board character (physics/board.ts)
-Each match gets a `boardSeed` (saved in `MatchState`) that gives its board a
-little character, fixed for the whole game:
+A match setting: the start screen's "🪵 Natural board" switch
+(`Settings.naturalBoard`, default on) applies to new matches in every mode;
+the ☰ menu shows the current match's board; a rematch keeps the choice; online,
+the host's choice applies. On, the match gets a `boardSeed` (saved in
+`MatchState`; off, there's no seed and the board is perfectly true) that gives
+its board a little character, fixed for the whole game:
 - Rails, wedges and diamonds: along each segment, bounciness varies up to
   ±0.06 (of 0.8) and the bounce comes off up to ≈1.4° from true. Both scale
   with how hard the puck hits (full strength at 900 units/s head-on).
@@ -161,7 +173,7 @@ every shot, cleared when a match ends or is abandoned), `knock-hockey:stick`,
 ## Commands
 - `pnpm dev` (port 5177 via the root launch config `knock-hockey`)
 - `pnpm sim fuzz | corner | wobble | feel | rates | match` — physics checks
-  and CPU tuning
+  and CPU tuning; add `--corners=45` to fuzz, corner or rates for the 45° board
 - `firebase deploy --only database` (repo root) — publish database rules
 - `pnpm run release` — build and deploy to Firebase Hosting target
   `knock-hockey`. PWA update flow, version.json and the ☰ About section are

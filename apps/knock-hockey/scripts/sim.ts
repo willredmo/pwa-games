@@ -9,12 +9,13 @@
 //   feel [boards=20]        how much each match's board character changes play:
 //                           physics safety, the corner shot, CPU scoring, and how
 //                           far shots end up from where a true board sends them
+//   --corners=45            fuzz, corner and rates on the 45°-corner board
 //   match [n=40] --a=hard --b=medium [--to=10]
 //                           CPU vs CPU matches; reports a's win rate (sides and the
 //                           first shot alternate)
 import { simulateShot, escapes, quickShot, wobble } from "../src/physics/sim";
 import { makeBoard } from "../src/physics/board";
-import { CENTER, H, PUCK_R, W, insideSolid, type Vec } from "../src/physics/table";
+import { CENTER, H, PUCK_R, W, insideSolid, layoutFor, type Corners, type Vec } from "../src/physics/table";
 import { chooseShot, mulberry, randomSpot, type Difficulty } from "../src/ai/cpu";
 
 const args = process.argv.slice(2);
@@ -23,6 +24,9 @@ const num = (i: number, d: number) => (args[i] && !args[i].startsWith("--") ? Nu
 const flag = (name: string, d: string) => args.find((a) => a.startsWith(`--${name}=`))?.split("=")[1] ?? d;
 /** Scale of the per-hit wobble (1 = the game's, 0 = off). */
 const WOB = Number(flag("wobble", "1"));
+/** Which corners to test (`--corners=45`); standard steep by default. */
+const CORNERS = flag("corners", "steep") as Corners;
+const LAYOUT = layoutFor(CORNERS);
 
 if (mode === "fuzz") {
   const n = num(1, 20000);
@@ -32,12 +36,12 @@ if (mode === "fuzz") {
   let maxSteps = 0;
   let unsettled = 0;
   for (let i = 0; i < n; i++) {
-    const at = randomSpot(rng);
-    const r = simulateShot(at, { angle: rng() * Math.PI * 2, power: rng() });
+    const at = randomSpot(rng, LAYOUT);
+    const r = simulateShot(at, { angle: rng() * Math.PI * 2, power: rng() }, null, LAYOUT);
     maxSteps = Math.max(maxSteps, r.steps);
     if (r.goal) goals++;
     else {
-      if (insideSolid(r.rest, PUCK_R - 1.5)) inside++;
+      if (insideSolid(r.rest, PUCK_R - 1.5, LAYOUT)) inside++;
       if (r.steps >= 240 * 12) unsettled++;
     }
   }
@@ -57,7 +61,7 @@ if (mode === "corner") {
       let best = "";
       for (let a = -100; a <= -80; a += 0.25) {
         for (let pw = 0.2; pw <= 1.0001; pw += 0.05) {
-          const r = simulateShot(at, { angle: (a * Math.PI) / 180, power: pw });
+          const r = simulateShot(at, { angle: (a * Math.PI) / 180, power: pw }, null, LAYOUT);
           if (r.goal === "top" && r.contacts[0]?.kind === "wedge" && !r.contacts.some((c) => c.kind === "block")) {
             hits++;
             if (!best) best = `${a.toFixed(2)}° @${pw.toFixed(2)}`;
@@ -83,11 +87,11 @@ if (mode === "rates") {
     let own = 0;
     let ms = 0;
     for (let i = 0; i < n; i++) {
-      const at = randomSpot(rng);
+      const at = randomSpot(rng, LAYOUT);
       const t0 = performance.now();
-      const shot = chooseShot(at, { difficulty: d, attacksTop: true, rng });
+      const shot = chooseShot(at, { difficulty: d, attacksTop: true, corners: CORNERS, rng });
       ms += performance.now() - t0;
-      const r = quickShot(at, wobble(shot, rng, WOB));
+      const r = quickShot(at, wobble(shot, rng, WOB), null, LAYOUT);
       if (r.goal === "top") goals++;
       if (r.goal === "bottom") own++;
     }

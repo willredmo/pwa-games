@@ -1,7 +1,7 @@
 import type { Difficulty } from "../ai/cpu";
 import type { Contact, Launch } from "../physics/sim";
 import { newBoardSeed } from "../physics/board";
-import { CENTER, type GoalSide, type Vec } from "../physics/table";
+import { CENTER, type Corners, type GoalSide, type Vec } from "../physics/table";
 
 // Match rules. Players take turns, one hit each, and may hit the puck
 // wherever it stopped. Player 1 (blue, at the bottom) shoots at the top goal;
@@ -75,8 +75,12 @@ export interface PlayerStats {
 export interface MatchStats {
   p1: PlayerStats;
   p2: PlayerStats;
-  /** The current run of goals: whose, and how many in a row. */
-  run?: { p: Player; n: number };
+  /**
+   * Each player's current run: their own shots that scored, back to back. A
+   * shot of theirs that doesn't score (an own goal included) ends it; the
+   * other side scoring doesn't.
+   */
+  runs?: Record<Player, number>;
   /** Most hits in a row without a goal. */
   longestRally: number;
   rally: number;
@@ -99,8 +103,10 @@ export interface GoalRecord {
 
 export interface MatchState {
   mode: Mode;
-  /** This match's board character (physics/board.ts). Absent in older saves: a true board. */
+  /** This match's board character (physics/board.ts). Absent: a perfectly true board. */
   boardSeed?: number;
+  /** This match's corners (physics/table.ts). Absent: the standard steep corners. */
+  corners?: Corners;
   /** Every goal so far, oldest first. Absent in saves from before replays. */
   goals?: GoalRecord[];
   /** The CPU's level (unused in 2-player). */
@@ -116,7 +122,7 @@ export interface MatchState {
 
 const emptyPlayer = (): PlayerStats => ({ shots: 0, goals: 0, ownGoals: 0, bankGoals: 0, cornerGoals: 0, hardest: 0, bestRun: 0 });
 
-/** The callout for a run of goals, or null for a single goal. */
+/** The callout for a run of scoring shots, or null for fewer than two. */
 export function runLabel(n: number | undefined): string | null {
   if (!n || n < 2) return null;
   if (n === 2) return "Two in a row!";
@@ -125,10 +131,27 @@ export function runLabel(n: number | undefined): string | null {
   return `${n} in a row — unstoppable!`;
 }
 
-export function newMatch(mode: Mode, difficulty: Difficulty, first: Player = "p1"): MatchState {
+/** How a match's board is set up: fixed for the match, kept by a rematch. */
+export interface BoardSetup {
+  /** A board with a little character (physics/board.ts); off, perfectly true. */
+  naturalBoard?: boolean;
+  /** Steep corners (the standard board) or 45°. */
+  corners?: Corners;
+}
+
+/** A match's board setup, to start another (a rematch) the same way. */
+export const setupOf = (m: Pick<MatchState, "boardSeed" | "corners">): BoardSetup => ({
+  naturalBoard: m.boardSeed != null,
+  corners: m.corners ?? "steep",
+});
+
+/** A fresh match; `first` takes the first shot. */
+export function newMatch(mode: Mode, difficulty: Difficulty, setup: BoardSetup = {}, first: Player = "p1"): MatchState {
   return {
     mode,
-    boardSeed: newBoardSeed(),
+    // Omitted rather than undefined when unused: the online database rejects undefined.
+    ...((setup.naturalBoard ?? true) ? { boardSeed: newBoardSeed() } : {}),
+    ...(setup.corners === "45" ? { corners: "45" as const } : {}),
     difficulty,
     score: { p1: 0, p2: 0 },
     turn: first,
@@ -157,7 +180,7 @@ export interface ShotReport {
   ownGoal: boolean;
   bank: boolean;
   corner: boolean;
-  /** Goals in a row for the scorer, counting this one (1 = no run). */
+  /** The shooter's goals in a row, counting this one (0 on a miss or own goal). */
   run?: number;
 }
 
@@ -171,24 +194,24 @@ export function applyShot(prev: MatchState, out: ShotOutcome): ShotReport {
   s.shots++;
   s.stats.mostBounces = Math.max(s.stats.mostBounces, out.contacts.length);
 
+  // Runs count the shooter's own scoring shots; anything else ends theirs.
+  const runs = (s.stats.runs ??= { p1: 0, p2: 0 });
+  const scored = !!out.goal && goalFor(out.goal) === shooter;
+  runs[shooter] = scored ? runs[shooter] + 1 : 0;
+  if (scored) me.bestRun = Math.max(me.bestRun ?? 0, runs[shooter]);
+
   if (!out.goal) {
     s.puck = { ...out.rest };
     s.turn = other(shooter);
     s.stats.rally++;
     s.stats.longestRally = Math.max(s.stats.longestRally, s.stats.rally);
-    return { state: s, scorer: null, ownGoal: false, bank: false, corner: false };
+    return { state: s, scorer: null, ownGoal: false, bank: false, corner: false, run: 0 };
   }
 
   const scorer = goalFor(out.goal);
   const ownGoal = scorer !== shooter;
   const { bank, corner } = goalKind(out.contacts);
   s.score[scorer]++;
-  // A run: goals for the same side with none against in between (an
-  // opponent's own goal still counts — it's a point for you).
-  const prevRun = s.stats.run;
-  const run = prevRun && prevRun.p === scorer ? prevRun.n + 1 : 1;
-  s.stats.run = { p: scorer, n: run };
-  s.stats[scorer].bestRun = Math.max(s.stats[scorer].bestRun ?? 0, run);
   s.stats.rally++;
   s.stats.longestRally = Math.max(s.stats.longestRally, s.stats.rally);
   s.stats.rally = 0;
@@ -205,7 +228,7 @@ export function applyShot(prev: MatchState, out: ShotOutcome): ShotReport {
   s.puck = { ...CENTER };
   s.turn = other(scorer);
   if (hasWon(s.score, scorer)) s.winner = scorer;
-  return { state: s, scorer, ownGoal, bank, corner, run };
+  return { state: s, scorer, ownGoal, bank, corner, run: runs[shooter] };
 }
 
 // --- Saving ---------------------------------------------------------------
@@ -239,10 +262,17 @@ export interface Settings {
   difficulty: Difficulty;
   aimLine: boolean;
   sound: boolean;
+  /** New matches get a natural board (physics/board.ts); off for a perfectly true one. */
+  naturalBoard: boolean;
+  /** New matches' corners: the standard steep ones, or 45°. */
+  corners: Corners;
 }
 
+/** Whether a match was started with a natural board. */
+export const hasNaturalBoard = (m: Pick<MatchState, "boardSeed">) => m.boardSeed != null;
+
 const SETTINGS_KEY = "knock-hockey:settings";
-const DEFAULT_SETTINGS: Settings = { difficulty: "medium", aimLine: true, sound: true };
+const DEFAULT_SETTINGS: Settings = { difficulty: "medium", aimLine: true, sound: true, naturalBoard: true, corners: "steep" };
 
 export function loadSettings(): Settings {
   try {

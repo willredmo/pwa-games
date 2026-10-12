@@ -1,4 +1,4 @@
-import { H, SEGMENTS, W } from "./table";
+import { H, W, layoutFor, type Corners, type Layout } from "./table";
 
 // Every match's board has a little character of its own, like a real wooden
 // board: some stretches of rail are a touch livelier or deader, some bounce a
@@ -29,7 +29,7 @@ export const FEEL = {
 
 export interface BoardFeel {
   seed: number;
-  /** Per segment (same order as SEGMENTS): knot values in −1…1 for bounciness and tilt. */
+  /** Per segment (same order as the layout's): knot values in −1…1 for bounciness and tilt. */
   edges: { e: number[]; tilt: number[] }[];
   /** Surface slowness lattice, values 0…1, `cols` × `rows`. */
   grid: number[];
@@ -41,10 +41,10 @@ export interface BoardFeel {
 export const newBoardSeed = () => Math.floor(Math.random() * 2 ** 31);
 
 /** Build a board's character from its seed. */
-export function makeBoard(seed: number): BoardFeel {
+export function makeBoard(seed: number, layout: Layout = layoutFor()): BoardFeel {
   const rnd = seeded(seed);
   const signed = () => rnd() * 2 - 1;
-  const edges = SEGMENTS.map((s) => {
+  const edges = layout.segments.map((s) => {
     const dx = s.bx - s.ax;
     const dy = s.by - s.ay;
     const len = Math.sqrt(dx * dx + dy * dy);
@@ -58,14 +58,15 @@ export function makeBoard(seed: number): BoardFeel {
   return { seed, edges, grid, cols, rows };
 }
 
-const memo = new Map<number, BoardFeel>();
-/** `makeBoard`, cached (the CPU's worker asks for the same board every turn). */
-export function boardFor(seed: number | undefined | null): BoardFeel | null {
+const memo = new Map<string, BoardFeel>();
+/** `makeBoard` for a match (its seed and corners), cached: the CPU's worker asks every turn. */
+export function boardFor(seed: number | undefined | null, corners?: Corners | null): BoardFeel | null {
   if (seed == null) return null;
-  let b = memo.get(seed);
+  const key = `${seed}:${corners ?? "steep"}`;
+  let b = memo.get(key);
   if (!b) {
-    b = makeBoard(seed);
-    memo.set(seed, b);
+    b = makeBoard(seed, layoutFor(corners));
+    memo.set(key, b);
   }
   return b;
 }
