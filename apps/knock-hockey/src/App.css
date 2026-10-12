@@ -545,6 +545,25 @@
 }
 .replay__head { display: flex; align-items: center; justify-content: space-between; }
 .replay__head h2 { margin: 0; font-size: 1.1rem; }
+.replay__instant {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-style: italic;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--gold);
+}
+.replay__instant::before {
+  content: "";
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: #ff3b3b;
+  box-shadow: 0 0 8px #ff3b3b;
+  animation: hot 1s ease-in-out infinite;
+}
 .replay__caption {
   display: flex;
   flex-direction: column;
@@ -691,14 +710,23 @@ button.menu-item:hover, label.menu-item:hover { border-color: #556585; }
   position: absolute;
   top: -20px;
   border-radius: 2px;
-  animation-name: confetti;
+  animation-name: confetti-cw;
   animation-timing-function: linear;
   animation-iteration-count: infinite;
 }
-@keyframes confetti {
+/* Two plain sets of keyframes rather than one with var() inside: iOS Safari
+   doesn't resolve custom properties in @keyframes, which left the confetti
+   parked above the screen. */
+.end-bg__confetti--ccw { animation-name: confetti-ccw; }
+@keyframes confetti-cw {
   0% { transform: translate3d(0, -20px, 0) rotate(0deg); }
-  50% { transform: translate3d(24px, 50vh, 0) rotate(calc(var(--spin) * 360deg)); }
-  100% { transform: translate3d(-10px, 105vh, 0) rotate(calc(var(--spin) * 720deg)); }
+  50% { transform: translate3d(24px, 50vh, 0) rotate(360deg); }
+  100% { transform: translate3d(-10px, 105vh, 0) rotate(720deg); }
+}
+@keyframes confetti-ccw {
+  0% { transform: translate3d(0, -20px, 0) rotate(0deg); }
+  50% { transform: translate3d(-24px, 50vh, 0) rotate(-360deg); }
+  100% { transform: translate3d(10px, 105vh, 0) rotate(-720deg); }
 }
 .end-bg__puck {
   position: absolute;
@@ -713,8 +741,17 @@ button.menu-item:hover, label.menu-item:hover { border-color: #556585; }
 }
 @keyframes drift {
   from { transform: translate3d(0, 0, 0); }
-  to { transform: translate3d(calc(var(--spin) * 40px), -115vh, 0); }
+  to { transform: translate3d(40px, -115vh, 0); }
 }
+.end-bg__puck--left { animation-name: drift-left; }
+@keyframes drift-left {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-40px, -115vh, 0); }
+}
+/* Reduce Motion: the same scene, standing still. */
+.end-bg--still .end-bg__rays,
+.end-bg--still .end-bg__confetti,
+.end-bg--still .end-bg__puck { animation: none; }
 
 /* --- Phones --- */
 @media (max-width: 480px) {

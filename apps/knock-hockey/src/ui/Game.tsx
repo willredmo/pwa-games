@@ -4,6 +4,7 @@ import { thinkShot } from "../ai/client";
 import {
   applyShot,
   controllerOf,
+  hasWon,
   hasNaturalBoard,
   setupOf,
   other,
@@ -134,7 +135,12 @@ export function Game(props: GameProps) {
   /** Online: who has asked for a rematch since the match ended. */
   const [rematchAsks, setRematchAsks] = useState<Partial<Record<Player, boolean>>>({});
   /** Goal replays open: at which goal, and whether to roll on to the next ones. */
-  const [replay, setReplay] = useState<{ start: number; auto: boolean } | null>(null);
+  const [replay, setReplay] = useState<{ start: number; auto: boolean; instant?: boolean } | null>(null);
+  /**
+   * The end screen waits for the winning goal's instant replay. Already true
+   * when a finished match is reopened (or has no recorded goals to show).
+   */
+  const [instantDone, setInstantDone] = useState(!!initial.winner);
   /** The goal just scored (index into match.goals), offered as a replay until the next shot. */
   const [freshGoal, setFreshGoal] = useState<number | null>(null);
   // While replays are open the match waits: the next turn, the CPU's shot and
@@ -185,6 +191,12 @@ export function Game(props: GameProps) {
         return;
       }
       setBusy(false);
+      // Every goal blows the puck up; one that would win the match (into either
+      // goal: own goals count) gets the big explosion.
+      table.explodeInto = {
+        top: hasWon({ ...m.score, p1: m.score.p1 + 1 }, "p1") ? "big" : "normal",
+        bottom: hasWon({ ...m.score, p2: m.score.p2 + 1 }, "p2") ? "big" : "normal",
+      };
       const c = controllerOf(m, m.turn, me);
       table.beginTurn(m.turn, c);
       if (c === "remote") {
@@ -224,7 +236,8 @@ export function Game(props: GameProps) {
         window.setTimeout(() => whenUnpaused(() => startTurn(m)), TURN_GAP_MS);
         return;
       }
-      setFreshGoal((m.goals?.length ?? 0) - 1);
+      // The winning goal gets its instant replay automatically instead.
+      setFreshGoal(m.winner ? null : (m.goals?.length ?? 0) - 1);
       const scorer = report.scorer;
       const offender = other(scorer);
       const name = (p: Player) => playerName(m, p, me);
@@ -256,6 +269,11 @@ export function Game(props: GameProps) {
           setBanner(null);
           if (m.winner) {
             tableRef.current?.idle();
+            // Instant replay of the winning goal, then the results.
+            if (m.goals?.length) {
+              paused.current = true;
+              setReplay({ start: m.goals.length - 1, auto: false, instant: true });
+            } else setInstantDone(true);
             return;
           }
           tableRef.current?.placePuck(CENTER);
@@ -511,6 +529,7 @@ export function Game(props: GameProps) {
     setReplay({ start, auto });
   };
   const closeReplays = () => {
+    if (replay?.instant) setInstantDone(true);
     setReplay(null);
     paused.current = false;
     const queued = held.current.splice(0);
@@ -673,7 +692,7 @@ export function Game(props: GameProps) {
           onSettings={props.onSettings}
         />
       )}
-      {match.winner && !banner && (
+      {match.winner && !banner && instantDone && replay?.instant !== true && (
         <EndScreen
           match={match}
           me={me}
@@ -688,7 +707,15 @@ export function Game(props: GameProps) {
         />
       )}
       {replay !== null && (
-        <Replays match={match} looks={looks()} me={me} start={replay.start} autoplay={replay.auto} onClose={closeReplays} />
+        <Replays
+          match={match}
+          looks={looks()}
+          me={me}
+          start={replay.start}
+          autoplay={replay.auto}
+          instant={replay.instant}
+          onClose={closeReplays}
+        />
       )}
     </div>
   );

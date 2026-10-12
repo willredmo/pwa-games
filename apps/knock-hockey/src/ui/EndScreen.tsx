@@ -174,26 +174,32 @@ function Backdrop({ won }: { won: boolean }) {
       color: CONFETTI[i % CONFETTI.length],
       size: won ? 6 + Math.random() * 6 : 14 + Math.random() * 14,
       spin: Math.random() < 0.5 ? -1 : 1,
+      /** Where it sits when standing still (Reduce Motion), % down the screen. */
+      still: Math.random() * 100,
     })),
   );
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => setReduced(window.matchMedia("(prefers-reduced-motion: reduce)").matches), []);
-  if (reduced) return null;
+  // Reduce Motion: show the scene without movement rather than nothing.
+  const [still, setStill] = useState(false);
+  useEffect(() => setStill(window.matchMedia("(prefers-reduced-motion: reduce)").matches), []);
   return (
-    <div className={`end-bg end-bg--${won ? "win" : "loss"}`} aria-hidden>
+    <div className={`end-bg end-bg--${won ? "win" : "loss"}${still ? " end-bg--still" : ""}`} aria-hidden>
       {won && <div className="end-bg__rays" />}
       {pieces.map((p, i) => (
         <span
           key={i}
-          className={won ? "end-bg__confetti" : "end-bg__puck"}
+          className={
+            won
+              ? `end-bg__confetti${p.spin < 0 ? " end-bg__confetti--ccw" : ""}`
+              : `end-bg__puck${p.spin < 0 ? " end-bg__puck--left" : ""}`
+          }
           style={{
             left: `${p.left}%`,
+            ...(still ? (won ? { top: `${p.still}%` } : { bottom: `${p.still}%` }) : {}),
             width: p.size,
             height: won ? p.size * 0.45 : p.size,
             background: won ? p.color : undefined,
             animationDelay: `${p.delay}s`,
             animationDuration: `${p.dur}s`,
-            ["--spin" as string]: p.spin,
           }}
         />
       ))}

@@ -111,6 +111,13 @@ export class Table {
   timeScale = 1;
   private trail: Vec[] = [];
   private sparks: { x: number; y: number; t0: number; s: number }[] = [];
+  /**
+   * How a goal blows the puck up, Rocket League style, keyed by the goal it
+   * goes into: every goal explodes; one that would win the match (set by the
+   * game before each shot) gets the big one.
+   */
+  explodeInto: Partial<Record<GoalSide, BoomSize>> = { top: "normal", bottom: "normal" };
+  private boom: Boom | null = null;
   private goal: { side: GoalSide; t0: number } | null = null;
   private ro: ResizeObserver;
   /** A drag to set angle and power: where it started and where the finger is (board units). */
@@ -152,6 +159,7 @@ export class Table {
 
   /** Put the puck down (match start, a goal's restart, a resumed save). */
   placePuck(at: Vec): void {
+    this.boom = null;
     // Anything still in motion is dropped (a replay skipping ahead).
     if (this.phase === "rolling" || this.phase === "striking") this.phase = "waiting";
     this.strike = null;
@@ -395,7 +403,11 @@ export class Table {
       this.trail.push({ x: this.puck.x, y: this.puck.y });
       if (this.trail.length > 14) this.trail.shift();
       if (scored || !moving(this.puck)) {
-        if (scored) this.goal = { side: scored, t0: t };
+        if (scored) {
+          this.goal = { side: scored, t0: t };
+          const size = this.explodeInto[scored];
+          if (size) this.boom = makeBoom(this.puck, scored, t, size);
+        }
         this.phase = "waiting";
         this.shooter = null;
         this.events.onShot({
@@ -433,6 +445,14 @@ export class Table {
       ctx.translate(W, H);
       ctx.scale(-1, -1);
     }
+    // The explosion shakes the whole board for a moment (not with Reduce Motion).
+    if (this.boom && !reducedMotion()) {
+      const k = (t - this.boom.t0) / BOOM_SHAKE_MS;
+      if (k < 1) {
+        const a = (1 - k) * (1 - k) * 4.5 * this.boom.scale;
+        ctx.translate(Math.sin(t * 0.09) * a, Math.cos(t * 0.11) * a);
+      }
+    }
     drawBoard(ctx, this.layout);
 
     // Trail behind a moving puck.
@@ -461,7 +481,7 @@ export class Table {
     let puckAlpha = 1;
     if (this.goal) {
       const k = clamp01((t - this.goal.t0) / 450);
-      puckAlpha = 1 - k;
+      puckAlpha = this.boom ? 0 : 1 - k; // blown up: gone at once
     }
     drawPuck(ctx, this.puck, puckAlpha);
 
@@ -494,6 +514,10 @@ export class Table {
       ctx.stroke();
     }
 
+    if (this.boom) {
+      if (drawBoom(ctx, this.boom, t, this.timeScale)) this.boom = null;
+    }
+
     // Goal flash on the scoring end.
     if (this.goal) {
       const k = (t - this.goal.t0) / 1300;
@@ -514,6 +538,101 @@ export class Table {
       }
     }
   }
+}
+
+// --- Goal explosion ----------------------------------------------------------
+
+const BOOM_SHAKE_MS = 650;
+
+function reducedMotion(): boolean {
+  try {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    return false;
+  }
+}
+
+export type BoomSize = "normal" | "big";
+
+interface Boom {
+  t0: number;
+  /** 1 for a normal goal, bigger for a match winner. */
+  scale: number;
+  x: number;
+  y: number;
+  color: string;
+  /** Splinters and sparks: start offset, velocity (units/s), size, colour, life (s). */
+  bits: { vx: number; vy: number; size: number; color: string; life: number; spin: number }[];
+}
+
+function makeBoom(p: Vec, side: GoalSide, t0: number, size: BoomSize): Boom {
+  const scale = size === "big" ? 1.6 : 1;
+  const color = side === "top" ? P1_COLOR : P2_COLOR;
+  // Blast back out of the goal mouth, into the board.
+  const into = side === "top" ? 1 : -1;
+  const palette = [color, color, "#f2b632", "#fff4c2", "#ffffff", "#c8925a"];
+  const bits = Array.from({ length: Math.round(48 * scale) }, (_, i) => {
+    const a = Math.PI * (0.05 + Math.random() * 0.9); // a fan pointing into the board
+    const speed = (120 + Math.random() * 420) * scale;
+    return {
+      vx: Math.cos(a) * speed * (Math.random() < 0.5 ? 1 : -1) * 0.9,
+      vy: Math.sin(a) * speed * into,
+      size: (1.5 + Math.random() * 3.5) * Math.sqrt(scale),
+      color: palette[i % palette.length],
+      life: 0.7 + Math.random() * 0.8,
+      spin: Math.random() * Math.PI,
+    };
+  });
+  return { t0, scale, x: p.x, y: side === "top" ? 0 : H, color, bits };
+}
+
+/** Draw the explosion; returns true once it's over. Slows with replays' slow-mo. */
+function drawBoom(ctx: CanvasRenderingContext2D, b: Boom, t: number, timeScale: number): boolean {
+  const e = ((t - b.t0) / 1000) * timeScale; // seconds of explosion time
+  if (e > 1.6) return true;
+  ctx.save();
+  // Flash.
+  if (e < 0.22) {
+    const k = e / 0.22;
+    const r = 120 * b.scale;
+    const g = ctx.createRadialGradient(b.x, b.y, 2, b.x, b.y, r);
+    g.addColorStop(0, `rgba(255,255,240,${0.95 * (1 - k)})`);
+    g.addColorStop(1, "rgba(255,255,240,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Two shockwave rings.
+  for (const [delay, reach, width] of [
+    [0, 150, 5],
+    [0.09, 100, 3],
+  ] as const) {
+    const k = (e - delay) / 0.6;
+    if (k <= 0 || k >= 1) continue;
+    ctx.strokeStyle = hexA(b.color, (1 - k) * 0.9);
+    ctx.lineWidth = width * (1 - k) + 1;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 10 + reach * b.scale * (1 - (1 - k) * (1 - k)), 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  // Splinters and sparks, slowing as they fly.
+  for (const p of b.bits) {
+    if (e > p.life) continue;
+    const k = e / p.life;
+    const travel = (1 - Math.exp(-2.2 * e)) / 2.2; // drag
+    const x = b.x + p.vx * travel;
+    const y = b.y + p.vy * travel;
+    ctx.globalAlpha = 1 - k;
+    ctx.fillStyle = p.color;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(p.spin + e * 8);
+    ctx.fillRect(-p.size, -p.size * 0.4, p.size * 2, p.size * 0.8);
+    ctx.restore();
+  }
+  ctx.restore();
+  return false;
 }
 
 /** Keep getting moves outside the element. Can throw if the pointer is already gone. */

@@ -116,6 +116,19 @@ stick, plays shots. React (ui/Game.tsx) owns the rules and the turn loop.
 - The CPU's stick visibly turns, pulls back and swings with the same pose.
 - The aim line is short and never shows bounces. It can be turned off in ☰.
 
+## Goal explosions and the instant replay
+Every goal blows the puck up, Rocket League style: a flash, two shockwave
+rings, a fan of splinters and sparks in the scorer's colour, and a short
+board shake (skipped with Reduce Motion). A goal that would win the match
+gets the big one (1.6× — more, faster debris, bigger rings and shake): the
+game tells the table before each shot (`Table.explodeInto`, per goal,
+"normal" or "big"; either goal — own goals count). Replays explode the same
+way. After the winning goal's banner, an "INSTANT REPLAY" of it plays in
+slow motion (¼×; `Replays` with `instant`, Skip button, closes 3.5 s after
+the goal so the explosion plays out) and the results screen follows. The end
+screen's confetti and drifting pucks avoid `var()` in @keyframes (iOS Safari
+ignores it there); with Reduce Motion they stand still rather than disappear.
+
 ## Goal replays (ui/Replays.tsx)
 Every goal is saved in `match.goals` with the exact `Launch` that scored it
 (start position and launch velocity, wobble already applied), who shot, who
