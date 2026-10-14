@@ -418,15 +418,17 @@ a row (5, or 6 with Reinforcements; never a 1-unit Ascendant row,
 `SYNERGY_MIN`) holds one class, `synergyOf` picks its synergy and
 `applyAugments` applies it for the round, badged and itemised (`syn-<class>`
 auras): **🔥 Full Assault** +1 attack and blows can't be dodged
-(`trueStrike`); **🧱 Iron Line** +3 health; **🕊 Sanctuary** the front unit
-survives the first lethal blow each round on 1 health (`endure`). The round
+(`trueStrike`); **🧱 Iron Line** +3 health; **🕊 Sanctuary** every support
+ability counts twice (Herald rally and its Mastery health, Medic mend). The
+`endure` trait (front survives a lethal blow on 1) is still in combat but unused. The round
 banner announces it; the pick label shows progress ("🔥 3/5") while every unit
 so far shares a class. Normal leans toward a class once 3 share it
 (`SYNERGY_NUDGE`); Hard finds synergies through its search.
 
 Tuning: head to head (same row on vs off, one round vs random rows) Assault
-is worth +6-7 points and Sanctuary +15; doubling Herald/Medic for Sanctuary was
-+50 and was dropped. At match level (`pnpm sim 10000 --aug=random`) Iron Line
+is worth +6-7 points; Sanctuary (doubling) +5 at level 2 and +28 at level 6,
+which brings a levelled all-Support row from 27% to about even. Doubling plus
+endure together was +50. At match level (`pnpm sim 10000 --aug=random`) Iron Line
 holders win 49% (45% at +2, 56% at +4); synergies fire in ~4% of AI rows
 (Defense 3.8%, Attack 0.8%, Support never: the AI doesn't build five
 supports), so real-player telemetry will be the better measure.

@@ -148,7 +148,7 @@ export const SYNERGIES: Record<Archetype, { name: string; icon: string; text: st
   support: {
     name: "Sanctuary",
     icon: "🕊",
-    text: "Your front unit survives the first blow each round that would kill it, left on 1 health.",
+    text: "Every support ability counts twice: Heralds' rally and Medics' mend are doubled.",
   },
 };
 /** Smallest row a synergy needs: a single unit (Ascendant) is no "row of one class". */

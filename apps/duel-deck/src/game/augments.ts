@@ -719,14 +719,15 @@ export function applyAugments(
 
   // Full-row synergy: a row of one class, badged and itemised like an augment.
   // Tuned two ways. Head to head (same row, synergy on vs off, one round vs
-  // random rows): Assault +6-7 points, Sanctuary +15 (support rows are weak
-  // without it); doubling Herald/Medic values was +50. At match level
+  // random rows): Assault +6-7 points; Sanctuary (support doubled) +5 at level
+  // 2 and +28 at level 6, lifting a levelled all-Support row from 27% to 55%
+  // (doubling plus a front that survives a lethal blow was +50). At match level
   // (`pnpm sim --aug=random`) Iron Line holders won 45% at +2 health, 49% at
   // +3, 56% at +4: all-Defense rows deal little damage, so it needs the most.
   if (synergy) {
     const syn = SYNERGIES[synergy];
     const id = `syn-${synergy}`;
-    units.forEach((u, i) => {
+    units.forEach((u) => {
       const t = u.traits ?? (u.traits = {});
       let atk = 0;
       let hp = 0;
@@ -737,7 +738,14 @@ export function applyAugments(
       } else if (synergy === "defense") {
         hp = 3;
       } else {
-        if (i === 0) t.endure = gained.endure = true;
+        // Sanctuary: every support ability counts twice. `gained` holds the
+        // extra, so the info card itemises what the synergy added.
+        if (t.rally) gained.rally = t.rally;
+        if (t.rallyHp) gained.rallyHp = t.rallyHp;
+        if (t.mend) gained.mend = t.mend;
+        if (t.rally) t.rally *= 2;
+        if (t.rallyHp) t.rallyHp *= 2;
+        if (t.mend) t.mend *= 2;
       }
       u.atk += atk;
       u.maxHp += hp;
