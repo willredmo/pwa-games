@@ -479,8 +479,8 @@ offer cards (top corner), info cards and the Codex. When every slot of
 a row (5, or 6 with Reinforcements; never a 1-unit Ascendant row,
 `SYNERGY_MIN`) holds one class, `synergyOf` picks its synergy and
 `applyAugments` applies it for the round, badged and itemised (`syn-<class>`
-auras): **🔥 Full Assault** +2 attack and blows can't be dodged
-(`trueStrike`); **🧱 Iron Line** a 5 shield on every unit each round
+auras): **🔥 Full Assault** +2 attack and Overflow for every unit (half the
+overkill, up to 3; Berserkers keep their own); **🧱 Iron Line** a 5 shield on every unit each round
 (`IRON_LINE_SHIELD`, shown on the shield bar); **🕊 Sanctuary** every support
 ability counts twice (Herald rally and its Mastery health, Medic mend). The
 `endure` trait (front survives a lethal blow on 1) is still in combat but unused. The round
@@ -500,13 +500,15 @@ changes count, since the board also changes as units fall in battle. Normal lean
 Tuning: `pnpm synergy [trials] [--level=N]` (scripts/synergy.ts) plays a
 one-class row with its synergy on vs off, one round against random rows at
 the same level, and prints what it's worth. 2026-10-15, levels 2 / 5 / 8:
-Assault (+2 attack, true strike) +28 / +18 / +18; Iron Line (5 shield) +40 /
+Assault (+2 attack, Overflow for all) +30 / +20 / +18; Iron Line (5 shield) +40 /
 +33 / +28; Sanctuary +35 / +48 / +57 (an all-Support row is weak without it:
 44% / 28% / 12%). Before: Assault at +1 attack +22 / +18 / +18, felt weak
 because true strike only matters against Skirmishers; Iron Line at +3 health
-+27 / +24 / +15, fading as health grows. Tried and dropped: +1 attack with
-Charge for all, with Overflow for all, and plain +2 attack (fades to +12 at
-level 8). A permanent +1 health per round won was the other Iron Line idea.
++27 / +24 / +15, fading as health grows. True strike was dropped (it only
+matters against Skirmishers; the trait is still in combat, unused, like
+`endure`). Tried and dropped: +2 attack with true strike (+28 / +18 / +18),
+with Charge +2 for all (+29 / +18 / +17), plain +2 attack (fades to +12 at
+level 8), and First strike for all (99% on: far too strong). A permanent +1 health per round won was the other Iron Line idea.
 At match level (`pnpm sim 10000 --aug=random`) Iron Line
 holders win 49% (45% at +2, 56% at +4); synergies fire in ~4% of AI rows
 (Defense 3.8%, Attack 0.8%, Support never: the AI doesn't build five

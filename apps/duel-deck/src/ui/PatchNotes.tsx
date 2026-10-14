@@ -14,7 +14,7 @@ export const PATCH_NOTES: Release[] = [
     date: "Oct 15, 2026",
     notes: [
       "Iron Line is stronger: every unit starts each round with a 5 shield (was +3 health).",
-      "Full Assault is stronger: +2 attack (was +1), and blows still can't be dodged.",
+      "Full Assault reworked: +2 attack (was +1), and every unit's overkill carries on to the next enemy (was: blows can't be dodged, which only mattered against Skirmishers).",
       "Start-of-round buffs (Rally, Lifebond, Barrier) now play one unit at a time.",
       "Completing a class bonus shows its banner longer, with what it does.",
       "Phones: Reroll no longer gets cut off, and the round summary fits on one line. Tablets: the buttons fit on one row.",

@@ -852,8 +852,13 @@ export function applyAugments(
       let hp = 0;
       const gained: UnitTraits = {};
       if (synergy === "attack") {
+        // Overflow for everyone: overkill carries on to the next enemy (half,
+        // up to 3). Berserkers keep their own, bigger Overflow.
         atk = 2;
-        t.trueStrike = gained.trueStrike = true;
+        if (!t.cleave) {
+          t.cleave = gained.cleave = true;
+          t.cleaveCap = 3;
+        }
       } else if (synergy === "defense") {
         // A shield, not health: it soaks the first blows each round and shows
         // as the shield bar, so the line visibly holds.
