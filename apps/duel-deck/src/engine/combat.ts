@@ -54,6 +54,8 @@ interface RoundState {
   lit: Map<string, number>;
   /** Mends each Medic has spent this round (capped at MEND_USES). */
   mends: Map<string, number>;
+  /** Units whose Sanctuary has already saved them this round. */
+  endured: Set<string>;
 }
 
 /** Everything one tick's blows read and write. */
@@ -137,7 +139,7 @@ function strike(
   // Evasion: the first hit a dodger takes each round misses outright. Thorns
   // and overflow don't follow a miss.
   const used = round.dodged.get(target.id) ?? 0;
-  if ((target.traits?.dodges ?? 0) > used && raw > 0) {
+  if ((target.traits?.dodges ?? 0) > used && raw > 0 && !attacker.traits?.trueStrike) {
     round.dodged.set(target.id, used + 1);
     events.push({ type: "attack", lane, attacker: attacker.id, target: target.id, damage: 0, tag: "dodge", blocked: raw });
     // Riposte: a merged dodger answers the miss. Played back like thorns.
@@ -147,7 +149,12 @@ function strike(
     }
     return;
   }
-  const damage = reduced(raw, target, ctx.board);
+  let damage = reduced(raw, target, ctx.board);
+  // Sanctuary: the first blow each round that would kill it leaves it on 1.
+  if (target.traits?.endure && target.hp > 0 && target.hp - damage <= 0 && !round.endured.has(target.id)) {
+    round.endured.add(target.id);
+    damage = target.hp - 1;
+  }
   const blocked = raw - damage;
   const hpBefore = target.hp;
   target.hp -= damage;
@@ -425,6 +432,7 @@ export function resolveRound(input: Board, opts?: { tickCap?: number }): RoundRe
     fallen: { player: 0, enemy: 0 },
     lit: new Map(),
     mends: new Map(),
+    endured: new Set(),
   };
   const { damageDealt, kills } = round;
 

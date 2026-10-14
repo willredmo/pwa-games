@@ -10,6 +10,13 @@ export function otherSide(side: Side): Side {
 
 export type Shape = "circle" | "square" | "triangle" | "diamond" | "hexagon" | "shield" | "star" | "kite" | "cross";
 
+/**
+ * A unit's class. A row whose every slot holds one class gets that class's
+ * synergy (`SYNERGIES` in engine/units.ts). Separate from `classes`, which are
+ * the tags upgrades target.
+ */
+export type Archetype = "attack" | "defense" | "support";
+
 /** A unit definition (the pool-level template). */
 export interface UnitStats {
   name: string;
@@ -18,6 +25,8 @@ export interface UnitStats {
   shape: Shape;
   /** Tags that augments target, e.g. "striker", "tank". */
   classes: string[];
+  /** Attack, Defense or Support: what full-row synergies count. */
+  archetype: Archetype;
   role: string;
   /** Keywords the unit always has, before any augment (its ability, armour). */
   traits?: UnitTraits;
@@ -127,6 +136,10 @@ export interface UnitTraits {
   pierceDepth?: number;
   /** Rally also gives the front this much health (a mastered Herald). */
   rallyHp?: number;
+  /** Its blows can't be dodged (Full Assault). */
+  trueStrike?: boolean;
+  /** The first blow each round that would kill it leaves it on 1 health instead (Sanctuary). */
+  endure?: boolean;
 }
 
 /** A unit's innate ability, for display. Mechanics live in its `traits`. */

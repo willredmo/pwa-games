@@ -225,6 +225,7 @@
   cursor: pointer;
 }
 .card {
+  position: relative; /* anchors the class badge */
   cursor: grab;
   touch-action: none;
 }
@@ -1289,3 +1290,8 @@ button.menu-item:hover { border-color: #5a5180; }
   }
   .app__hint { max-width: 100%; }
 }
+
+/* Unit class on offer cards, and synergy progress in the pick label. */
+.card__class { position: absolute; top: 3px; left: 5px; font-size: 0.72rem; line-height: 1; opacity: 0.85; pointer-events: none; }
+.unit-info__class { margin-top: 0.25rem; font-size: 0.9em; opacity: 0.85; }
+.pick-label__class { color: #ffd666; font-weight: 700; }

@@ -1,5 +1,5 @@
-import type { AuraDetail, SideMods, Side, Unit, UnitTraits } from "../engine/types";
-import { KNIGHT_LEVEL, UNITS, UNIT_KEYS, innateTraits } from "../engine/units";
+import type { Archetype, AuraDetail, SideMods, Side, Unit, UnitTraits } from "../engine/types";
+import { KNIGHT_LEVEL, SYNERGIES, UNITS, UNIT_KEYS, innateTraits } from "../engine/units";
 
 // Persistent upgrades ("augments") — the tracker doc's separate offer track.
 //
@@ -659,6 +659,8 @@ export function applyAugments(
   ownHp: number,
   enemyUnitCount: number,
   capacity = 5,
+  /** This side's full-row synergy this round (`synergyOf`), if any. */
+  synergy: Archetype | null = null,
 ): void {
   const ctx: AugmentContext = {
     units,
@@ -714,6 +716,36 @@ export function applyAugments(
     unit.traits = traits;
     unit.auraDetails = details;
   });
+
+  // Full-row synergy: a row of one class, badged and itemised like an augment.
+  // Tuned two ways. Head to head (same row, synergy on vs off, one round vs
+  // random rows): Assault +6-7 points, Sanctuary +15 (support rows are weak
+  // without it); doubling Herald/Medic values was +50. At match level
+  // (`pnpm sim --aug=random`) Iron Line holders won 45% at +2 health, 49% at
+  // +3, 56% at +4: all-Defense rows deal little damage, so it needs the most.
+  if (synergy) {
+    const syn = SYNERGIES[synergy];
+    const id = `syn-${synergy}`;
+    units.forEach((u, i) => {
+      const t = u.traits ?? (u.traits = {});
+      let atk = 0;
+      let hp = 0;
+      const gained: UnitTraits = {};
+      if (synergy === "attack") {
+        atk = 1;
+        t.trueStrike = gained.trueStrike = true;
+      } else if (synergy === "defense") {
+        hp = 3;
+      } else {
+        if (i === 0) t.endure = gained.endure = true;
+      }
+      u.atk += atk;
+      u.maxHp += hp;
+      u.hp = u.maxHp;
+      if (!u.auras.includes(id)) u.auras.push(id);
+      u.auraDetails = [...(u.auraDetails ?? []), { id, label: `${syn.icon} ${syn.name}`, atk, hp, traits: gained }];
+    });
+  }
 
   // Drill: a maxed row's unspent picks, as attack for this round only.
   const drill = state.drill ?? 0;

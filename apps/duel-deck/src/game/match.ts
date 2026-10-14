@@ -15,8 +15,8 @@ import {
   cloneBoard,
 } from "../engine/board";
 import { resolveRound } from "../engine/combat";
-import { KNIGHT_AT, OFFER_KEYS, UNITS, canAbsorb } from "../engine/units";
-import type { Board, Side, Unit } from "../engine/types";
+import { KNIGHT_AT, OFFER_KEYS, UNITS, canAbsorb, synergyOf } from "../engine/units";
+import type { Archetype, Board, Side, Unit } from "../engine/types";
 import {
   SABOTAGE_ATK,
   applyAugments,
@@ -373,6 +373,7 @@ export function aiCommit(
     const squireBuild =
       !!state && SQUIRE_AUGMENTS.some((id) => hasAugment(state, id));
     const fit = augmentFit(state);
+    const lean = classLean(board, side);
     const value = (i: number) => {
       const key = offer[i];
       // Owning a type only matters once the row is full and picks merge.
@@ -383,7 +384,12 @@ export function aiCommit(
         key === "squire"
           ? SQUIRE_PICK_VALUE + (squireBuild ? NUDGE : 0)
           : (AI_UNIT_VALUE[key] ?? 5);
-      return (owns ? 100 : 0) + base + (key === "squire" ? 0 : (fit.get(key) ?? 0));
+      return (
+        (owns ? 100 : 0) +
+        base +
+        (key === "squire" ? 0 : (fit.get(key) ?? 0)) +
+        (lean && UNITS[key]?.archetype === lean ? SYNERGY_NUDGE : 0)
+      );
     };
     available.sort((a, b) => value(b) - value(a));
     // Best-valued offer that can actually be used, so a full row doesn't waste picks.
@@ -601,6 +607,25 @@ function augmentFit(state?: AugmentState): Map<string, number> {
   return fit;
 }
 
+/**
+ * Normal's pull toward a full-row synergy: once SYNERGY_LEAN_AT units share a
+ * class, offers of that class score this much more (same idea as FIT_BONUS).
+ * Hard needs no nudge: its search scores rows with the synergy applied.
+ */
+const SYNERGY_NUDGE = 1.5;
+const SYNERGY_LEAN_AT = 3;
+function classLean(board: Board, side: Side): Archetype | null {
+  const counts = new Map<Archetype, number>();
+  for (const u of sideUnits(board, side)) {
+    const a = UNITS[u.key]?.archetype;
+    if (a) counts.set(a, (counts.get(a) ?? 0) + 1);
+  }
+  let best: Archetype | null = null;
+  let n = 0;
+  for (const [a, k] of counts) if (k > n) [best, n] = [a, k];
+  return n >= SYNERGY_LEAN_AT ? best : null;
+}
+
 /** Augments that make Squires worth starting (the AI leans in when it has one). */
 const SQUIRE_AUGMENTS = ["squires-drill", "early-knighthood", "knights-oath"];
 
@@ -640,8 +665,10 @@ export function refreshForRound(
   ensureDepth(board, Math.max(board.mods.player!.capacity!, board.mods.enemy!.capacity!));
   const p = sideUnits(board, PLAYER);
   const e = sideUnits(board, ENEMY);
-  applyAugments(p, playerAug, board.hp.player, e.length, board.mods.player!.capacity!);
-  applyAugments(e, enemyAug, board.hp.enemy, p.length, board.mods.enemy!.capacity!);
+  const pCap = board.mods.player!.capacity!;
+  const eCap = board.mods.enemy!.capacity!;
+  applyAugments(p, playerAug, board.hp.player, e.length, pCap, synergyOf(p, pCap));
+  applyAugments(e, enemyAug, board.hp.enemy, p.length, eCap, synergyOf(e, eCap));
   // Sabotage reaches across: each side's holds the other's front down. After
   // both sides are computed, since it acts on the opponent's finished stats.
   if (hasAugment(playerAug, "sabotage")) sabotage(e[0]);

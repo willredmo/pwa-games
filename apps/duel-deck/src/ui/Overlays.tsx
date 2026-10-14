@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import "./overlays.css";
 import type { AugmentDef, AugmentState } from "../game/augments";
 import { AUGMENTS, MAX_FROZEN_AUGMENTS, RALLY_CAP, getAugment, rarityOf, unitsAffectedBy, type Rarity } from "../game/augments";
-import { KNIGHT_LEVEL, MAX_LEVEL, UNITS, UNIT_KEYS, levelOf } from "../engine/units";
+import { ARCHETYPES, KNIGHT_LEVEL, MAX_LEVEL, SYNERGIES, UNITS, UNIT_KEYS, levelOf } from "../engine/units";
 import { levelLabel, levelTier } from "../board/render";
 import { AUGMENT_EVERY, PICK_COUNT, START_HP } from "../game/match";
 import { mvpOf, roundsPlayed, type MatchStats, type UnitTally } from "../game/stats";
@@ -658,7 +658,9 @@ export function UnitsView({ onClose }: { onClose: () => void }) {
                     </span>
                   </header>
                   {lore && <p className="unit-entry__title">{lore.title}</p>}
-                  <p className="unit-entry__role">{u.role}</p>
+                  <p className="unit-entry__role">
+                    {u.role} · {ARCHETYPES[u.archetype].icon} {ARCHETYPES[u.archetype].name}
+                  </p>
                   {u.ability && (
                     <p className="unit-entry__ability">
                       <span className="unit-entry__ability-name">✦ {u.ability.name}</span>
@@ -774,6 +776,19 @@ export function HelpPanel({ onClose }: HelpPanelProps) {
           <li>Drag an offer onto an <em>empty slot</em> to add it as a new unit, or onto <em>one of your units of the same type</em> to merge. Only like merges with like.</li>
           <li><strong>Clicking works everywhere dragging does.</strong> Click an offer or one of your units to pick it up, then click where it should go. Click it again to put it back down. Dashed outlines show the legal destinations.</li>
           <li>A merged unit gives <strong>half</strong> its attack and health to the target, permanently, and raises its level by one (every unit starts at <strong>Lv1</strong>). Levels stop at <strong>10 (MAX)</strong>, where each unit's ability takes its stronger <strong>★ Mastery</strong> form. Once every slot holds a maxed unit, picks you leave unspent become <strong>🎯 Drill</strong>: +1 attack to every unit for that round. You lose stats overall versus placing it separately — what you gain is concentration: a tougher unit holding the front instead of another body behind it.</li>
+          <li>
+            Every unit has a class: <strong>⚔ Attack</strong>, <strong>🛡 Defense</strong> or <strong>✚ Support</strong> (top corner of
+            its card). Fill <em>every</em> slot with one class and the row gets a bonus each round, no upgrade needed:{" "}
+            {(["attack", "defense", "support"] as const).map((a, i) => (
+              <span key={a}>
+                {i ? "; " : ""}
+                <strong>
+                  {SYNERGIES[a].icon} {SYNERGIES[a].name}
+                </strong>{" "}
+                ({ARCHETYPES[a].name}): {SYNERGIES[a].text}
+              </span>
+            ))}
+          </li>
           <li>When your row is <strong>full</strong>, you can also drop an offer onto a unit of a <em>different</em> type to <strong>replace</strong> it. The old unit is discarded, along with anything merged into it — the slot outlines orange to warn you.</li>
           <li><strong>❄ Freeze</strong> an offer card to keep it for next round (it stays in its slot through rerolls, and unfreezes when you take it). On an upgrade choice, freeze up to two upgrades to have them offered first at your next choice.</li>
           <li>Move placed units to reorder the queue — only the front one fights, so position matters.</li>

@@ -1,5 +1,5 @@
 import type { Unit, UnitTraits } from "../engine/types";
-import { MAX_LEVEL, UNITS, innateTraits, isMastered, levelOf } from "../engine/units";
+import { ARCHETYPES, MAX_LEVEL, SYNERGIES, UNITS, innateTraits, isMastered, levelOf } from "../engine/units";
 import { getAugment } from "../game/augments";
 
 // Hover card for a unit on the board: its numbers now, its numbers before any
@@ -19,7 +19,8 @@ function describeTraits(t: UnitTraits): string[] {
     );
   if (t.dodges) out.push(t.dodges === 1 ? "dodges the first hit each round" : `dodges the first ${t.dodges} hits each round`);
   if (t.riposte) out.push(`strikes back for ${t.riposte} when it dodges`);
-  if (t.openingBonus) out.push(`+${t.openingBonus} damage on its first attack each round`);
+  if (t.openingBonus)
+    out.push(`+${t.openingBonus} damage on its first attack ${t.chargeEach ? "against each new enemy" : "each round"}`);
   if (t.deathBuff) {
     const b = t.deathBuff;
     const what = [b.atk ? `+${b.atk}⚔` : "", b.hp ? `+${b.hp}♥` : ""].filter(Boolean).join(" ");
@@ -27,16 +28,20 @@ function describeTraits(t: UnitTraits): string[] {
   }
   if (t.growOnSurvive) {
     const g = t.growOnSurvive;
-    out.push(`+${g.hp ? `${g.hp}♥` : `${g.atk}⚔`} permanently each round it survives`);
+    const what = [g.atk ? `${g.atk}⚔` : "", g.hp ? `${g.hp}♥` : ""].filter(Boolean).join(" ");
+    out.push(`+${what} permanently each round it survives`);
   }
   if (t.thorns) out.push(`reflects ${t.thorns} damage when hit`);
   if (t.lifesteal) out.push(`heals ${Math.round(t.lifesteal * 100)}% of damage dealt`);
   if (t.damageReduction) out.push(`takes ${t.damageReduction} less damage per hit`);
   if (t.executioner) out.push(`+${t.executioner} damage vs targets below half health`);
   if (t.lastBreath) out.push("parting blow of 2 if it's your first to fall");
-  if (t.pierce) out.push(`each blow it lands also hits the unit behind the front for ${t.pierce}`);
-  if (t.mend) out.push(`from behind the front: heals your front unit ${t.mend}♥ after each exchange (3 times a round)`);
-  if (t.rally) out.push(`from behind the front: your front unit gets +${t.rally}⚔`);
+  if (t.pierce)
+    out.push(`each blow it lands also hits the ${t.pierceDepth === 2 ? "two units" : "unit"} behind the front for ${t.pierce}`);
+  if (t.mend) out.push(`from behind the front: heals your front unit ${t.mend}♥ after each exchange (${t.mendUses ?? 3} times a round)`);
+  if (t.rally) out.push(`from behind the front: your front unit gets +${t.rally}⚔${t.rallyHp ? ` +${t.rallyHp}♥` : ""}`);
+  if (t.trueStrike) out.push("its blows can't be dodged");
+  if (t.endure) out.push("survives the first blow each round that would kill it, on 1♥");
   return out;
 }
 
@@ -104,6 +109,7 @@ export function UnitInfo({
       <div className="unit-info__base">
         Level {levelOf(unit.merges)}
         {levelOf(unit.merges) === MAX_LEVEL ? " (max)" : ""} · Base ⚔{unit.baseAtk} ♥{unit.baseMaxHp}
+        {UNITS[unit.key] && ` · ${ARCHETYPES[UNITS[unit.key].archetype].icon} ${ARCHETYPES[UNITS[unit.key].archetype].name}`}
       </div>
       {UNITS[unit.key]?.mastery && (
         <div className={`unit-info__mastery${isMastered(unit.merges) ? " unit-info__mastery--on" : ""}`}>
@@ -182,6 +188,13 @@ export function OfferInfo({
         </span>
       </div>
       <div className="unit-info__base">{u.role}</div>
+      <div className="unit-info__class">
+        {ARCHETYPES[u.archetype].icon} {ARCHETYPES[u.archetype].name} class · a full row of one class gets{" "}
+        <strong>
+          {SYNERGIES[u.archetype].icon} {SYNERGIES[u.archetype].name}
+        </strong>
+        : {SYNERGIES[u.archetype].text}
+      </div>
       {u.ability && (
         <div className="unit-info__ability">
           <div className="unit-info__ability-head">

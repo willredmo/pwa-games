@@ -18,8 +18,8 @@ import {
   writeLane,
 } from "../engine/board";
 import { resolveRound } from "../engine/combat";
-import { KNIGHTING_BONUS, MAX_LEVEL, UNITS, canAbsorb, isMastered, levelOf, mergesInto } from "../engine/units";
-import type { AttackEvent, BattleEvent, Board, RoundResult, Side, Tick, Unit } from "../engine/types";
+import { ARCHETYPES, KNIGHTING_BONUS, MAX_LEVEL, SYNERGIES, SYNERGY_MIN, UNITS, canAbsorb, isMastered, levelOf, mergesInto, synergyOf } from "../engine/units";
+import type { Archetype, AttackEvent, BattleEvent, Board, RoundResult, Side, Tick, Unit } from "../engine/types";
 import {
   AUGMENT_EVERY,
   augmentOfferCount,
@@ -58,7 +58,9 @@ import {
 import { settleRound } from "../game/roundEnd";
 
 /** Badge glyph for an augment id — "✦" if an id ever outlives its definition. */
-const auraIcon = (id: string) => getAugment(id)?.icon ?? (id === "herald" ? "📯" : id === "drill" ? "🎯" : "✦");
+const auraIcon = (id: string) =>
+  getAugment(id)?.icon ??
+  (id === "herald" ? "📯" : id === "drill" ? "🎯" : id.startsWith("syn-") ? (SYNERGIES[id.slice(4) as Archetype]?.icon ?? "✦") : "✦");
 import { cellCenter, draw, pixelToCell, type Cell, type TargetKind } from "../board/render";
 import { POSE_MS, prefersReducedMotion, type Pose, type PoseState } from "../board/anim";
 import { FxLayer, type FxKind } from "../board/fx";
@@ -703,6 +705,23 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     return null;
   })();
 
+  /**
+   * Progress toward a full-row synergy, for the pick label: the synergy's name
+   * once the row is all one class, or "🔥 3/5" once three or more share one.
+   */
+  const classNote = ((): string | null => {
+    const units = sideUnits(board, PLAYER);
+    const cap = capacityOf(board, PLAYER);
+    const syn = synergyOf(units, cap);
+    if (syn) return `${SYNERGIES[syn].icon} ${SYNERGIES[syn].name}`;
+    if (cap < SYNERGY_MIN) return null;
+    const counts = new Map<Archetype, number>();
+    for (const u of units) counts.set(UNITS[u.key].archetype, (counts.get(UNITS[u.key].archetype) ?? 0) + 1);
+    const [best, n] = [...counts].sort((a, b) => b[1] - a[1])[0] ?? [null, 0];
+    // Only while every unit so far shares the class (a mixed row would need replacing first).
+    return best && n >= 3 && n === units.length ? `${SYNERGIES[best].icon} ${n}/${cap}` : null;
+  })();
+
   /** Merges a Squire still needs to be knighted, by its own side's threshold. */
   const squireToGo = (u: Unit): number | null =>
     u.key === "squire" ? knightAt(u.side === PLAYER ? playerAug.current : enemyAug.current) - u.merges : null;
@@ -822,7 +841,10 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       setResult(null);
       setFrames([]);
       setPeeking(false);
-      showBanner(augs.length > 0 ? `Round ${roundNum} · Upgrade!` : `Round ${roundNum}`, "neutral");
+      // A full row of one class announces its synergy with the round.
+      const syn = synergyOf(sideUnits(next, PLAYER), capacityOf(next, PLAYER));
+      const synNote = syn ? ` · ${SYNERGIES[syn].icon} ${SYNERGIES[syn].name}!` : "";
+      showBanner(augs.length > 0 ? `Round ${roundNum} · Upgrade!${synNote}` : `Round ${roundNum}${synNote}`, "neutral");
       setPhase(augs.length > 0 ? "augment" : "pick");
     },
     [refreshed, showBanner],
@@ -2046,6 +2068,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           key={picksLeft}
           className={`pick-label${picksLeft > 0 ? " pick-label--open" : " pick-label--done"}`}
         >
+          {classNote && <span className="pick-label__class">{classNote} · </span>}
           {picksLeft > 0 && rowMaxed(board, PLAYER)
             ? `Row maxed · unused picks → 🎯 Drill +${picksLeft}⚔`
             : picksLeft > 0
@@ -2110,6 +2133,9 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
                   if (!spent) setSelected(isSelected ? null : { kind: "offer", index: i, key });
                 }}
               >
+                <span className={`card__class card__class--${u.archetype}`} title={`${ARCHETYPES[u.archetype].name} class`}>
+                  {ARCHETYPES[u.archetype].icon}
+                </span>
                 <UnitPortrait unitKey={key} side="player" size={compact ? 44 : 58} />
                 <span className="card__name">{u.name}</span>
                 {taken ? (

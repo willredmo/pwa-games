@@ -1,4 +1,4 @@
-import type { UnitStats, UnitTraits } from "./types";
+import type { Archetype, UnitStats, UnitTraits } from "./types";
 
 // Unit pool — v1 first pass, straight from the tracker doc.
 // Melee/front-line only: no ranged units in v1.
@@ -16,6 +16,7 @@ export const UNITS: Record<string, UnitStats> = {
     maxHp: 6,
     shape: "square",
     classes: ["guard", "tank"],
+    archetype: "defense",
     role: "Tanky, absorbs hits, low output",
     ability: { name: "Bodyguard", trigger: "On death", text: "The unit behind it gains +2 health for the rest of the round.", scaling: "+1 health every 2 levels" },
     mastery: "Bodyguard shields every unit on your row, not just the one behind.",
@@ -26,6 +27,7 @@ export const UNITS: Record<string, UnitStats> = {
     maxHp: 4,
     shape: "triangle",
     classes: ["striker", "aggro"],
+    archetype: "attack",
     role: "Glass cannon",
     ability: { name: "Charge", trigger: "First attack", text: "Its first attack each round deals +3 damage.", scaling: "+1 damage per level" },
     mastery: "Charge hits the first blow against each new enemy, not just once a round.",
@@ -36,6 +38,7 @@ export const UNITS: Record<string, UnitStats> = {
     maxHp: 2,
     shape: "diamond",
     classes: ["skirmisher"],
+    archetype: "attack",
     role: "Balanced all-rounder",
     ability: { name: "Evasion", trigger: "Start of round", text: "Dodges the first hit it takes each round.", scaling: "When it dodges, strikes back for +1 damage every 2 levels" },
     mastery: "Dodges the first two hits each round.",
@@ -46,6 +49,7 @@ export const UNITS: Record<string, UnitStats> = {
     maxHp: 11,
     shape: "hexagon",
     classes: ["bulwark", "tank"],
+    archetype: "defense",
     role: "Max tank, meant to stall",
     ability: { name: "Fortify", trigger: "End of round", text: "If it survived the round, it permanently gains +1 health.", scaling: "+1 health every 2 levels" },
     mastery: "Fortify also gives +1 attack each round it survives.",
@@ -56,6 +60,7 @@ export const UNITS: Record<string, UnitStats> = {
     maxHp: 3,
     shape: "circle",
     classes: ["berserker", "aggro"],
+    archetype: "attack",
     role: "Highest attack, very fragile",
     ability: { name: "Overflow", trigger: "On kill", text: "Half the damage beyond a kill (up to 3) carries into the next enemy.", scaling: "Carry-over cap +1 per level" },
     mastery: "Overflow carries all the excess damage, with no cap.",
@@ -68,6 +73,7 @@ export const UNITS: Record<string, UnitStats> = {
     maxHp: 5,
     shape: "star",
     classes: ["herald", "support"],
+    archetype: "support",
     role: "Support: useless in front, lifts the front from behind",
     ability: { name: "Rally", trigger: "Start of round", text: "If it isn't your front unit, your front unit gains +3 attack for the round.", scaling: "+1 attack every 2 levels" },
     mastery: "Rally also gives your front unit as much health as attack.",
@@ -79,6 +85,7 @@ export const UNITS: Record<string, UnitStats> = {
     maxHp: 5,
     shape: "kite",
     classes: ["lancer"],
+    archetype: "attack",
     role: "Reach: hits the front and the unit behind it",
     ability: { name: "Impale", trigger: "On hit", text: "Each blow it lands also hits the enemy unit behind the front for 1.", scaling: "+1 pierce damage every 2 levels" },
     mastery: "Impale hits the two units behind the front.",
@@ -90,6 +97,7 @@ export const UNITS: Record<string, UnitStats> = {
     maxHp: 6,
     shape: "cross",
     classes: ["medic", "support"],
+    archetype: "support",
     role: "Support: heals your front unit from behind",
     ability: { name: "Mend", trigger: "After each exchange", text: "If it isn't your front unit, your front unit heals 3 (up to 3 times a round).", scaling: "+1 healing every 2 levels" },
     mastery: "Mends 5 times a round instead of 3.",
@@ -102,6 +110,7 @@ export const UNITS: Record<string, UnitStats> = {
     maxHp: 3,
     shape: "shield",
     classes: ["squire"],
+    archetype: "defense",
     role: "Weak now; every level is bigger than the last, and level 7 makes a Knight",
     ability: { name: "Pass the torch", trigger: "On death", text: "The unit behind it gains +1 attack for the rest of the round.", scaling: "+1 attack every 2 levels" },
   },
@@ -111,6 +120,7 @@ export const UNITS: Record<string, UnitStats> = {
     maxHp: 0,
     shape: "shield",
     classes: ["knight"],
+    archetype: "defense",
     role: "Promoted Squire: armoured, and still growing with every level",
     ability: { name: "Armour · Last rally", trigger: "Always · On death", text: "Takes 1 less damage per hit. When it falls, all your units gain +1 attack for the rest of the round.", scaling: "Last rally +1 attack every 2 levels past knighthood" },
     mastery: "Armour 2: takes 2 less damage per hit.",
@@ -119,6 +129,37 @@ export const UNITS: Record<string, UnitStats> = {
 };
 
 
+/** How each class reads to the player. */
+export const ARCHETYPES: Record<Archetype, { icon: string; name: string }> = {
+  attack: { icon: "⚔", name: "Attack" },
+  defense: { icon: "🛡", name: "Defense" },
+  support: { icon: "✚", name: "Support" },
+};
+
+/**
+ * Full-row synergies: when every slot of a side's row (5, or 6 with
+ * Reinforcements) holds one class, the whole row gets that class's bonus for
+ * the round, no upgrade needed. Applied in `applyAugments`, so it's recomputed
+ * each round, badged, itemised and deterministic online.
+ */
+export const SYNERGIES: Record<Archetype, { name: string; icon: string; text: string }> = {
+  attack: { name: "Full Assault", icon: "🔥", text: "Every unit gains +1 attack, and its blows can't be dodged." },
+  defense: { name: "Iron Line", icon: "🧱", text: "Every unit gains +3 health." },
+  support: {
+    name: "Sanctuary",
+    icon: "🕊",
+    text: "Your front unit survives the first blow each round that would kill it, left on 1 health.",
+  },
+};
+/** Smallest row a synergy needs: a single unit (Ascendant) is no "row of one class". */
+export const SYNERGY_MIN = 5;
+
+/** The class every unit in a full row shares, or null. */
+export function synergyOf(units: { key: string }[], capacity: number): Archetype | null {
+  if (units.length < Math.max(SYNERGY_MIN, capacity)) return null;
+  const first = UNITS[units[0].key]?.archetype;
+  return first && units.every((u) => UNITS[u.key]?.archetype === first) ? first : null;
+}
 /** Every unit type, including ones that are earned rather than offered. */
 export const UNIT_KEYS = Object.keys(UNITS);
 /** Unit types that can appear in the round's offer. */
