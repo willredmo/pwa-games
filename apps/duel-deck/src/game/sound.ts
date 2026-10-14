@@ -27,7 +27,8 @@ export type Sfx =
   | "round-loss"
   | "victory"
   | "defeat"
-  | "explode";     // the losing row blows up
+  | "explode"      // the losing row blows up
+  | "emote";       // the opponent sent an emote
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
@@ -207,6 +208,10 @@ export function sfx(kind: Sfx, strength = 0.5): void {
         { freq: 784, at: 0.28, dur: 0.2, gain: 0.08 },
         { freq: 1047, at: 0.42, dur: 0.6, gain: 0.1 },
       ]);
+      break;
+    case "emote":
+      // A soft pop: quiet, so it never talks over the battle.
+      tone({ freq: 880, to: 1320, gain: 0.05, dur: 0.09, type: "sine" });
       break;
     case "explode":
       // A crack, a long low rumble and a falling thump: the noise buffer is

@@ -65,6 +65,7 @@ import { cellCenter, draw, pixelToCell, type Cell, type TargetKind } from "../bo
 import { POSE_MS, prefersReducedMotion, type Pose, type PoseState } from "../board/anim";
 import { FxLayer, type FxKind } from "../board/fx";
 import { HpBar } from "./HpBar";
+import { EmoteBar } from "./EmoteBar";
 import { RoundBanner, type BannerTone } from "./RoundBanner";
 import { UnitPortrait } from "./UnitPortrait";
 import { OfferInfo, UnitInfo } from "./UnitInfo";
@@ -1947,6 +1948,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           onContextMenu={(e) => e.preventDefault()}
         />
         <RoundBanner message={banner.message} tone={banner.tone} nonce={banner.nonce} />
+        {online && phase !== "over" && <EmoteBar session={online} round={round} />}
         {phase === "augment" && (
           <AugmentPanel
             round={round}

@@ -1295,3 +1295,91 @@ button.menu-item:hover { border-color: #5a5180; }
 .card__class { position: absolute; top: 3px; left: 5px; font-size: 0.72rem; line-height: 1; opacity: 0.85; pointer-events: none; }
 .unit-info__class { margin-top: 0.25rem; font-size: 0.9em; opacity: 0.85; }
 .pick-label__class { color: #ffd666; font-weight: 700; }
+
+/* Online emotes (ui/EmoteBar.tsx): a button at the board's bottom-right, a
+   tray above it, and bubbles over each side's half. */
+.emote-bar {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.emote-fab {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid #4a4466;
+  background: rgba(39, 35, 56, 0.92);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.emote-fab--open { border-color: #f0b429; }
+.emote-tray {
+  display: grid;
+  grid-template-columns: repeat(4, 38px);
+  gap: 4px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid #4a4466;
+  background: rgba(30, 27, 44, 0.97);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+.emote-tray__btn {
+  position: relative;
+  height: 38px;
+  border: 0;
+  border-radius: 8px;
+  background: #2c2840;
+  font-size: 1.3rem;
+  cursor: pointer;
+}
+.emote-tray__btn:disabled { opacity: 0.35; cursor: default; }
+.emote-tray__gg {
+  position: absolute;
+  right: 2px;
+  bottom: 1px;
+  font-size: 0.55rem;
+  font-weight: 800;
+  color: #ffd666;
+}
+.emote-tray__mute {
+  grid-column: 1 / -1;
+  border: 0;
+  border-radius: 8px;
+  padding: 4px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.emote-tray__note { grid-column: 1 / -1; text-align: center; font-size: 0.7rem; color: var(--muted); }
+.emote-bubble {
+  position: absolute;
+  left: 50%;
+  z-index: 5;
+  padding: 6px 12px;
+  border-radius: 18px;
+  font-size: 1.9rem;
+  line-height: 1;
+  pointer-events: none;
+  animation: emote-pop 2.5s ease-out forwards;
+}
+.emote-bubble--theirs { top: 14%; background: rgba(209, 72, 58, 0.25); border: 1px solid rgba(242, 162, 148, 0.55); }
+.emote-bubble--mine { bottom: 14%; background: rgba(58, 134, 214, 0.25); border: 1px solid rgba(158, 203, 245, 0.55); }
+@keyframes emote-pop {
+  0% { opacity: 0; transform: translateX(-50%) scale(0.4); }
+  12% { opacity: 1; transform: translateX(-50%) scale(1.15); }
+  20% { transform: translateX(-50%) scale(1); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .emote-bubble { animation: emote-fade 2.5s linear forwards; transform: translateX(-50%); }
+  @keyframes emote-fade { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
+}

@@ -216,6 +216,22 @@ export const stayPresent = (s: Session) => presence(GAME, s.code, s.me);
 export const sendCommit = (s: Session, c: Commit) => quiet(setField(GAME, s.code, `commits/${s.me}`, c));
 export const leaveRoom = (s: Session) => quiet(setField(GAME, s.code, "left", s.me));
 
+// --- Emotes ------------------------------------------------------------------
+
+/**
+ * The emotes a player can send, by index. Only the index goes over the wire
+ * (`emotes/<p>` = { i, n }), so the rules can check it's 0-7 and nobody can
+ * send text. `n` counts up, so the same emote twice still shows twice.
+ */
+export const EMOTES = ["👍", "👋", "😂", "😮", "😬", "🔥", "🎉", "🤝"] as const;
+export interface EmoteMsg {
+  i: number;
+  n: number;
+}
+export const sendEmote = (s: Session, i: number, n: number) => quiet(setField(GAME, s.code, `emotes/${s.me}`, { i, n }));
+export const watchEmotes = (s: Session, cb: (m: EmoteMsg | null) => void) =>
+  watch<EmoteMsg>(GAME, s.code, `emotes/${otherPlayer(s.me)}`, cb);
+
 // No in-room rematch yet: when a duel ends, both players go back to the title
 // and host a new one. Adding it means bumping `startedAt` and clearing
 // `commits` in a transaction, with both devices restarting on the new value.

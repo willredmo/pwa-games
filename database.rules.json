@@ -129,6 +129,11 @@
               "$other": { ".validate": false }
             }
           },
+          "emotes": {
+            "p1": { ".validate": "newData.hasChildren(['i', 'n']) && newData.child('i').isNumber() && newData.child('i').val() >= 0 && newData.child('i').val() <= 7 && newData.child('n').isNumber()" },
+            "p2": { ".validate": "newData.hasChildren(['i', 'n']) && newData.child('i').isNumber() && newData.child('i').val() >= 0 && newData.child('i').val() <= 7 && newData.child('n').isNumber()" },
+            "$other": { ".validate": false }
+          },
           "left": { ".validate": "newData.isString()" },
           "$other": { ".validate": false }
         }

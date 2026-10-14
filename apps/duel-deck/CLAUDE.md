@@ -572,6 +572,13 @@ or "ask your opponent to update". **Bump `PROTOCOL` with every change to what
 the engine or `refreshForRound` computes.** Deploy the database rules before
 hosting: the rules reject unknown room fields, so a build that writes `proto`
 can't host against older rules.
+**Emotes** (`ui/EmoteBar.tsx`): a 💬 button at the board's bottom-right in
+online matches opens 8 fixed emoji (`EMOTES` in room.ts; the last is 🤝 GG).
+Each player writes only `emotes/<p>` = `{ i, n }`: the index, so the rules can
+require 0-7 and no text can be sent, and a rising `n` so a repeat still shows.
+The watcher ignores whatever was there when it subscribed. One every 3 s, 5 a
+round; bubbles over each side's half fade after 2.5 s with a soft pop. The tray
+has "Mute opponent" (`duel-deck:mute-emotes`, this device).
 Other notes: an online match is **not** saved to `localStorage` (half of it is
 the opponent's; `save()` is a no-op online) — a reload rejoins via the room, and
 `duel-deck:online` holds the code and side. Waiting on the other player is a
