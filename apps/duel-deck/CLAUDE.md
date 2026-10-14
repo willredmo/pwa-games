@@ -391,6 +391,19 @@ Sim after the cap (`pnpm sim 12000 --aug=random`, 2026-10-13): units 44-59%
 upgrades 43-60% (Bloodpact, Champion, Legion top; Squire upgrades fell to
 44-45%), median match 21 rounds, median unit level 7 and most rows' best unit
 at 10, Drill in 0.7% of rounds.
+### Ascendant (epic): one unit, no cap
+Taking it trims your row to one unit (`keepChampion` in `refreshForRound`:
+highest level, then biggest base stats, then front-most; deterministic for
+online), and its mods are `capacity: 1` (beating Reinforcements) and
+`uncapped`. Uncapped means `mergeCapFor` is Infinity and `canAbsorb` lets
+**any** type merge into the champion, since with one slot it would otherwise
+only grow on the rare matching card. Merges use the card's own gain (half its
+stats; a Squire card its escalation step). The badge goes red past 10.
+Two champions kept killing each other in the same blow, and a draw deals
+nothing, so mirror matches ran to the 300-round sim cap: now, when both rows
+fall together, an Ascendant side's champion still hits the enemy pool for its
+attack (`RoundResult.ascendantHit`). Sim (12k, `--aug=random`): holder 47%,
+0 cap hits, longest match 53 rounds.
 ### Squire → Knight
 The late-game unit. Player-facing rule: **a Squire is knighted at level 7**
 (`KNIGHT_LEVEL`; level 6 with Early knighthood). Internally that is `KNIGHT_AT`

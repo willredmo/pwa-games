@@ -555,6 +555,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
    * is told is always exactly what will happen.
    */
   type DropAction = "place" | "merge" | "replace" | "reorder" | "invalid";
+  /** Ascendant: one unit, no cap, and every card merges into it whatever its type. */
+  const ascendant = mergeCapFor(board, PLAYER) === Infinity;
   const dropActionFor = useCallback(
     (cell: Cell | null, key: string | null): DropAction => {
       if (!cell || !key || cell.side !== PLAYER) return "invalid";
@@ -572,7 +574,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       // Without room, a twin merges and anything else is replaced. Every click
       // on your row therefore does something, rather than silently switching
       // the selection to the unit that was clicked.
-      if (mergesInto(unit.key, key)) {
+      if (mergesInto(unit.key, key) || ascendant) {
         // A twin at its level cap can't take more: with room the card inserts
         // beside it; with the row full there's nothing to do here (replacing a
         // maxed unit with its own type would only throw its levels away).
@@ -581,7 +583,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       }
       return boardFull ? "replace" : "place";
     },
-    [board, boardFull],
+    [board, boardFull, ascendant],
   );
 
   /**
@@ -597,7 +599,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       const target = board.slots.player[cell.lane][cell.spot];
       if (!target || target.id === d.unitId) return "invalid";
       // Twins: the left half (the character) merges, the right half just moves.
-      if (mergesInto(target.key, d.key)) {
+      if (mergesInto(target.key, d.key) || ascendant) {
         const source = board.slots.player[d.lane][d.from];
         const fits = !!source && canAbsorb(target.key, target.merges, source.key, source.merges + 1, mergeCapFor(board, PLAYER));
         return fits && cell.zone !== "right" ? "merge" : "reorder";
@@ -697,7 +699,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     if (kind === "place" && target) return `↧ INSERT ${UNITS[grab.key].name} at #${dropCell.spot + 1}`;
     if (kind === "place") return `＋ ADD ${UNITS[grab.key].name}`;
     if (kind === "reorder") return `MOVE TO #${dropCell.spot + 1}`;
-    if (target && mergesInto(target.key, grab.key)) return `MAX LEVEL ${MAX_LEVEL}`;
+    if (target && mergesInto(target.key, grab.key) && !ascendant) return `MAX LEVEL ${MAX_LEVEL}`;
     return null;
   })();
 
@@ -1486,6 +1488,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           (winner ? ` · ${winner === PLAYER ? "Enemy" : "You"} lost ${result.hpLoss} HP` : " · no HP lost") +
           (healed > 0 ? ` · you healed ${healed} (Field medic)` : "") +
           (enemyHealed > 0 ? ` · enemy healed ${enemyHealed}` : "") +
+          (result.ascendantHit ? ` · 👑 champions struck the pools for ${result.ascendantHit}` : "") +
           bounty,
       );
       if (winner === PLAYER) showBanner(`You hold the row! ${left} left · −${result.hpLoss}${bounty}`, "win");

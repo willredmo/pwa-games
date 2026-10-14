@@ -455,6 +455,8 @@ const AUGMENT_SCORE: Record<string, number> = {
   "last-light": 50,
   holdout: 46,
   tactician: 48,
+  // Sim 2026-10-13 (12k, --aug=random): 47%.
+  ascendant: 47,
 };
 
 /**
@@ -628,6 +630,9 @@ export function refreshForRound(
     return { ...mods, capacity: mods.capacity ?? DEPTH };
   };
   board.mods = { player: withCapacity(playerAug), enemy: withCapacity(enemyAug) };
+  // Ascendant: the row is one unit. Taking it trims the row to its best unit
+  // here, where every path (the app, the AI, the sim, online) passes.
+  for (const side of [PLAYER, ENEMY]) if (board.mods[side]!.uncapped) keepChampion(board, side);
   // Knighting happens here because every merge path (offer, placed unit, AI)
   // is followed by a refresh — one place to check, so none can skip it.
   promoteSquires(board, PLAYER, playerAug);
@@ -641,6 +646,21 @@ export function refreshForRound(
   // both sides are computed, since it acts on the opponent's finished stats.
   if (hasAugment(playerAug, "sabotage")) sabotage(e[0]);
   if (hasAugment(enemyAug, "sabotage")) sabotage(p[0]);
+}
+
+/**
+ * Keep only `side`'s best unit: highest level, then biggest base stats, then
+ * front-most. Deterministic, so both devices of an online match agree.
+ */
+export function keepChampion(board: Board, side: Side): void {
+  const units = sideUnits(board, side);
+  if (units.length <= 1) return;
+  const best = units.reduce((a, b) =>
+    b.merges > a.merges || (b.merges === a.merges && b.baseAtk + b.baseMaxHp > a.baseAtk + a.baseMaxHp) ? b : a,
+  );
+  for (let lane = 0; lane < board.lanes; lane++) {
+    writeLane(board, side, lane, lane === 0 ? [best] : []);
+  }
 }
 
 /** Sabotage's hit on one front unit, badged and itemised like any augment. */

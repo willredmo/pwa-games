@@ -458,6 +458,21 @@ export function resolveRound(input: Board, opts?: { tickCap?: number }): RoundRe
     board.hp[loser] = Math.max(0, board.hp[loser] - hpLoss);
   }
 
+  // Ascendant: when both rows fall together, a side's lone champion still hits
+  // the enemy pool for its attack. Without it two champions trade mutual kills
+  // forever (draws deal nothing) and the match never ends.
+  let ascendantHit = 0;
+  if (!roundWinner && playerLeft === 0 && enemyLeft === 0) {
+    for (const side of SIDES) {
+      if (!input.mods?.[side]?.uncapped) continue;
+      const champ = sideUnits(input, side)[0];
+      const hit = Math.max(0, champ?.atk ?? 0);
+      const foe = otherSide(side);
+      board.hp[foe] = Math.max(0, board.hp[foe] - hit);
+      ascendantHit += hit;
+    }
+  }
+
   let matchWinner: Side | null = null;
   if (board.hp.player <= 0 && board.hp.enemy <= 0) {
     matchWinner = board.hp.player >= board.hp.enemy ? "player" : "enemy";
@@ -473,6 +488,7 @@ export function resolveRound(input: Board, opts?: { tickCap?: number }): RoundRe
     survivors: { ids: survivors.map((u) => u.id), damage: survivorDamage },
     kills,
     ...(bounty > 0 ? { bounty } : {}),
+    ...(ascendantHit > 0 ? { ascendantHit } : {}),
     matchWinner,
   };
 }

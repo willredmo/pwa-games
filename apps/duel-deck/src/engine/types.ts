@@ -232,6 +232,8 @@ export interface RoundResult {
   kills?: Record<Side, number>;
   /** Bounty included in hpLoss, for display. */
   bounty?: number;
+  /** Ascendant: pool damage dealt by champions in a mutual wipe (both pools may take some). */
+  ascendantHit?: number;
   /** Set once a player's HP pool hits 0. */
   matchWinner: Side | null;
 }

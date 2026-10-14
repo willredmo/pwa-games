@@ -1,4 +1,4 @@
-import { KNIGHTING_BONUS, KNIGHT_AT, MAX_MERGES, SQUIRE_STEP, UNITS, canAbsorb, mergesInto } from "./units";
+import { KNIGHTING_BONUS, KNIGHT_AT, MAX_MERGES, SQUIRE_STEP, UNITS, canAbsorb } from "./units";
 import type { Board, Side, Unit } from "./types";
 
 // Board construction and slot access. Generic over `lanes` and `depth`.
@@ -169,7 +169,6 @@ export function mergePlaced(
   const target = list[to];
   // Squire into Knight, never the reverse: a Knight folded into a Squire would
   // throw away its knighthood.
-  if (!mergesInto(target.key, source.key)) return false;
   // Levels add, so two level-6 units can't fold into a level 12.
   if (!canAbsorb(target.key, target.merges, source.key, source.merges + 1, mergeCapFor(board, side))) return false;
   const gain = unitMergeGain(source, ratio, target.merges);

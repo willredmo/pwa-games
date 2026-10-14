@@ -157,6 +157,8 @@ export const isMastered = (merges: number) => levelOf(merges) >= MAX_LEVEL;
  * (cap = most merges allowed; Infinity once uncapped).
  */
 export function canAbsorb(target: string, merges: number, incoming: string, bodies = 1, cap = MAX_MERGES): boolean {
+  // An uncapped side (Ascendant) holds one unit, and it absorbs any type.
+  if (cap === Infinity) return true;
   return mergesInto(target, incoming) && merges + bodies <= cap;
 }
 /** One-off stats a Squire gains on being knighted, on top of its merges. */

@@ -567,6 +567,21 @@ export const AUGMENTS: AugmentDef[] = [
     rarity: "epic",
   },
   {
+    // The one-unit build: everything goes into a single unit with no level
+    // cap. `refreshForRound` trims the row to its best unit; `uncapped` lets
+    // any type merge into it (else it would only grow on the rare matching
+    // card) and lifts the cap. Capacity 1 overrides Reinforcements.
+    id: "ascendant",
+    icon: "👑",
+    name: "Ascendant",
+    description:
+      "Your row holds one unit: your highest-level unit stays and the rest leave. It has no level cap, and every unit you pick merges into it.",
+    category: "strategy",
+    rarity: "epic",
+    mods: { capacity: 1, uncapped: true },
+    effect: () => ({ atk: 1, hp: 3 }),
+  },
+  {
     id: "living-fortress",
     icon: "⛰️",
     name: "Living fortress",
@@ -795,7 +810,10 @@ export function sideModsFor(state: AugmentState): SideMods {
     if (m.capacity) out.capacity = Math.max(out.capacity ?? 0, m.capacity);
     if (m.lastLight) out.lastLight = (out.lastLight ?? 0) + m.lastLight;
     if (m.holdout) out.holdout = (out.holdout ?? 0) + m.holdout;
+    if (m.uncapped) out.uncapped = true;
   }
+  // Ascendant's single slot wins over Reinforcements' extra one.
+  if (out.uncapped) out.capacity = 1;
   return out;
 }
 
