@@ -67,6 +67,8 @@ function burst(opts: {
   decay: number;
   type?: BiquadFilterType;
   at?: number;
+  /** Sweep the filter to this frequency over the burst (whooshes, poofs). */
+  to?: number;
 }): void {
   if (!ctx || !master || !noise) return;
   const t = (opts.at ?? 0) + ctx.currentTime;
@@ -74,7 +76,8 @@ function burst(opts: {
   src.buffer = noise;
   const filter = ctx.createBiquadFilter();
   filter.type = opts.type ?? "bandpass";
-  filter.frequency.value = opts.freq;
+  filter.frequency.setValueAtTime(opts.freq, t);
+  if (opts.to !== undefined) filter.frequency.exponentialRampToValueAtTime(Math.max(20, opts.to), t + opts.decay);
   filter.Q.value = opts.q;
   const g = ctx.createGain();
   g.gain.setValueAtTime(opts.gain, t);
@@ -117,6 +120,96 @@ function phrase(notes: { freq: number; at: number; dur?: number; gain?: number; 
 }
 
 /**
+ * A struck bell: a sine with an inharmonic partial (×2.76, like a real bell's
+ * first overtone) and a long ring. Reads as a clear "ding" over battle noise.
+ */
+function bell(freq: number, at: number, gain = 0.1, dur = 0.7): void {
+  tone({ freq, gain, dur, type: "sine", at });
+  tone({ freq: freq * 2.76, gain: gain * 0.35, dur: dur * 0.5, type: "sine", at });
+  tone({ freq: freq * 2, gain: gain * 0.25, dur: dur * 0.7, type: "triangle", at });
+}
+
+/**
+ * Candidate versions of sounds under review, auditioned on the dev soundboard
+ * (?sounds). `sfx` plays the one in CHOSEN; once one is picked for good the
+ * others can go.
+ */
+const DEATH: Record<string, () => void> = {
+  // A cartoon vanish: a puff of air sweeping down and a soft thump. Suits the
+  // round, cute characters better than a groan.
+  poof: () => {
+    burst({ freq: 2200, to: 260, q: 1.1, gain: 0.28, decay: 0.32 });
+    tone({ freq: 520, to: 180, gain: 0.08, dur: 0.22, type: "sine" });
+    burst({ freq: 140, q: 0.7, gain: 0.22, decay: 0.18, type: "lowpass", at: 0.05 });
+  },
+  // Knocked over: a springy downward "boing" and a bump on the floor.
+  bonk: () => {
+    tone({ freq: 700, to: 160, gain: 0.12, dur: 0.28, type: "triangle" });
+    tone({ freq: 1050, to: 240, gain: 0.04, dur: 0.2, type: "square" });
+    burst({ freq: 120, q: 0.8, gain: 0.26, decay: 0.16, type: "lowpass", at: 0.12 });
+  },
+  // Shattering into shards, like the death effect looks: a glassy crack and
+  // falling tinkles.
+  shatter: () => {
+    burst({ freq: 4200, q: 2, gain: 0.2, decay: 0.12, type: "bandpass" });
+    for (let i = 0; i < 4; i++) tone({ freq: 2400 - i * 330, gain: 0.045, dur: 0.12, type: "sine", at: 0.04 + i * 0.05 });
+    burst({ freq: 160, q: 0.7, gain: 0.16, decay: 0.14, type: "lowpass", at: 0.02 });
+  },
+  // The original: a falling sawtooth groan over a thud.
+  original: () => {
+    tone({ freq: 300, to: 70, gain: 0.13, dur: 0.42, type: "sawtooth" });
+    burst({ freq: 100, q: 0.6, gain: 0.22, decay: 0.3, type: "lowpass", at: 0.1 });
+  },
+};
+
+const ROUND_WIN: Record<string, () => void> = {
+  // A short brass-like fanfare: a rising triad landing on a held octave.
+  fanfare: () => {
+    phrase([
+      { freq: 523, at: 0, dur: 0.12, gain: 0.07, type: "square" },
+      { freq: 659, at: 0.09, dur: 0.12, gain: 0.07, type: "square" },
+      { freq: 784, at: 0.18, dur: 0.12, gain: 0.07, type: "square" },
+      { freq: 1047, at: 0.27, dur: 0.38, gain: 0.08, type: "square" },
+    ]);
+    tone({ freq: 1047, gain: 0.06, dur: 0.45, type: "triangle", at: 0.27 });
+  },
+  // Two bell strikes, a fifth apart, ringing out.
+  chime: () => {
+    bell(784, 0, 0.11, 0.6);
+    bell(1175, 0.13, 0.12, 0.9);
+  },
+  // A coin-collect "ka-ching" and a sparkle of noise.
+  coins: () => {
+    tone({ freq: 988, gain: 0.08, dur: 0.08, type: "square" });
+    tone({ freq: 1319, gain: 0.08, dur: 0.35, type: "square", at: 0.08 });
+    burst({ freq: 6000, q: 0.8, gain: 0.07, decay: 0.3, type: "highpass", at: 0.08 });
+  },
+  // The original: two triangle notes, too close to the other cues to stand out.
+  original: () => {
+    phrase([
+      { freq: 523, at: 0, dur: 0.16, gain: 0.07 },
+      { freq: 784, at: 0.1, dur: 0.28, gain: 0.08 },
+    ]);
+  },
+};
+
+export const SFX_VARIANTS = { death: DEATH, "round-win": ROUND_WIN } as const;
+export type VariantKind = keyof typeof SFX_VARIANTS;
+const CHOSEN: Record<VariantKind, string> = { death: "poof", "round-win": "chime" };
+
+/** The version `sfx` plays for a sound under review. */
+export const chosenVariant = (kind: VariantKind) => CHOSEN[kind];
+/** Switch which version `sfx` plays (the soundboard; for this page load only). */
+export function chooseVariant(kind: VariantKind, name: string): void {
+  if (SFX_VARIANTS[kind][name]) CHOSEN[kind] = name;
+}
+/** Play one specific version, for comparing on the soundboard. */
+export function playVariant(kind: VariantKind, name: string): void {
+  if (!enabled || !ctx) return;
+  SFX_VARIANTS[kind][name]?.();
+}
+
+/**
  * Play an event. `strength` (0–1, default 0.5) scales the ones that have a
  * sense of size — a 2-damage poke and a 20-damage execution are the same
  * event but shouldn't be the same sound.
@@ -136,9 +229,7 @@ export function sfx(kind: Sfx, strength = 0.5): void {
       tone({ freq: 160, to: 70, gain: 0.14, dur: 0.22, type: "sawtooth" });
       break;
     case "death":
-      // Falling pitch and a body-drop thud under it.
-      tone({ freq: 300, to: 70, gain: 0.13, dur: 0.42, type: "sawtooth" });
-      burst({ freq: 100, q: 0.6, gain: 0.22, decay: 0.3, type: "lowpass", at: 0.1 });
+      DEATH[CHOSEN.death]();
       break;
     case "dodge":
       // A whoosh of air: noise swept high, nothing pitched.
@@ -162,7 +253,11 @@ export function sfx(kind: Sfx, strength = 0.5): void {
       tone({ freq: 440, to: 880, gain: 0.07, dur: 0.22 });
       break;
     case "place":
-      burst({ freq: 420, q: 1.2, gain: 0.12, decay: 0.09, type: "lowpass" });
+      // A wooden 'tok' as the unit lands: a low knock plus a short pitched click.
+      // (A bare lowpass puff at 0.12 was too quiet to hear over music or a room.)
+      burst({ freq: 380, q: 1.4, gain: 0.34, decay: 0.12, type: "lowpass" });
+      tone({ freq: 240, to: 150, gain: 0.14, dur: 0.09, type: "triangle" });
+      burst({ freq: 2600, q: 2, gain: 0.08, decay: 0.03 });
       break;
     case "merge":
       // Two notes resolving into one, an octave up.
@@ -190,10 +285,7 @@ export function sfx(kind: Sfx, strength = 0.5): void {
       ]);
       break;
     case "round-win":
-      phrase([
-        { freq: 523, at: 0, dur: 0.16, gain: 0.07 },
-        { freq: 784, at: 0.1, dur: 0.28, gain: 0.08 },
-      ]);
+      ROUND_WIN[CHOSEN["round-win"]]();
       break;
     case "round-loss":
       phrase([

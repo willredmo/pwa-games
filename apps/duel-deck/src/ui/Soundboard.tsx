@@ -1,5 +1,15 @@
 import { useState } from "react";
-import { sfx, setSoundEnabled, unlockSound, type Sfx } from "../game/sound";
+import {
+  SFX_VARIANTS,
+  chooseVariant,
+  chosenVariant,
+  playVariant,
+  sfx,
+  setSoundEnabled,
+  unlockSound,
+  type Sfx,
+  type VariantKind,
+} from "../game/sound";
 
 // Dev-only: every sound effect on one page, to review and retune the palette
 // (game/sound.ts). Open the dev server with ?sounds. Not in production builds.
@@ -11,7 +21,7 @@ const SOUNDS: { kind: Sfx; name: string; when: string; unused?: boolean; scales?
   { kind: "dodge", name: "Dodge", when: "A Skirmisher's Evasion dodges a blow." },
   { kind: "block", name: "Block", when: "Armour or a shield soaks part of a hit." },
   { kind: "ability", name: "Ability", when: "A named ability fires (Charge, Bodyguard, Overflow...)." },
-  { kind: "place", name: "Place", when: "A unit is put on your row, or moved." },
+  { kind: "place", name: "Place", when: "A unit is put on your row, or moved. (Louder: a wooden knock.)" },
   { kind: "merge", name: "Merge", when: "Two units become one." },
   { kind: "knight", name: "Knighted / Mastered", when: "A Squire is knighted, or a unit reaches level 10." },
   { kind: "upgrade", name: "Upgrade", when: "You take an upgrade." },
@@ -28,6 +38,7 @@ const SOUNDS: { kind: Sfx; name: string; when: string; unused?: boolean; scales?
 
 export function Soundboard() {
   const [strength, setStrength] = useState(0.5);
+  const [, rerender] = useState(0);
   const play = (kind: Sfx) => {
     unlockSound();
     setSoundEnabled(true);
@@ -40,6 +51,45 @@ export function Soundboard() {
         Every sound in the game, synthesized in <code>game/sound.ts</code>. Strength only changes the ones that scale with the
         size of a blow (marked ⚖).
       </p>
+      <h2 className="soundboard__h2">Compare versions</h2>
+      <p className="soundboard__note">
+        Candidates for the sounds under review. ★ is the one the game plays now; "Use" switches it for this page load so you
+        can hear it in context below.
+      </p>
+      {(Object.keys(SFX_VARIANTS) as VariantKind[]).map((kind) => (
+        <div key={kind} className="soundboard__variants">
+          <strong>{kind === "death" ? "Death" : "Round won"}</strong>
+          <div className="soundboard__variant-row">
+            {Object.keys(SFX_VARIANTS[kind]).map((name) => (
+              <span key={name} className={`soundboard__variant${chosenVariant(kind) === name ? " soundboard__variant--on" : ""}`}>
+                <button
+                  className="ghost-btn ghost-btn--sm"
+                  onClick={() => {
+                    unlockSound();
+                    setSoundEnabled(true);
+                    playVariant(kind, name);
+                  }}
+                >
+                  ▶ {name}
+                  {chosenVariant(kind) === name ? " ★" : ""}
+                </button>
+                {chosenVariant(kind) !== name && (
+                  <button
+                    className="link-btn"
+                    onClick={() => {
+                      chooseVariant(kind, name);
+                      rerender((n) => n + 1);
+                    }}
+                  >
+                    Use
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+      <h2 className="soundboard__h2">All sounds</h2>
       <label className="soundboard__strength">
         Strength {strength.toFixed(2)}
         <input type="range" min={0} max={1} step={0.05} value={strength} onChange={(e) => setStrength(Number(e.target.value))} />

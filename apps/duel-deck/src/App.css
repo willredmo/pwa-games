@@ -1435,3 +1435,8 @@ button.menu-item:hover { border-color: #5a5180; }
 .soundboard__row--unused { opacity: 0.6; }
 .soundboard__when { font-size: 0.8rem; color: var(--muted); }
 .soundboard code { font-size: 0.75rem; color: #ffd666; }
+.soundboard__h2 { margin: 1rem 0 0.3rem; font-size: 1.05rem; }
+.soundboard__variants { margin: 0.4rem 0 0.7rem; }
+.soundboard__variant-row { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.3rem; }
+.soundboard__variant { display: inline-flex; align-items: center; gap: 0.3rem; }
+.soundboard__variant--on .ghost-btn { border-color: #f0b429; color: #ffd666; }
