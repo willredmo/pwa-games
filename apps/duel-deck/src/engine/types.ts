@@ -133,12 +133,14 @@ export interface UnitTraits {
   pierce?: number;
   /** After each exchange, if this unit isn't the front, it heals the front for this much (Medic's Mend). */
   mend?: number;
-  /** Mends per round, when not the default (a mastered Medic). */
-  mendUses?: number;
+  /** Mends per round beyond the usual 3 (a mastered Medic, Triage). */
+  mendMore?: number;
+  /** Each Mend also gives the front this much attack for the round (Stimulant). */
+  mendAtk?: number;
   /** Charge fires on the first blow against each new enemy (a mastered Striker). */
   chargeEach?: boolean;
-  /** Impale reaches this many units behind the front (default 1; a mastered Lancer). */
-  pierceDepth?: number;
+  /** Impale reaches this many more units behind the first (a mastered Lancer, Skewer). */
+  pierceDeeper?: number;
   /** Rally also gives the front this much health (a mastered Herald). */
   rallyHp?: number;
   /** From behind the front: the front starts the round with a shield of this much (Warden's Barrier). */
@@ -223,6 +225,8 @@ export interface BuffEvent {
   label?: string;
   atk: number;
   hp: number;
+  /** Shield it gains for the round (Warden's Barrier). */
+  shield?: number;
 }
 export interface HealEvent {
   type: "heal";
@@ -264,7 +268,7 @@ export interface RoundResult {
   bounty?: number;
   /** Ascendant: pool damage dealt by champions in a mutual wipe (both pools may take some). */
   ascendantHit?: number;
-  /** Start-of-round support buffs (Rally, Lifebond), applied before the first tick. */
+  /** Start-of-round support buffs (Rally, Lifebond, Barrier), applied before the first tick. */
   opening?: BattleEvent[];
   /** Set once a player's HP pool hits 0. */
   matchWinner: Side | null;

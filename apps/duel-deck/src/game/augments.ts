@@ -590,6 +590,112 @@ export const AUGMENTS: AugmentDef[] = [
     category: "class",
     rarity: "epic",
   },
+  // --- Third wave: an upgrade or two for every unit (2026-10-14) ---
+  // Lancer, the four supports and the Skirmisher had none built around them.
+  // Each one leans on the unit's own ability; the rares echo its Mastery, so
+  // a mastered unit stacks with them rather than wasting the pick.
+  {
+    id: "long-reach",
+    icon: "🎣",
+    name: "Long reach",
+    description: "Lancers' Impale deals +3 damage.",
+    category: "class",
+    traits: (u) => (has(u, "lancer") ? { pierce: 3 } : {}),
+  },
+  {
+    id: "skewer",
+    icon: "🍢",
+    name: "Skewer",
+    description: "Lancers' Impale reaches one unit deeper.",
+    category: "combat",
+    rarity: "rare",
+    traits: (u) => (has(u, "lancer") ? { pierceDeeper: 1 } : {}),
+  },
+  {
+    id: "war-horn",
+    icon: "🎺",
+    name: "War horn",
+    description: "Heralds' Rally gives +3 more attack.",
+    category: "class",
+    traits: (u) => (has(u, "herald") ? { rally: 3 } : {}),
+  },
+  {
+    id: "banner-of-hope",
+    icon: "🏳️",
+    name: "Banner of hope",
+    description: "Heralds' Rally also gives the front unit that much health.",
+    category: "class",
+    rarity: "rare",
+    traits: (u) => (has(u, "herald") ? { rallyHp: innateTraits(u.key, u.merges).rally ?? 0 } : {}),
+  },
+  {
+    id: "triage",
+    icon: "🩺",
+    name: "Triage",
+    description: "Medics' Mend heals 2 more, and once more each round.",
+    category: "class",
+    traits: (u) => (has(u, "medic") ? { mend: 2, mendMore: 1 } : {}),
+  },
+  {
+    id: "stimulant",
+    icon: "💉",
+    name: "Stimulant",
+    description: "Each time a Medic mends, the front unit also gains +2 attack for the round.",
+    category: "combat",
+    rarity: "rare",
+    traits: (u) => (has(u, "medic") ? { mendAtk: 2 } : {}),
+  },
+  {
+    id: "thick-barrier",
+    icon: "🧊",
+    name: "Thick barrier",
+    description: "Wardens' Barrier shields 4 more.",
+    category: "class",
+    traits: (u) => (has(u, "warden") ? { barrier: 4 } : {}),
+  },
+  {
+    id: "aegis",
+    icon: "🔮",
+    name: "Aegis",
+    description: "Wardens' Barrier shields 1 more and also covers the unit behind the front.",
+    category: "combat",
+    rarity: "rare",
+    traits: (u) => (has(u, "warden") ? { barrier: 1, barrierBehind: true } : {}),
+  },
+  {
+    id: "devotion",
+    icon: "🙏",
+    name: "Devotion",
+    description: "+4 health to all Acolytes, so Lifebond gives more.",
+    category: "class",
+    effect: (u) => (has(u, "acolyte") ? { hp: 4 } : {}),
+  },
+  {
+    id: "blessing",
+    icon: "😇",
+    name: "Blessing",
+    description: "Acolytes' Lifebond also gives the front unit +3 attack.",
+    category: "class",
+    rarity: "rare",
+    traits: (u) => (has(u, "acolyte") ? { lifebondAtk: 3 } : {}),
+  },
+  {
+    id: "counterstrike",
+    icon: "🤺",
+    name: "Counterstrike",
+    description: "Skirmishers' Riposte deals +3 damage.",
+    category: "combat",
+    traits: (u) => (has(u, "skirmisher") ? { riposte: 3 } : {}),
+  },
+  {
+    id: "choir",
+    icon: "🎶",
+    name: "Choir",
+    description: "+1 attack and +3 health to all Support units (Herald, Medic, Warden, Acolyte).",
+    category: "class",
+    rarity: "rare",
+    effect: (u) => (has(u, "support") ? { atk: 1, hp: 3 } : {}),
+  },
 ];
 
 /** Attack the enemy front loses to Sabotage. */
@@ -770,26 +876,9 @@ export function applyAugments(
     }
   }
 
-  // Herald's Rally and Acolyte's Lifebond happen in combat as the round opens
-  // (`openingBuffs` in combat.ts), so the board shows every unit at its own
-  // stats while picking. Warden's Barrier stays here: a shield is shown on the
-  // front from the start.
-  const front = units[0];
-  if (front) {
-    const behind = units.slice(1);
-    // Warden's Barrier: Wardens behind the front shield it; a mastered one
-    // shields the unit behind the front too. Combat soaks damage into it.
-    const barrier = behind.reduce((sum, u) => sum + (u.traits?.barrier ?? 0), 0);
-    if (barrier > 0) {
-      const shielded = behind.some((u) => u.traits?.barrierBehind) && units[1] ? [front, units[1]] : [front];
-      for (const u of shielded) {
-        const t = u.traits ?? (u.traits = {});
-        t.shield = (t.shield ?? 0) + barrier;
-        if (!u.auras.includes("warden")) u.auras.push("warden");
-        u.auraDetails = [...(u.auraDetails ?? []), { id: "warden", label: "🔰 Warden's barrier", atk: 0, hp: 0, traits: { shield: barrier } }];
-      }
-    }
-  }
+  // Herald's Rally, Acolyte's Lifebond and Warden's Barrier happen in combat
+  // as the round opens (`openingBuffs` in combat.ts), so the board shows
+  // every unit at its own stats while picking.
 }
 
 /** Merge `t` into `into`: booleans OR, numbers add, lifesteal takes the max. */

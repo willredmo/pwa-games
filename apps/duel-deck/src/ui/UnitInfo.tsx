@@ -37,8 +37,11 @@ function describeTraits(t: UnitTraits): string[] {
   if (t.executioner) out.push(`+${t.executioner} damage vs targets below half health`);
   if (t.lastBreath) out.push("parting blow of 2 if it's your first to fall");
   if (t.pierce)
-    out.push(`each blow it lands also hits the ${t.pierceDepth === 2 ? "two units" : "unit"} behind the front for ${t.pierce}`);
-  if (t.mend) out.push(`from behind the front: heals your front unit ${t.mend}♥ after each exchange (${t.mendUses ?? 3} times a round)`);
+    out.push(`each blow it lands also hits the ${DEPTH[t.pierceDeeper ?? 0] ?? `${1 + (t.pierceDeeper ?? 0)} units`} behind the front for ${t.pierce}`);
+  if (t.mend)
+    out.push(
+      `from behind the front: heals your front unit ${t.mend}♥ after each exchange (${3 + (t.mendMore ?? 0)} times a round)${t.mendAtk ? `, each time +${t.mendAtk}⚔` : ""}`,
+    );
   if (t.rally) out.push(`from behind the front: your front unit gets +${t.rally}⚔${t.rallyHp ? ` +${t.rallyHp}♥` : ""}`);
   if (t.barrier) out.push(`from behind the front: your front unit starts with a ${t.barrier}-damage shield${t.barrierBehind ? " (and the unit behind it)" : ""}`);
   if (t.shield) out.push(`shield: the first ${t.shield} damage it takes this round is absorbed`);
@@ -48,6 +51,8 @@ function describeTraits(t: UnitTraits): string[] {
   if (t.endure) out.push("survives the first blow each round that would kill it, on 1♥");
   return out;
 }
+
+const DEPTH = ["unit", "two units", "three units", "four units"];
 
 const signed = (n: number, glyph: string) => (n ? `${n > 0 ? "+" : ""}${n}${glyph}` : "");
 

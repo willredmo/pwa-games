@@ -391,8 +391,8 @@ At the cap a unit's ability takes its **Mastery** form, a branch in
 Striker charges each new enemy (`chargeEach`: Charge keyed per target);
 Skirmisher dodges twice; Bulwark's Fortify adds +1 attack; Berserker's
 Overflow is uncapped (`cleaveFull`); Herald's rally adds as much health
-(`rallyHp`); Lancer impales two deep (`pierceDepth`); Medic mends 5 times
-(`mendUses`); Knight's armour is 2. The badge reads gold "MAX"
+(`rallyHp`); Lancer impales two deep (`pierceDeeper` 1, units beyond the
+first); Medic mends 5 times (`mendMore` 2, mends beyond the usual 3); Knight's armour is 2. The badge reads gold "MAX"
 (`levelLabel`); `LEVEL_TIERS` became 1/2/5/8/10/11+, red being past the cap.
 Reaching it gets a banner and the knighting sound.
 
@@ -437,12 +437,27 @@ attack (`RoundResult.ascendantHit`). Sim (12k, `--aug=random`): holder 47%,
   under its HP bar (`COLORS.shield`). Combat records what's left on the unit
   (`shieldLeft`, cleared each round by `applyAugments`) and on the hit event,
   so playback drains it blow by blow.
-- **Rally and Lifebond happen as the round opens,** not in the pre-round stats:
-  `openingBuffs` in combat.ts applies them and returns buff events
-  (`RoundResult.opening`), which playback shows as their own beat before the
-  first blow (the Acolyte's `−N♥` and the front's gain). While picking, every
-  unit shows its own, unbuffed numbers. The Warden's Barrier stays in
-  `applyAugments`, so the shield is visible from the start.
+- **Rally, Lifebond and Barrier happen as the round opens,** not in the
+  pre-round stats: `openingBuffs` in combat.ts applies them and returns buff
+  events (`RoundResult.opening`; Barrier's carry `shield`), which playback
+  shows as their own beat before the first blow (the Acolyte's `−N♥`, the
+  front's gain, `+N🔰`). While picking, every unit shows its own, unbuffed
+  numbers. `openingBuffs` replaces a unit's `traits` rather than mutating it:
+  `resolveRound`'s clone shares traits objects with the caller's board.
+### Third-wave upgrades (one or two for every unit)
+Lancer, the four supports and the Skirmisher had no upgrades built around
+them. Added 2026-10-14, each leaning on the unit's ability: Long reach (Impale
++3), Skewer (rare, Impale one deeper), War horn (Rally +3), Banner of hope
+(rare, Rally also gives that much health), Triage (Mend +2 and once more),
+Stimulant (rare, each Mend also +2 attack on the front, a labelled buff in
+`mendHeals`), Thick barrier (Barrier +4), Aegis (rare, Barrier +1 and covers
+the unit behind the front), Devotion (Acolytes +4 health), Blessing (rare,
+Lifebond also +3 attack), Counterstrike (Riposte +3) and Choir (rare, Support
+units +1/+3). The rares echo Masteries but stack with them (hence
+`pierceDeeper`/`mendMore` as extras over the default rather than absolute
+values). Sim (12k, `--aug=random`): 45-49%, after buffing the first draft
+(43.8-49.4%); the AI rarely fields supports, so like the other unit upgrades
+they under-read. `PROTOCOL` 3.
 ### Classes and full-row synergies
 Every unit has a class (`UnitStats.archetype`, separate from `classes`, the tags
 upgrades target): **Attack** Striker, Berserker, Lancer, Skirmisher;
@@ -455,8 +470,15 @@ auras): **🔥 Full Assault** +1 attack and blows can't be dodged
 (`trueStrike`); **🧱 Iron Line** +3 health; **🕊 Sanctuary** every support
 ability counts twice (Herald rally and its Mastery health, Medic mend). The
 `endure` trait (front survives a lethal blow on 1) is still in combat but unused. The round
-banner announces it; the pick label shows progress ("🔥 3/5") while every unit
-so far shares a class. Normal leans toward a class once 3 share it
+banner announces it. While picking, a **synergy meter** leads the pick label
+(`SynergyMeter` in Game.tsx): the class the row is closest to (most units;
+ties go to the front unit's class), one pip per slot (filled for that class,
+hatched for another, hollow for empty) and "N more", "swap N" or the
+synergy's name in gold once it's on. It shows once two units share a class.
+Offer cards of that class get a glowing class badge. Completing it while
+picking gets a banner with the bonus, the knighting sound and sparkles on
+every unit; breaking it (a replace) gets a quiet banner. Only pick-to-pick
+changes count, since the board also changes as units fall in battle. Normal leans toward a class once 3 share it
 (`SYNERGY_NUDGE`); Hard finds synergies through its search.
 
 Tuning: head to head (same row on vs off, one round vs random rows) Assault

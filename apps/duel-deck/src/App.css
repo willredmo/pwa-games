@@ -1305,7 +1305,30 @@ button.menu-item:hover { border-color: #5a5180; }
 /* Unit class on offer cards, and synergy progress in the pick label. */
 .card__class { position: absolute; top: 3px; left: 5px; font-size: 0.72rem; line-height: 1; opacity: 0.85; pointer-events: none; }
 .unit-info__class { margin-top: 0.25rem; font-size: 0.9em; opacity: 0.85; }
-.pick-label__class { color: #ffd666; font-weight: 700; }
+/* Synergy meter on the pick label: a pip per slot, coloured by class. */
+.syn-meter { display: inline-flex; align-items: center; gap: 0.25rem; font-weight: 700; color: #e9e4ff; }
+.syn-meter__pips { display: inline-flex; gap: 2px; }
+.syn-pip { width: 0.5rem; height: 0.5rem; border-radius: 50%; border: 1.5px solid var(--syn, #aaa); box-sizing: border-box; }
+.syn-pip--match { background: var(--syn, #aaa); }
+.syn-pip--other { border-color: #8a8399; background: repeating-linear-gradient(45deg, #8a8399 0 1.5px, transparent 1.5px 3px); }
+.syn-pip--empty { opacity: 0.55; }
+.syn-meter--attack { --syn: #ff7a45; }
+.syn-meter--defense { --syn: #6fb2ff; }
+.syn-meter--support { --syn: #7bd88f; }
+.syn-meter--done .syn-meter__text { color: #ffd666; text-shadow: 0 0 8px rgba(255, 214, 102, 0.6); }
+.syn-meter--done .syn-pip--match { box-shadow: 0 0 6px var(--syn); }
+@media (prefers-reduced-motion: no-preference) {
+  .syn-meter--done .syn-meter__pips { animation: syn-glow 1.6s ease-in-out infinite alternate; }
+}
+@keyframes syn-glow { to { filter: brightness(1.5); } }
+/* An offer card whose class counts toward the row's synergy. */
+.card__class--goal {
+  opacity: 1;
+  padding: 1px 2px;
+  border-radius: 6px;
+  background: rgba(255, 214, 102, 0.22);
+  box-shadow: 0 0 0 1px #ffd666, 0 0 8px rgba(255, 214, 102, 0.55);
+}
 
 /* Online emotes (ui/EmoteBar.tsx): a button at the board's bottom-right, a
    tray above it, and bubbles over each side's half. */

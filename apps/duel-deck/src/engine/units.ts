@@ -263,7 +263,7 @@ export function mergesInto(target: string, incoming: string): boolean {
 }
 
 /** Mends a mastered Medic gets each round (combat's default is 3). */
-export const MASTER_MEND_USES = 5;
+export const MASTER_MEND_MORE = 2;
 
 export function unitsOfClass(units: { classes: string[] }[], cls: string): number {
   return units.filter((u) => u.classes.includes(cls)).length;
@@ -293,10 +293,10 @@ export function innateTraits(key: string, merges = 0): UnitTraits {
     case "berserker":
       return master ? { cleave: true, cleaveFull: true } : { cleave: true, cleaveCap: 3 + m };
     case "lancer":
-      return master ? { pierce: 1 + Math.floor(m / 2), pierceDepth: 2 } : { pierce: 1 + Math.floor(m / 2) };
+      return master ? { pierce: 1 + Math.floor(m / 2), pierceDeeper: 1 } : { pierce: 1 + Math.floor(m / 2) };
     case "medic":
       // Read by combat, which only heals from behind the front.
-      return master ? { mend: 3 + Math.floor(m / 2), mendUses: MASTER_MEND_USES } : { mend: 3 + Math.floor(m / 2) };
+      return master ? { mend: 3 + Math.floor(m / 2), mendMore: MASTER_MEND_MORE } : { mend: 3 + Math.floor(m / 2) };
     case "herald": {
       // Read by applyAugments, which only credits Heralds behind the front.
       const rally = 3 + Math.floor(m / 2);

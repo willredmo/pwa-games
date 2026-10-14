@@ -10,6 +10,15 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.3.2",
+    date: "Oct 14, 2026",
+    notes: [
+      "12 new upgrades, so every unit has some built around it: Long reach and Skewer (Lancer), War horn and Banner of hope (Herald), Triage and Stimulant (Medic), Thick barrier and Aegis (Warden), Devotion and Blessing (Acolyte), Counterstrike (Skirmisher) and Choir (all Support units).",
+      "Class bonus meter: while picking, see how many more units of one class your row needs, which cards count, and a celebration when you complete it.",
+      "The Warden's shield now arrives at the start of the battle, like the Acolyte's and Herald's buffs.",
+    ],
+  },
+  {
     version: "1.3.1",
     date: "Oct 14, 2026",
     notes: [

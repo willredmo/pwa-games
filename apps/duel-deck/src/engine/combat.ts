@@ -202,8 +202,8 @@ function strike(
   // above, so a miss doesn't impale.
   const pierce = attacker.traits?.pierce ?? 0;
   if (isMain && pierce > 0) {
-    // A mastered Lancer reaches two deep: each impaled unit passes it on.
-    const depth = attacker.traits?.pierceDepth ?? 1;
+    // A mastered Lancer (or Skewer) reaches deeper: each impaled unit passes it on.
+    const depth = 1 + (attacker.traits?.pierceDeeper ?? 0);
     ctx.after.push(() => {
       let behind: Unit = target;
       for (let d = 0; d < depth; d++) {
@@ -376,12 +376,18 @@ function mendHeals(ctx: TickCtx): void {
         const mend = u.traits?.mend ?? 0;
         if (u === front || u.hp <= 0 || mend <= 0) continue;
         const used = ctx.round.mends.get(u.id) ?? 0;
-        if (used >= (u.traits?.mendUses ?? MEND_USES)) continue;
+        if (used >= MEND_USES + (u.traits?.mendMore ?? 0)) continue;
         const gain = Math.min(mend, front.maxHp - front.hp);
         if (gain <= 0) continue;
         ctx.round.mends.set(u.id, used + 1);
         front.hp += gain;
         events.push({ type: "heal", unit: front.id, amount: gain, source: u.id });
+        // Stimulant: the heal comes with a jolt of attack for the round.
+        const jolt = u.traits?.mendAtk ?? 0;
+        if (jolt > 0) {
+          front.atk += jolt;
+          events.push({ type: "buff", unit: front.id, source: u.id, atk: jolt, hp: 0, label: "Stimulant" });
+        }
       }
     }
   }
@@ -454,6 +460,17 @@ function openingBuffs(board: Board): BattleEvent[] {
           front.maxHp += hp;
           front.hp += hp;
           events.push({ type: "buff", unit: front.id, source: u.id, atk: rally, hp, label: "Rally" });
+        }
+        // Warden's Barrier: a shield on the front (and, mastered or with
+        // Aegis, the unit behind it). `traits` is shared with the caller's
+        // board (cloneBoard is shallow there), so it's replaced, not mutated.
+        const barrier = u.traits?.barrier ?? 0;
+        if (barrier > 0) {
+          const shielded = u.traits?.barrierBehind && queue[1] ? [front, queue[1]] : [front];
+          for (const s of shielded) {
+            s.traits = { ...s.traits, shield: (s.traits?.shield ?? 0) + barrier };
+            events.push({ type: "buff", unit: s.id, source: u.id, atk: 0, hp: 0, shield: barrier, label: "Barrier" });
+          }
         }
         const mult = u.traits?.lifebond ?? 0;
         const gift = mult > 0 ? Math.floor(u.maxHp / 2) : 0;

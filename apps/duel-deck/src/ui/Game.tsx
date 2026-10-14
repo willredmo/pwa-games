@@ -229,12 +229,20 @@ function applyEvent(board: Board, ev: BattleEvent): void {
     u.atk += ev.atk;
     u.maxHp += ev.hp;
     u.hp += ev.hp;
+    // A fresh traits object: cloneBoard shares it with the board it copied.
+    if (ev.shield) u.traits = { ...u.traits, shield: (u.traits?.shield ?? 0) + ev.shield };
   }
 }
 
-/** A stat change as playback labels it: "+2⚔ +3♥", or "−4♥" for a loss. */
-const statText = (atk: number, hp: number) =>
-  [atk ? `${atk > 0 ? "+" : "−"}${Math.abs(atk)}⚔` : "", hp ? `${hp > 0 ? "+" : "−"}${Math.abs(hp)}♥` : ""].filter(Boolean).join(" ");
+/** A stat change as playback labels it: "+2⚔ +3♥", "+4🔰", or "−4♥" for a loss. */
+const statText = (atk: number, hp: number, shield = 0) =>
+  [
+    atk ? `${atk > 0 ? "+" : "−"}${Math.abs(atk)}⚔` : "",
+    hp ? `${hp > 0 ? "+" : "−"}${Math.abs(hp)}♥` : "",
+    shield ? `+${shield}🔰` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
 function buildFrames(committed: Board, ticks: Tick[], opening: BattleEvent[] = []): Frame[] {
   const frames: Frame[] = [];
@@ -742,20 +750,26 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   })();
 
   /**
-   * Progress toward a full-row synergy, for the pick label: the synergy's name
-   * once the row is all one class, or "🔥 3/5" once three or more share one.
+   * Progress toward a full-row synergy, for the meter on the pick label: the
+   * class the row is closest to (the one most of it shares; ties go to the
+   * front unit's), each slot as a pip, and what's left to do.
    */
-  const classNote = ((): string | null => {
+  const synergyGoal = ((): SynergyGoal | null => {
     const units = sideUnits(board, PLAYER);
     const cap = capacityOf(board, PLAYER);
-    const syn = synergyOf(units, cap);
-    if (syn) return `${SYNERGIES[syn].icon} ${SYNERGIES[syn].name}`;
-    if (cap < SYNERGY_MIN) return null;
+    if (cap < SYNERGY_MIN || units.length === 0) return null;
+    const done = synergyOf(units, cap);
     const counts = new Map<Archetype, number>();
     for (const u of units) counts.set(UNITS[u.key].archetype, (counts.get(UNITS[u.key].archetype) ?? 0) + 1);
-    const [best, n] = [...counts].sort((a, b) => b[1] - a[1])[0] ?? [null, 0];
-    // Only while every unit so far shares the class (a mixed row would need replacing first).
-    return best && n >= 3 && n === units.length ? `${SYNERGIES[best].icon} ${n}/${cap}` : null;
+    const front = UNITS[units[0].key].archetype;
+    const cls = done ?? [...counts].sort((a, b) => b[1] - a[1] || (a[0] === front ? -1 : b[0] === front ? 1 : 0))[0][0];
+    const have = counts.get(cls) ?? 0;
+    if (!done && have < 2) return null;
+    const pips = Array.from({ length: cap }, (_, i): SynergyPip => {
+      const u = units[i];
+      return !u ? "empty" : UNITS[u.key].archetype === cls ? "match" : "other";
+    });
+    return { cls, done: !!done, have, cap, swap: units.length - have, pips };
   })();
 
   /** Merges a Squire still needs to be knighted, by its own side's threshold. */
@@ -1071,6 +1085,29 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     // the ordinary merge that happened to trigger it.
     sfx("knight");
   };
+
+  // Completing (or breaking) a full row of one class while picking gets its
+  // own moment, so a synergy is never reached by accident and missed. Only
+  // between pick-phase states: the board also changes as units fall in battle.
+  const synergyNow = synergyGoal?.done ? synergyGoal.cls : null;
+  const synergySeen = useRef({ phase, syn: synergyNow });
+  useEffect(() => {
+    const prev = synergySeen.current;
+    synergySeen.current = { phase, syn: synergyNow };
+    if (phase !== "pick" || prev.phase !== "pick" || prev.syn === synergyNow) return;
+    if (synergyNow) {
+      const syn = SYNERGIES[synergyNow];
+      showBanner(`${syn.icon} ${syn.name}! ${syn.text}`, "win");
+      sfx("knight");
+      for (const u of sideUnits(board, PLAYER)) {
+        const cell = findUnitCell(board, u.id);
+        if (cell) fxAt(board, cell, "bounty");
+      }
+    } else if (prev.syn) {
+      showBanner(`${SYNERGIES[prev.syn].icon} ${SYNERGIES[prev.syn].name} lost: your row isn't one class any more`, "neutral");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, synergyNow]);
 
   /** A unit just reached the level cap: its ability takes its Mastery form. */
   const announceMastery = (b: Board, cell: Cell, name: string) => {
@@ -1636,7 +1673,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         const key = src.unit.key;
         if (!named.has(ev.source)) {
           named.add(ev.source);
-          const gain = statText(ev.atk, ev.hp);
+          const gain = statText(ev.atk, ev.hp, ev.shield);
           const name = ev.label ?? (key === "guard" ? "Bodyguard" : key === "squire" ? "Pass the torch" : "Last rally");
           const scope = !ev.label && key === "knight" ? " all" : "";
           if (key === "knight" || ev.label) fxAt(f.board, src.cell, "rally");
@@ -1647,19 +1684,19 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         // A self-buff (Last light, an Acolyte giving its health away) has
         // nothing to travel: it lands at once. Others fly from the source.
         const self = ev.source === ev.unit;
-        const travels = !self && (key === "guard" || key === "squire" || key === "herald" || key === "acolyte");
+        const travels = !self && (key === "guard" || key === "squire" || key === "herald" || key === "acolyte" || key === "warden" || key === "medic");
         later(at, () => {
           if (!travels) return;
-          if (key === "guard" || key === "acolyte") fxBetween(f.board, src.cell, cell, "bodyguard");
+          if (key === "guard" || key === "acolyte" || key === "warden") fxBetween(f.board, src.cell, cell, "bodyguard");
           else fxBetween(f.board, src.cell, cell, "torch");
         });
         const lands = at + (travels ? 520 : 0);
         last = Math.max(last, lands);
         later(lands, () => {
           apply(ev);
-          if (ev.hp > 0) fxAt(f.board, cell, "heal");
+          if (ev.hp > 0 || ev.shield) fxAt(f.board, cell, "heal");
           if (ev.atk > 0) fxAt(f.board, cell, "merge");
-          fxAt(f.board, cell, "stat-gain", { text: statText(ev.atk, ev.hp) });
+          fxAt(f.board, cell, "stat-gain", { text: statText(ev.atk, ev.hp, ev.shield) });
         });
       }
       // Leave the last gain on screen long enough to read before moving on.
@@ -2130,7 +2167,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           key={picksLeft}
           className={`pick-label${picksLeft > 0 ? " pick-label--open" : " pick-label--done"}`}
         >
-          {classNote && <span className="pick-label__class">{classNote} · </span>}
+          {synergyGoal && <SynergyMeter goal={synergyGoal} />}
           {picksLeft > 0 && rowMaxed(board, PLAYER)
             ? `Row maxed · unused picks → 🎯 Drill +${picksLeft}⚔`
             : picksLeft > 0
@@ -2195,7 +2232,14 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
                   if (!spent) setSelected(isSelected ? null : { kind: "offer", index: i, key });
                 }}
               >
-                <span className={`card__class card__class--${u.archetype}`} title={`${ARCHETYPES[u.archetype].name} class`}>
+                <span
+                  className={`card__class card__class--${u.archetype}${synergyGoal && !synergyGoal.done && synergyGoal.cls === u.archetype ? " card__class--goal" : ""}`}
+                  title={
+                    synergyGoal && !synergyGoal.done && synergyGoal.cls === u.archetype
+                      ? `${ARCHETYPES[u.archetype].name} class: counts toward ${SYNERGIES[u.archetype].name}`
+                      : `${ARCHETYPES[u.archetype].name} class`
+                  }
+                >
                   {ARCHETYPES[u.archetype].icon}
                 </span>
                 <UnitPortrait unitKey={key} side="player" size={compact ? 44 : 58} />
@@ -2318,5 +2362,45 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         </div>
       )}
     </div>
+  );
+}
+
+type SynergyPip = "match" | "other" | "empty";
+interface SynergyGoal {
+  cls: Archetype;
+  done: boolean;
+  /** Units of `cls` on the row. */
+  have: number;
+  cap: number;
+  /** Units of another class, which would have to be replaced. */
+  swap: number;
+  pips: SynergyPip[];
+}
+
+/**
+ * How close the row is to a full-row synergy: one pip per slot (filled for the
+ * class, crossed for another class, hollow for empty) and what's left.
+ */
+function SynergyMeter({ goal }: { goal: SynergyGoal }) {
+  const syn = SYNERGIES[goal.cls];
+  const cls = ARCHETYPES[goal.cls].name;
+  const need = goal.cap - goal.have;
+  const short = goal.done ? `${syn.name}!` : goal.swap > 0 ? `swap ${goal.swap}` : `${need} more`;
+  const title = goal.done
+    ? `${syn.name} is on: ${syn.text}`
+    : `${syn.name}: fill every slot with ${cls} units. ${goal.have}/${goal.cap}${
+        goal.swap > 0 ? `; replace ${goal.swap} unit${goal.swap > 1 ? "s" : ""} of another class` : `; ${need} more to go`
+      }. ${syn.text}`;
+  return (
+    <span className={`syn-meter syn-meter--${goal.cls}${goal.done ? " syn-meter--done" : ""}`} title={title} aria-label={title}>
+      <span aria-hidden="true">{syn.icon}</span>
+      <span className="syn-meter__pips" aria-hidden="true">
+        {goal.pips.map((p, i) => (
+          <span key={i} className={`syn-pip syn-pip--${p}`} />
+        ))}
+      </span>
+      <span className="syn-meter__text">{short}</span>
+      <span aria-hidden="true"> · </span>
+    </span>
   );
 }

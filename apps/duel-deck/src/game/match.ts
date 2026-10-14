@@ -463,6 +463,20 @@ const AUGMENT_SCORE: Record<string, number> = {
   tactician: 48,
   // Sim 2026-10-13 (12k, --aug=random): 47%.
   ascendant: 47,
+  // Third wave (sim 2026-10-14, 12k, --aug=random): 45-49%. The AI rarely fields
+  // supports, so these under-read like the other unit upgrades.
+  "long-reach": 49,
+  skewer: 48,
+  "war-horn": 46,
+  "banner-of-hope": 47,
+  triage: 46,
+  stimulant: 46,
+  "thick-barrier": 45,
+  aegis: 45,
+  devotion: 47,
+  blessing: 49,
+  counterstrike: 47,
+  choir: 48,
 };
 
 /**
