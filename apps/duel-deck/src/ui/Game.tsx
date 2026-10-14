@@ -756,6 +756,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     draggingId: drag?.kind === "unit" ? drag.unitId : null,
     selectedId: !drag && selected?.kind === "unit" ? selected.unitId : null,
     auraIcon,
+    classIcon: (u: Unit) => ARCHETYPES[UNITS[u.key]?.archetype]?.icon,
     promoteIn: squireToGo,
     battle: phase === "battle",
   };

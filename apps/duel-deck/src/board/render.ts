@@ -122,6 +122,8 @@ export interface RenderState {
    * the renderer stays generic over the game layer.
    */
   auraIcon?: (id: string) => string;
+  /** A unit's class glyph (⚔ 🛡 ✚), drawn before its name. Injected like `auraIcon`. */
+  classIcon?: (unit: Unit) => string | undefined;
   /**
    * Merges a unit still needs to promote (a Squire to a Knight), or null if it
    * isn't on such a path. Injected for the same reason: the threshold depends
@@ -301,6 +303,16 @@ const NO_DASH: number[] = [];
  * old 0.78 the feet and heads spilled into the neighbouring rows.
  */
 const CHAR_SIZE = 0.58;
+/**
+ * Tallest a unit is drawn, in CSS px. Rows grow with the window (rowH reached
+ * 84 on a 768×1024 tablet), and everything in a slot scaled with them, so big
+ * screens showed huge characters and stats. Past this the slot still grows but
+ * its contents stay this size, centred vertically; phones (rowH ~42) are below
+ * it and unchanged.
+ */
+const UNIT_MAX_H = 52;
+/** Scale for a slot's contents: 1 up to UNIT_MAX_H, smaller past it. */
+const contentScale = (h: number) => Math.min(1, UNIT_MAX_H / h);
 /** Character centre and text column, from the slot's left edge, in slot heights. */
 const CHAR_X = 0.56;
 const TEXT_X = 1.12;
@@ -484,11 +496,12 @@ export function draw(canvas: HTMLCanvasElement, state: RenderState): void {
       ctx.fillStyle = side === "player" ? "rgba(58,134,214,0.07)" : "rgba(209,72,58,0.07)";
       ctx.fill();
       if (empty) {
-        ctx.font = `700 ${Math.round(Math.max(10, h * 0.3))}px system-ui, sans-serif`;
+        const k = h * contentScale(h); // where a unit's character would stand
+        ctx.font = `700 ${Math.round(Math.max(10, k * 0.3))}px system-ui, sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillStyle = side === "player" ? "rgba(125, 184, 255, 0.28)" : "rgba(255, 133, 119, 0.24)";
-        ctx.fillText(`${spot + 1}`, x + h * CHAR_X, y + h / 2);
+        ctx.fillText(`${spot + 1}`, x + k * CHAR_X, y + h / 2);
         ctx.textAlign = "left";
       }
 
@@ -719,9 +732,9 @@ function drawDropHints(
       drawCharacter(ctx, {
         key: state.heldKey,
         side: "player",
-        cx: x + h * CHAR_X,
+        cx: x + h * contentScale(h) * CHAR_X,
         cy: landY + h / 2,
-        size: h * CHAR_SIZE,
+        size: h * contentScale(h) * CHAR_SIZE,
         time,
         pose: "idle",
         t: 0,
@@ -892,8 +905,13 @@ function drawUnit(
   reduce: boolean,
   waiting = false,
 ): void {
-  const w = l.laneW - pad * 2;
+  // The slot is `slotW` × `h`; its contents are drawn in a space scaled by
+  // `sc` about the slot's left-middle (see UNIT_MAX_H), so they read `w` wide
+  // there and fill the real width while capping their height.
+  const slotW = l.laneW - pad * 2;
   const h = l.rowH - pad * 2;
+  const sc = contentScale(h);
+  const w = slotW / sc;
   const x = l.ox + lane * l.laneW + pad;
   const y = l.oy + v.row * l.rowH + pad;
   const toward = side === "player" ? -1 : 1;
@@ -948,7 +966,7 @@ function drawUnit(
   }
 
   const lifted = state.draggingId === unit.id;
-  const ccx = x + w / 2;
+  const ccx = x + slotW / 2;
   const ccy = y + h / 2;
   ctx.save();
   ctx.globalAlpha = alpha * (lifted ? 0.3 : 1) * (waiting ? 0.5 : 1);
@@ -959,13 +977,20 @@ function drawUnit(
   // Selection glow.
   if (state.selectedId === unit.id) {
     const p = 0.5 + 0.5 * Math.sin(time / 200);
-    roundRect(ctx, x, y, w, h, Math.min(w, h) * 0.16);
+    roundRect(ctx, x, y, slotW, h, Math.min(slotW, h) * 0.16);
     ctx.lineWidth = Math.max(3, h * 0.08);
     ctx.strokeStyle = COLORS.target;
     ctx.shadowColor = COLORS.target;
     ctx.shadowBlur = 8 + 14 * p;
     ctx.stroke();
     ctx.shadowBlur = 0;
+  }
+
+  // Everything below is the slot's contents, capped in size on big screens.
+  if (sc < 1) {
+    ctx.translate(x, ccy);
+    ctx.scale(sc, sc);
+    ctx.translate(-x, -ccy);
   }
 
   // Character, sized so body and legs fit inside the row (weapons may still
@@ -994,7 +1019,12 @@ function drawUnit(
     ctx.textBaseline = "middle";
     ctx.fillStyle = COLORS.name;
     ctx.font = `600 ${Math.round(Math.max(11, h * 0.26))}px system-ui, sans-serif`;
-    ctx.fillText(unit.name, tx, y + h * 0.26);
+    // Class glyph first, so a row's classes (and a synergy in the making) read at a glance.
+    const cls = state.classIcon?.(unit);
+    const clsW = cls ? ctx.measureText(cls).width + h * 0.08 : 0;
+    if (cls) ctx.fillText(cls, tx, y + h * 0.26);
+    const nameX = tx + clsW;
+    ctx.fillText(unit.name, nameX, y + h * 0.26);
 
     const statY = y + h * 0.66;
     ctx.font = `800 ${Math.round(Math.max(15, h * 0.44))}px system-ui, sans-serif`;
@@ -1051,7 +1081,7 @@ function drawUnit(
       const gap = h * 0.08;
       const right = mergeX - pad * 0.8;
       ctx.font = `${Math.round(size)}px system-ui, sans-serif`;
-      const nameRight = tx + ctx.measureText(unit.name).width;
+      const nameRight = nameX + ctx.measureText(unit.name).width;
       const room = Math.max(0, right - nameRight - gap);
       const fits = Math.floor(room / (size + gap));
       const budget = Math.min(unit.auras.length, MAX_AURA_BADGES, fits);

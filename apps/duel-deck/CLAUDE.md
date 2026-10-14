@@ -193,6 +193,11 @@ the board, and not over the hint, which carries the replace warning. It is
   partly selection (a Knight means the plan already paid off), up from ~60%.
 - **Character size**: `CHAR_SIZE` 0.58 of the slot height (was 0.78) so body
   and legs fit inside the row; centre `CHAR_X` and text column `TEXT_X` moved in.
+  A slot's contents stop growing at `UNIT_MAX_H` (52px): rows still fill a big
+  screen, but `drawUnit` draws its contents in a space scaled by `contentScale`,
+  so characters and stats stay readable-sized instead of filling 80px rows.
+  Phones (rowH ~42) are unaffected. Each unit's name is led by its class glyph
+  (`classIcon` in `RenderState`).
 - **MVP tally** (`game/stats.ts`): every tally's `key`/`name`/`merges` is
   refreshed from the roster each round, so a knighted Squire is credited as a
   Knight and the result screen shows the MVP's level in its tier colour.
