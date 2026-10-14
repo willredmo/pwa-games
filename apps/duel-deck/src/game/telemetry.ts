@@ -39,7 +39,7 @@ const enabled = (() => {
 })();
 
 const send = (path: string, value: unknown) => {
-  if (!enabled) return;
+  if (!enabled || path.startsWith("/")) return; // a MatchLog.none() log's paths start at the root
   void writeAt(`${ROOT}/${path}`, value).catch(() => {
     /* telemetry must never surface */
   });
@@ -55,6 +55,11 @@ const randomId = () =>
 /** One match's log. Every method is safe to call more than once per key (later writes are refused). */
 export class MatchLog {
   private constructor(private readonly base: string) {}
+
+  /** A log that writes nothing (the tutorial: rigged offers would skew the data). */
+  static none(): MatchLog {
+    return new MatchLog("");
+  }
 
   /**
    * The log for a CPU match: resumed from storage when continuing a save, else

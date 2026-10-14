@@ -7,6 +7,7 @@ import { Title } from "./ui/Title";
 import { Lobby, type LobbyProps } from "./ui/Lobby";
 import { HelpPanel, UnitsView } from "./ui/Overlays";
 import { UpdatePrompt } from "./ui/UpdatePrompt";
+import { tutorialDone } from "./ui/Tutorial";
 import { leaveRoom, loadSession, readSession, saveSession, type Session } from "./online/room";
 import "./App.css";
 
@@ -23,6 +24,8 @@ interface Run {
   resume: SavedMatch | null;
   difficulty: Difficulty;
   online?: Session;
+  /** The first-match tutorial (vs Easy, never saved). */
+  tutorial?: boolean;
 }
 
 /** A code from a shared invite link (?join=CODE), taken once at startup. */
@@ -65,6 +68,13 @@ export default function App() {
     if (settings.sound) unlockSound();
     setSettings((s) => ({ ...s, difficulty }));
     setRun({ id: ++runId.n, resume, difficulty });
+    setScreen("game");
+  };
+
+  /** The tutorial: a fresh match against Easy with the coach on. Leaves any save alone. */
+  const startTutorial = () => {
+    if (settings.sound) unlockSound();
+    setRun({ id: ++runId.n, resume: null, difficulty: "easy", tutorial: true });
     setScreen("game");
   };
 
@@ -120,6 +130,7 @@ export default function App() {
           resume={run.resume}
           difficulty={run.difficulty}
           online={run.online}
+          tutorial={run.tutorial}
           speed={settings.speed}
           onSpeed={(speed) => setSettings((s) => ({ ...s, speed }))}
           sound={settings.sound}
@@ -145,6 +156,8 @@ export default function App() {
           onResume={() => saved && start(saved.difficulty ?? settings.difficulty, saved)}
           onHelp={() => setHelp(true)}
           onUnits={() => setUnits(true)}
+          onTutorial={startTutorial}
+          suggestTutorial={!saved && !tutorialDone()}
           rejoinCode={savedOnline?.code ?? null}
           notice={notice}
           onHost={() => {

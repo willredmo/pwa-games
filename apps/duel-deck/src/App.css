@@ -1383,3 +1383,43 @@ button.menu-item:hover { border-color: #5a5180; }
   .emote-bubble { animation: emote-fade 2.5s linear forwards; transform: translateX(-50%); }
   @keyframes emote-fade { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
 }
+
+/* Tutorial coach card (ui/Tutorial.tsx) and the outline on what it's about. */
+.tut {
+  position: fixed;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  z-index: 70;
+  width: min(calc(100vw - 24px), 24rem);
+  padding: 0.7rem 0.85rem 0.55rem;
+  border-radius: 14px;
+  border: 1px solid #f0b429;
+  background: rgba(30, 27, 44, 0.97);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), 0 0 0 3px rgba(240, 180, 41, 0.15);
+  animation: tut-in 0.3s ease-out;
+}
+.tut--bottom { top: auto; bottom: 12px; }
+.tut__head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; color: #ffd666; }
+.tut__count { font-size: 0.75rem; color: var(--muted); }
+.tut__text { margin: 0.35rem 0 0.5rem; font-size: 0.9rem; line-height: 1.4; }
+.tut__actions { display: flex; justify-content: space-between; align-items: center; }
+.tut__actions .primary-btn { padding: 0.35rem 1rem; }
+.tut-spot {
+  outline: 2px solid #f0b429;
+  outline-offset: 3px;
+  border-radius: 10px;
+  animation: tut-pulse 1.4s ease-in-out infinite;
+}
+.title__tutorial { margin-bottom: 0.4rem; }
+@keyframes tut-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(-6px); }
+  to { opacity: 1; transform: translateX(-50%); }
+}
+@keyframes tut-pulse {
+  0%, 100% { outline-color: rgba(240, 180, 41, 1); }
+  50% { outline-color: rgba(240, 180, 41, 0.35); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tut, .tut-spot { animation: none; }
+}

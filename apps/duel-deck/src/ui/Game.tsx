@@ -66,6 +66,7 @@ import { POSE_MS, prefersReducedMotion, type Pose, type PoseState } from "../boa
 import { FxLayer, type FxKind } from "../board/fx";
 import { HpBar } from "./HpBar";
 import { EmoteBar } from "./EmoteBar";
+import { Tutorial } from "./Tutorial";
 import { RoundBanner, type BannerTone } from "./RoundBanner";
 import { UnitPortrait } from "./UnitPortrait";
 import { OfferInfo, UnitInfo } from "./UnitInfo";
@@ -141,6 +142,15 @@ interface FeedItem {
 
 /** Touch has no hover: holding this long on a unit or offer card opens its info card. */
 const LONG_PRESS_MS = 450;
+/**
+ * The tutorial's first two offers, so the lesson always has what it needs:
+ * round 1 deals Strikers and Guards, round 2 deals both again, so whatever
+ * the player took, a merge is on offer when the merge step comes up.
+ */
+const TUTORIAL_OFFERS: Record<number, string[]> = {
+  1: ["striker", "guard", "berserker", "striker", "guard"],
+  2: ["striker", "guard", "berserker", "medic", "bulwark"],
+};
 /** Losing the match: wait for the last fall to read, then the blast plays this long before the result screen. */
 const EXPLOSION_DELAY_MS = 350;
 const EXPLOSION_MS = 1700;
@@ -277,16 +287,20 @@ export interface GameProps {
   onExit: () => void;
   /** Set for an online match: the opponent is a person, not `aiCommit`. */
   online?: Session;
+  /** The first-match tutorial: coach card, set first offers, never saved or logged. */
+  tutorial?: boolean;
 }
 
-export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, sound, onSound, battleLog, onBattleLog, onExit, online }: GameProps) {
+export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, sound, onSound, battleLog, onBattleLog, onExit, online, tutorial }: GameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   /** The match being resumed, if any; resuming always lands in the pick phase. */
   const [saved] = useState(() => resume);
   const [board, setBoard] = useState<Board>(() => saved?.board ?? newBoard());
   const [round, setRound] = useState(saved?.round ?? 1);
-  const [offer, setOffer] = useState<string[]>(() => saved?.offer ?? rollOffer(OFFER_COUNT, saved?.player));
+  const [offer, setOffer] = useState<string[]>(
+    () => saved?.offer ?? (tutorial ? TUTORIAL_OFFERS[1].slice() : rollOffer(OFFER_COUNT, saved?.player)),
+  );
   const [picksLeft, setPicksLeft] = useState(PICK_COUNT);
   /** Click-selected and awaiting a destination click. Mirrors `drag`. */
   const [selected, setSelected] = useState<Grab | null>(null);
@@ -310,11 +324,12 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     // An online match lives in the room, not in localStorage: half of it is
     // the opponent's, so a local restore would put the two devices out of
     // step. Reloading rejoins through the room instead.
-    if (!online) saveMatch(s);
+    // The tutorial isn't saved either: it mustn't replace a real match in progress.
+    if (!online && !tutorial) saveMatch(s);
   };
   /** Balance telemetry for this match (game/telemetry.ts). */
   const [matchLog] = useState(() =>
-    online ? MatchLog.online(online.code, online.me) : MatchLog.cpu(!!saved, saved?.difficulty ?? startDifficulty),
+    tutorial ? MatchLog.none() : online ? MatchLog.online(online.code, online.me) : MatchLog.cpu(!!saved, saved?.difficulty ?? startDifficulty),
   );
   /**
    * This round's log so far: the cards as dealt, each pick, and rerolls spent.
@@ -799,7 +814,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       // Frozen cards keep their slot; the rest are dealt fresh.
       const keep = frozenRef.current;
       const prevOffer = offerRef.current;
-      const nextOffer = rollOffer(OFFER_COUNT, playerAug.current).map((k, i) => (keep.includes(i) && prevOffer[i] ? prevOffer[i] : k));
+      const dealt = tutorial && TUTORIAL_OFFERS[roundNum] ? TUTORIAL_OFFERS[roundNum].slice() : rollOffer(OFFER_COUNT, playerAug.current);
+      const nextOffer = dealt.map((k, i) => (keep.includes(i) && prevOffer[i] ? prevOffer[i] : k));
       // Fallen units respawn with the same ids, so a held `dying` pose (its last
       // frame is fully faded) would leave them invisible. Replay their entrance.
       const now = performance.now();
@@ -1527,7 +1543,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       // Let the result banner land before the next round deals.
       timer = window.setTimeout(() => {
         if (result.matchWinner) {
-          clearMatch();
+          // Online and tutorial matches were never saved; clearing would drop a real one.
+          if (!online && !tutorial) clearMatch();
           sfx(result.matchWinner === PLAYER ? "victory" : "defeat");
           setPhase("over");
         } else {
@@ -1813,7 +1830,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
    * every piece of match state here; dropping the component can't miss one.
    */
   const newMatch = () => {
-    clearMatch();
+    if (!online && !tutorial) clearMatch();
     onExit();
   };
 
@@ -1949,6 +1966,17 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         />
         <RoundBanner message={banner.message} tone={banner.tone} nonce={banner.nonce} />
         {online && phase !== "over" && <EmoteBar session={online} round={round} />}
+        {tutorial && phase !== "over" && (
+          <Tutorial
+            state={{
+              phase,
+              round,
+              picksLeft,
+              units: sideUnits(board, PLAYER).length,
+              topLevel: Math.max(0, ...sideUnits(board, PLAYER).map((u) => levelOf(u.merges))),
+            }}
+          />
+        )}
         {phase === "augment" && (
           <AugmentPanel
             round={round}

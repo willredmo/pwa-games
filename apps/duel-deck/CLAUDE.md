@@ -627,6 +627,21 @@ the loudest damage in the beat (`BIG_HIT` switches it to the heavier one), and
 death is delayed ~90ms so the fall reads as the consequence of the impact.
 Knighting deliberately overrides the merge sound that triggers it.
 
+### Tutorial (ui/Tutorial.tsx)
+A guided first match against Easy, offered first on the title screen until
+it's finished or skipped (`duel-deck:tutorial-done`), and always from the
+Tutorial link. A coach card walks through 12 steps; each either waits for the
+player to do the thing (place, take a second card, Battle, merge, take the
+round-3 upgrade) or has Next, and outlines what it's about (`tut-spot`). Steps
+that are only read move on by themselves once the round does (`playedOn`), so
+ignoring Next never strands it; `waitFor` only gates a step's first
+appearance (the upgrade step used to vanish once the upgrade closed). The
+first two offers are set (`TUTORIAL_OFFERS` in Game.tsx: Strikers and Guards
+twice) so a merge is always on offer. A tutorial match is never saved (it
+mustn't replace a real one, and it doesn't clear one either) and never logged
+(`MatchLog.none()`: set offers would skew the data). The card sits at the top
+while picking, since the cards are at the bottom, and at the bottom during
+battles and upgrades.
 ### Save and resume
 The match is saved to `localStorage` (`duel-deck:match`) at the start of every
 pick phase — never mid-battle — so a reload lands back at the start of the
