@@ -173,12 +173,13 @@ const VARIED = new Set<Sfx>(["hit", "big-hit", "death", "dodge", "block", "place
  * sense of size — a 2-damage poke and a 20-damage execution are the same
  * event but shouldn't be the same sound.
  */
-export function sfx(kind: Sfx, strength = 0.5): void {
+export function sfx(kind: Sfx, strength = 0.5, rate = 1): void {
   if (!enabled || !ctx) return;
   const s = Math.max(0, Math.min(1, strength));
   // Combat and handling sounds vary a little in pitch (±4%) each time; musical
   // cues (wins, upgrades, knighting) stay in tune.
-  pitch = VARIED.has(kind) ? 1 + (Math.random() - 0.5) * 0.08 : 1;
+  // `rate` lowers or raises the whole sound (the slow-motion win blast plays at 0.6).
+  pitch = rate * (VARIED.has(kind) ? 1 + (Math.random() - 0.5) * 0.08 : 1);
   switch (kind) {
     case "hit":
       // Sword on shield: a bright metallic tick over a dull body thud.

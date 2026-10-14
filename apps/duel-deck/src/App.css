@@ -1440,3 +1440,7 @@ button.menu-item:hover { border-color: #5a5180; }
 .soundboard__variant-row { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.3rem; }
 .soundboard__variant { display: inline-flex; align-items: center; gap: 0.3rem; }
 .soundboard__variant--on .ghost-btn { border-color: #f0b429; color: #ffd666; }
+
+/* Winning: the enemy HP bar's slow-motion blast (ui/HpBarBlast.tsx). */
+.hpbar-blast { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 80; }
+.hpbar--blown .hpbar__track, .hpbar--blown .hpbar__hp { opacity: 0; transition: opacity 0.15s 0.3s; }

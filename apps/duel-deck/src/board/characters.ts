@@ -57,6 +57,8 @@ const WHITE: RGB = [0xff, 0xff, 0xff];
 
 // Per-call white-flash amount; set at the top of drawCharacter.
 let FLASH = 0;
+/** Tear progress (0..1) for the sad face, or -1 for none. Set per draw like FLASH. */
+let TEAR = -1;
 function m(c: RGB): string {
   const f = FLASH;
   if (f <= 0.004) return `rgb(${c[0]},${c[1]},${c[2]})`;
@@ -77,6 +79,8 @@ const enum Eye {
   Pain,
   Cross,
   Happy,
+  /** Droopy and looking down, with a frown and a falling tear (the result screen's losers). */
+  Sad,
 }
 
 function bodyPath(ctx: CanvasRenderingContext2D, key: string, R: number): void {
@@ -749,6 +753,38 @@ function drawEyes(
         ctx.stroke();
         break;
       }
+      case Eye.Sad: {
+        // Half-lidded, looking down.
+        ctx.beginPath();
+        ctx.arc(x, Y(ey + r * 0.15), r * 0.85, 0, Math.PI);
+        ctx.fillStyle = m(WHITE);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(x, Y(ey + r * 0.45), r * 0.42, 0, Math.PI * 2);
+        ctx.fillStyle = m(INK);
+        ctx.fill();
+        // Sad brows: the inner ends raised.
+        ctx.beginPath();
+        ctx.moveTo(x + i * r * 1.2, Y(ey - r * 0.55));
+        ctx.lineTo(x - i * r * 0.9, Y(ey - r * 1.05));
+        ctx.strokeStyle = m(INK);
+        ctx.lineWidth = lw * 1.1;
+        ctx.stroke();
+        // One tear, under the left eye, sliding down and fading.
+        if (i === -1 && TEAR >= 0) {
+          const ty = ey + r * 0.9 + TEAR * R * 0.55;
+          ctx.save();
+          ctx.globalAlpha *= 1 - TEAR * 0.8;
+          ctx.beginPath();
+          ctx.moveTo(x, Y(ty - r * 0.55));
+          ctx.quadraticCurveTo(x + r * 0.42, Y(ty + r * 0.1), x, Y(ty + r * 0.32));
+          ctx.quadraticCurveTo(x - r * 0.42, Y(ty + r * 0.1), x, Y(ty - r * 0.55));
+          ctx.fillStyle = m([0x8f, 0xd3, 0xff]);
+          ctx.fill();
+          ctx.restore();
+        }
+        break;
+      }
       default: {
         // ^ ^
         ctx.beginPath();
@@ -762,7 +798,7 @@ function drawEyes(
     // Brows: always for berserker/bulwark, angled in when angry.
     const brow = key === "berserker" ? 1 : key === "bulwark" ? 0.5 : 0;
     const a = Math.max(brow, angry);
-    if (a > 0.05 && mode !== Eye.Cross && mode !== Eye.Happy) {
+    if (a > 0.05 && mode !== Eye.Cross && mode !== Eye.Happy && mode !== Eye.Sad) {
       const flat = key === "bulwark";
       ctx.beginPath();
       ctx.moveTo(x + i * r * 1.35, Y(ey - r * (flat ? 1.05 : 1.7 * a)));
@@ -776,6 +812,13 @@ function drawEyes(
   if (mode === Eye.Happy) {
     ctx.beginPath();
     ctx.arc(0, Y(ey + R * 0.3), R * 0.16, Math.PI * 0.1, Math.PI * 0.9, s < 0);
+    ctx.strokeStyle = m(INK);
+    ctx.lineWidth = lw;
+    ctx.stroke();
+  } else if (mode === Eye.Sad) {
+    // A frown.
+    ctx.beginPath();
+    ctx.arc(0, Y(ey + R * 0.5), R * 0.14, Math.PI * 1.15, Math.PI * 1.85, s < 0);
     ctx.strokeStyle = m(INK);
     ctx.lineWidth = lw;
     ctx.stroke();
@@ -881,6 +924,7 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: CharacterOpts): 
   let fwd = 0; // local forward offset (negative = forward)
   const sway = Math.sin(time / 520 + phase) * 0.07;
   let eye: Eye = Eye.Open;
+  let tear = -1;
   // Legs: a gentle idle shuffle unless a pose takes them over.
   let stride = 0.35 * Math.sin(time / 300 + phase);
   let tuck = 0;
@@ -1001,11 +1045,27 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: CharacterOpts): 
       eye = Eye.Happy;
       break;
     }
+    case "sad": {
+      // Losing: slumped and squashed down a little, swaying slowly from side
+      // to side, weapon lowered, a tear rolling down now and then.
+      const amp = prefersReducedMotion() ? 0.5 : 1;
+      const beat = time / 1500 + phase;
+      const sway = Math.sin(beat * Math.PI * 2);
+      bob = R * 0.07;
+      sy = 0.9 + 0.025 * Math.sin(time / 650 + phase) * amp;
+      sx = 1.05;
+      tilt = sway * 0.07 * amp;
+      w = -0.35;
+      eye = Eye.Sad;
+      tear = (time / 1300 + phase) % 1;
+      break;
+    }
     default:
       break;
   }
 
   FLASH = flash;
+  TEAR = tear;
   ctx.save();
   ctx.globalAlpha *= alpha;
   // Nudged up a touch so the feet stay inside the row.

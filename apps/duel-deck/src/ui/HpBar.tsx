@@ -8,9 +8,11 @@ export interface HpBarProps {
   label: string;
   hp: number;
   max: number;
+  /** Blown up (the win's slow-motion blast): the bar and number vanish in the flash. */
+  blown?: boolean;
 }
 
-export function HpBar({ side, label, hp, max }: HpBarProps) {
+export function HpBar({ side, label, hp, max, blown }: HpBarProps) {
   const target = Math.max(0, hp);
   const pct = Math.max(0, Math.min(100, (target / max) * 100));
   const [shown, setShown] = useState(target);
@@ -56,7 +58,7 @@ export function HpBar({ side, label, hp, max }: HpBarProps) {
 
   const low = pct < 30 && target > 0;
   return (
-    <div className={`hpbar hpbar--${side}${low ? " hpbar--low" : ""}`}>
+    <div className={`hpbar hpbar--${side}${low ? " hpbar--low" : ""}${blown ? " hpbar--blown" : ""}`}>
       <span className="hpbar__label">{label}</span>
       <div key={hitKey} className={`hpbar__track${hitKey > 0 ? " hpbar__track--hit" : ""}`}>
         <div className="hpbar__ghost" style={{ transform: `scaleX(${ghostPct / 100})` }} />

@@ -437,7 +437,7 @@ function LevelChip({ merges }: { merges: number }) {
  * falls. Units that left the row (merged into another, or replaced) stay
  * listed, faded, so the totals add up.
  */
-function UnitLedger({ stats }: { stats: MatchStats }) {
+function UnitLedger({ stats, winner }: { stats: MatchStats; winner: "player" | "enemy" }) {
   const [tab, setTab] = useState<"player" | "enemy">("player");
   const total = roundsPlayed(stats);
   const bookFor = (s: "player" | "enemy") => (s === "player" ? stats.units : (stats.foes ?? {}));
@@ -479,7 +479,8 @@ function UnitLedger({ stats }: { stats: MatchStats }) {
               return (
                 <tr key={id} className={gone ? "ledger__row--gone" : undefined} title={gone ? "Left the row (merged or replaced)" : undefined}>
                   <td className="ledger__unit">
-                    <UnitPortrait unitKey={t.key} side={tab} size={30} merges={t.merges ?? 0} />
+                    {/* The winners dance, the losers mope. */}
+                    <UnitPortrait unitKey={t.key} side={tab} size={30} merges={t.merges ?? 0} pose={tab === winner ? "dance" : "sad"} bleed={8} />
                     <span className="ledger__name">
                       <span>
                         {t.name} <LevelChip merges={t.merges ?? 0} />
@@ -571,7 +572,7 @@ export function ResultPanel({ winner, round, stats, hp, upgrades, difficulty, on
 
         {mvp && (
           <div className="result-mvp">
-            <UnitPortrait unitKey={mvp.key} side="player" size={84} merges={mvp.merges ?? 0} pose="dance" bleed={40} />
+            <UnitPortrait unitKey={mvp.key} side="player" size={84} merges={mvp.merges ?? 0} pose={won ? "dance" : "sad"} bleed={40} />
             <div>
               <span className="result-mvp__tag">★ MVP</span>
               <strong>
@@ -600,7 +601,7 @@ export function ResultPanel({ winner, round, stats, hp, upgrades, difficulty, on
           <Stat i={7} label="Best win streak" value={stats.bestStreak} sub={stats.healed > 0 ? `healed ${stats.healed} HP` : undefined} />
         </div>
 
-        <UnitLedger stats={stats} />
+        <UnitLedger stats={stats} winner={winner} />
 
         {upgrades.length > 0 && (
           <div className="result-upgrades">

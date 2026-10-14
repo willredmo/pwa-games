@@ -67,6 +67,7 @@ import { FxLayer, type FxKind } from "../board/fx";
 import { HpBar } from "./HpBar";
 import { EmoteBar } from "./EmoteBar";
 import { Tutorial } from "./Tutorial";
+import { HP_BAR_BLAST_MS, HpBarBlast } from "./HpBarBlast";
 import { RoundBanner, type BannerTone } from "./RoundBanner";
 import { UnitPortrait } from "./UnitPortrait";
 import { OfferInfo, UnitInfo } from "./UnitInfo";
@@ -154,6 +155,8 @@ const TUTORIAL_OFFERS: Record<number, string[]> = {
 /** Losing the match: wait for the last fall to read, then the blast plays this long before the result screen. */
 const EXPLOSION_DELAY_MS = 350;
 const EXPLOSION_MS = 1700;
+/** Winning the match: a beat after the last blow, the enemy's HP bar blows up (see HpBarBlast). */
+const BAR_BLAST_DELAY_MS = 300;
 
 /**
  * "waiting" is online only: your row is committed and locked, and the round
@@ -354,6 +357,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     rr: 0,
     augRr: 0,
   });
+  /** The win's slow-motion HP-bar explosion is playing (and the bar stays gone). */
+  const [barBlast, setBarBlast] = useState(false);
   const [phase, setPhase] = useState<Phase>(saved?.augmentPending ? "augment" : "pick");
   const [result, setResult] = useState<RoundResult | null>(null);
   const [frames, setFrames] = useState<Frame[]>([]);
@@ -1551,8 +1556,12 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       // gets nothing, since neither sting would be true.
       if (winner === PLAYER) sfx("round-win");
       else if (winner === ENEMY) sfx("round-loss");
-      // Losing the match blows your row up before the result screen.
+      // Losing the match blows your row up before the result screen; winning
+      // blows up the enemy's HP bar, in slow motion. Neither follows the battle
+      // speed: they happen once, at the very end.
       const boom = result.matchWinner === ENEMY;
+      const blast = result.matchWinner === PLAYER;
+      if (blast) window.setTimeout(() => setBarBlast(true), BAR_BLAST_DELAY_MS);
       if (boom) later(EXPLOSION_DELAY_MS, () => explodeRow(committed));
       // Let the result banner land before the next round deals.
       timer = window.setTimeout(() => {
@@ -1568,7 +1577,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           respawned.hp = { ...result.board.hp };
           startRound(respawned, round + 1);
         }
-      }, scaled(RESULT_MS) + (boom ? scaled(EXPLOSION_DELAY_MS) + EXPLOSION_MS : 0));
+      }, scaled(RESULT_MS) + (boom ? scaled(EXPLOSION_DELAY_MS) + EXPLOSION_MS : 0) + (blast ? BAR_BLAST_DELAY_MS + HP_BAR_BLAST_MS : 0));
     };
 
     /** Both front units lunge at each other. */
@@ -1967,7 +1976,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         )}
       </header>
 
-      <HpBar side={ENEMY} label="Enemy" hp={Math.max(0, board.hp.enemy)} max={START_HP} />
+      <HpBar side={ENEMY} label="Enemy" hp={Math.max(0, board.hp.enemy)} max={START_HP} blown={barBlast} />
 
       <div className="app__stage">
         <canvas
@@ -1981,6 +1990,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         />
         <RoundBanner message={banner.message} tone={banner.tone} nonce={banner.nonce} />
         {online && phase !== "over" && <EmoteBar session={online} />}
+        {barBlast && <HpBarBlast selector=".hpbar--enemy" side="enemy" />}
         {tutorial && phase !== "over" && (
           <Tutorial
             state={{

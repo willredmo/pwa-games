@@ -290,6 +290,18 @@ transform. Android vibrates (`navigator.vibrate`, only with sound on); iOS has
 no vibration API, so it's skipped. Reduced motion keeps the flash and fireball
 and drops the shake and most debris. A hidden browser pane doesn't run rAF, so
 it was checked by stepping an `FxLayer` by hand onto a test canvas.
+### Winning blows up the enemy's HP bar; the end screen celebrates and mopes
+When you win the match, a beat after the last blow the enemy's HP bar explodes
+in slow motion (`ui/HpBarBlast.tsx`): the same `"explosion"` fx as a loss plus
+smaller bursts along the bar, on a full-screen canvas whose fx clock runs at
+`SLOW` (0.4) of real time, the boom pitched down (`sfx(..., rate 0.6)`), the
+bar hidden in the flash (`HpBar blown`). It ignores the battle speed: it
+happens once, at the very end. The result screen waits `HP_BAR_BLAST_MS`.
+
+On the result screen the winning side's units dance and the losing side's are
+sad (`pose: "sad"` in characters.ts: slumped, slow sway, droopy eyes with the
+inner brows raised, a frown and a tear rolling down), in the unit table's
+portraits and the MVP's. Both poses play under reduced motion at half strength.
 ### Augment badges are derived, never stored
 Each augment carries a unique `icon`, and every unit shows the icons of the
 augments currently changing its numbers (`Unit.auras`, augment ids in pick

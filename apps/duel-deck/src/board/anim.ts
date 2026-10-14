@@ -9,7 +9,7 @@
  * is a one-shot that runs for its duration and then falls back to idle.
  */
 /** `dance`: a looping victory dance (the result screen's MVP), driven by the clock like idle. */
-export type Pose = "idle" | "spawn" | "attack" | "hit" | "dying" | "merge" | "selected" | "dodge" | "dance";
+export type Pose = "idle" | "spawn" | "attack" | "hit" | "dying" | "merge" | "selected" | "dodge" | "dance" | "sad";
 
 /** A pose as App records it: started at `start` (ms, performance.now clock). */
 export interface PoseState {
@@ -19,7 +19,7 @@ export interface PoseState {
 }
 
 /** Default one-shot lengths (ms) at normal speed; App divides by fast-mode factor. */
-export const POSE_MS: Record<Exclude<Pose, "idle" | "selected" | "dance">, number> = {
+export const POSE_MS: Record<Exclude<Pose, "idle" | "selected" | "dance" | "sad">, number> = {
   spawn: 420,
   attack: 480,
   hit: 400,
@@ -42,7 +42,7 @@ export function poseProgress(p: PoseState, now: number): number {
 export function activePose(p: PoseState | undefined, now: number): { pose: Pose; t: number } {
   if (!p) return { pose: "idle", t: 0 };
   const t = poseProgress(p, now);
-  if (t >= 1 && p.pose !== "dying" && p.pose !== "selected" && p.pose !== "dance") return { pose: "idle", t: 0 };
+  if (t >= 1 && p.pose !== "dying" && p.pose !== "selected" && p.pose !== "dance" && p.pose !== "sad") return { pose: "idle", t: 0 };
   return { pose: p.pose, t };
 }
 
