@@ -205,7 +205,9 @@ export function cellCenter(
   return {
     x: l.ox + (cell.lane + 0.5) * l.laneW,
     y: l.oy + (row + 0.5) * l.rowH,
-    size: l.rowH,
+    // Effects (damage numbers, labels, bursts) scale with this, so it's capped
+    // like the unit itself (UNIT_MAX_H) rather than growing with the row.
+    size: l.rowH * contentScale(l.rowH),
   };
 }
 
@@ -760,7 +762,8 @@ function drawDropHints(
           : KIND_STYLE.insert
         : style;
     const text = hovered && state.dropLabel ? state.dropLabel : style.badge;
-    const fs = Math.round(Math.max(10, h * (hovered ? 0.34 : 0.26)));
+    // Label size follows the capped unit size (contentScale), not the raw row height.
+    const fs = Math.round(Math.max(10, h * contentScale(h) * (hovered ? 0.34 : 0.26)));
     ctx.font = `800 ${fs}px system-ui, sans-serif`;
     const tw = ctx.measureText(text).width;
     const bh = fs * 1.5;
@@ -847,7 +850,7 @@ function drawSplitSlot(
     const active = over === hf.side;
     const dim = over !== null && !active;
     const text = active && outcome ? outcome : hf.label;
-    let fs = Math.round(Math.max(10, h * (active ? 0.3 : 0.26)));
+    let fs = Math.round(Math.max(10, h * contentScale(h) * (active ? 0.3 : 0.26)));
     ctx.font = `800 ${fs}px system-ui, sans-serif`;
     // Shrink the outcome to fit its half rather than spill into the other.
     while (fs > 9 && ctx.measureText(text).width + fs * 1.1 > half - 6) {

@@ -730,8 +730,10 @@ emulator (port 5176) to test the service worker and headers locally.
 > in `board/render.ts`), however big the screen and its rows get. Slots may
 > grow; what's drawn in them may not.
 > - Draw anything that belongs to a unit inside `drawUnit`'s scaled block, or
->   size it with `contentScale(h)` (the drag preview and the empty-slot number
->   do). Never size unit art or text straight off `rowH`/`h` outside it.
+>   size it with `contentScale(h)` (the drag preview, the empty-slot number
+>   and the slot labels like + ADD / MERGE do). Never size unit art or text
+>   straight off `rowH`/`h` outside it. The same cap covers row text: slot
+>   labels and battle effects (`cellCenter`'s `size`, which every fx scales by).
 > - Don't raise `UNIT_MAX_H` or `CHAR_SIZE` without checking a tablet
 >   (768×1024, rowH ~84) and a wide desktop as well as a phone.
 > - The same goes for unit portraits in the DOM (offer cards, info cards, the
