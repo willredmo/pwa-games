@@ -1,5 +1,14 @@
 # Duel Deck — Plan: levels cap, classes, synergies, emotes, loss FX, telemetry
 
+**Status (Oct 13, 2026): all 8 steps built and committed, as v1.3.0 (not yet
+deployed).** Decisions taken: up to 2 frozen upgrades; Ascendant makes your row
+a single uncapped unit that every pick merges into (not "one unit past 10");
+telemetry is always on with no toggle; the version check prompts an outdated
+player to update before hosting or joining. Tuning moved from the starting
+numbers below after testing: Full Assault +1 attack (not +2), Iron Line +3
+health (no armour), Sanctuary is the front unit's endure only (doubling
+Herald/Medic was far too strong). `CLAUDE.md` has the final rules and numbers.
+
 Written Oct 13, 2026, against `main` at `0044443` (v1.2.1). Seven requests, put
 in an order where each step either stands alone or builds on one already
 shipped. `CLAUDE.md` describes how the game works today; this file is the
