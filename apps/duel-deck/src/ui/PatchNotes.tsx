@@ -10,6 +10,16 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.3.1",
+    date: "Oct 14, 2026",
+    notes: [
+      "The Units page is now the Codex, with Units and Upgrades tabs.",
+      "Units are grouped by class. Tap a unit in a class card to jump to it.",
+      "Tap an upgrade on a unit to jump to it, and a unit on an upgrade to jump back.",
+      "What's new is also in the ☰ menu.",
+    ],
+  },
+  {
     version: "1.3.0",
     date: "Oct 14, 2026",
     notes: [
