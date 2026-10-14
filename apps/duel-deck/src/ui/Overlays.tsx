@@ -747,60 +747,51 @@ interface HelpPanelProps {
 }
 
 export function HelpPanel({ onClose }: HelpPanelProps) {
+  // Short on purpose: the tutorial teaches by playing, the info cards (press
+  // and hold a unit) and the Units screen hold the details.
   return (
     <div className="overlay" onClick={onClose}>
       <div className="panel panel--wide panel--scroll" onClick={(e) => e.stopPropagation()}>
         <div className="panel__head panel__head--sticky">
-          <h2>Units &amp; rules</h2>
+          <h2>How to play</h2>
           <button className="close-btn" onClick={onClose} aria-label="Close">✕</button>
         </div>
 
-        <div className="cards">
-          {UNIT_KEYS.map((key, i) => {
-            const u = UNITS[key];
-            return (
-              <div key={key} className="card-row card-row--static" style={{ "--i": i } as React.CSSProperties}>
-                <span className="card-row__head">
-                  <span className="card-row__name">{u.name}</span>
-                  <span className="card-row__stats">⚔{u.atk} · ♥{u.maxHp}</span>
-                </span>
-                <span className="card-row__desc">{u.role}</span>
-              </div>
-            );
-          })}
-        </div>
-
-        <h3>How a round works</h3>
+        <h3>The goal</h3>
         <ul className="rules">
-          <li>Pick {PICK_COUNT} of {5} offered units each round. Picks are free — there's no economy. Each offer can only be taken once, so your {PICK_COUNT} picks are always different cards.</li>
-          <li>Drag an offer onto an <em>empty slot</em> to add it as a new unit, or onto <em>one of your units of the same type</em> to merge. Only like merges with like.</li>
-          <li><strong>Clicking works everywhere dragging does.</strong> Click an offer or one of your units to pick it up, then click where it should go. Click it again to put it back down. Dashed outlines show the legal destinations.</li>
-          <li>A merged unit gives <strong>half</strong> its attack and health to the target, permanently, and raises its level by one (every unit starts at <strong>Lv1</strong>). Levels stop at <strong>10 (MAX)</strong>, where each unit's ability takes its stronger <strong>★ Mastery</strong> form. Once every slot holds a maxed unit, picks you leave unspent become <strong>🎯 Drill</strong>: +1 attack to every unit for that round. You lose stats overall versus placing it separately — what you gain is concentration: a tougher unit holding the front instead of another body behind it.</li>
+          <li>Build a row of up to 5 units. Bring the enemy's HP to 0 before they do the same to you.</li>
+        </ul>
+
+        <h3>Each round</h3>
+        <ul className="rules">
+          <li>Take {PICK_COUNT} of the 5 cards dealt. Drop one on an empty slot to add it, or on a unit of the <strong>same type</strong> to merge.</li>
+          <li>Press <strong>⚔ Battle</strong>. Only the two <strong>front</strong> units fight; when one falls, the next steps up.</li>
+          <li>The side still standing wins the round. Each of its survivors hits the loser's HP for its attack.</li>
+          <li>Fallen units come back next round at full health. Your row only grows.</li>
+        </ul>
+
+        <h3>Getting stronger</h3>
+        <ul className="rules">
+          <li><strong>Merging</strong> adds half the card's stats and a level. At level 10 (MAX) a unit's ability gets stronger.</li>
+          <li><strong>Upgrades</strong>: every {AUGMENT_EVERY} rounds, pick one that lasts the whole match.</li>
           <li>
-            Every unit has a class: <strong>⚔ Attack</strong>, <strong>🛡 Defense</strong> or <strong>✚ Support</strong> (top corner of
-            its card). Fill <em>every</em> slot with one class and the row gets a bonus each round, no upgrade needed:{" "}
+            <strong>Classes</strong>: fill every slot with one class for a bonus each round:{" "}
             {(["attack", "defense", "support"] as const).map((a, i) => (
               <span key={a}>
-                {i ? "; " : ""}
-                <strong>
-                  {SYNERGIES[a].icon} {SYNERGIES[a].name}
-                </strong>{" "}
-                ({ARCHETYPES[a].name}): {SYNERGIES[a].text}
+                {i ? ", " : ""}
+                {ARCHETYPES[a].icon} {SYNERGIES[a].name}
               </span>
             ))}
+            .
           </li>
-          <li>When your row is <strong>full</strong>, you can also drop an offer onto a unit of a <em>different</em> type to <strong>replace</strong> it. The old unit is discarded, along with anything merged into it — the slot outlines orange to warn you.</li>
-          <li><strong>❄ Freeze</strong> an offer card to keep it for next round (it stays in its slot through rerolls, and unfreezes when you take it). On an upgrade choice, freeze up to two upgrades to have them offered first at your next choice.</li>
-          <li>Move placed units to reorder the queue — only the front one fights, so position matters.</li>
-          <li>Putting a placed unit onto <em>another of the same type</em> merges the two instead: the one you moved is absorbed for half its stats and leaves the board, and the two levels add together. Free — it costs a body, not a pick.</li>
-          <li>Only the front-most unit on each side fights. Both strike at once, so a unit that dies still deals its damage.</li>
-          <li>When a front unit dies, the next in your queue steps up.</li>
-          <li>The round ends when one side's row is empty. Each of the winner's <em>surviving units</em> then hits the loser's HP for its attack — so keeping units alive matters, not just winning.</li>
-          <li>Nothing is lost: fallen units respawn at the end of the round, and everyone returns to full health. Your row only ever grows.</li>
-          <li>Every {AUGMENT_EVERY} rounds, before you pick units, you choose a persistent upgrade — a separate track from unit picks. They last this match only. The header shows when the next one is due.</li>
-          <li><strong>Long-press</strong> (or hover with a mouse) any unit or offer card to see its ability and what is changing its numbers. Units also show a small icon for each upgrade currently boosting them, so you can see where their numbers come from. Conditional upgrades (Overwhelm, Desperate measures) only show while they're actually firing. Open <strong>Upgrades</strong> to match an icon to its name — the enemy's units are badged too.</li>
-          <li>First player to 0 HP loses.</li>
-          <li><strong>Online duels.</strong> Host a duel from the main menu and share the 5-letter code (or the invite link). You both build your row at the same time — there are no turns — and the rows clash once you've both pressed Battle. You'll see "waiting for your opponent" if they're still arranging.</li>
+        </ul>
+
+        <h3>Handy</h3>
+        <ul className="rules">
+          <li>Press and hold (or hover) any unit or card to see what it does.</li>
+          <li>Tap instead of dragging: tap a card or unit, then tap where it goes. Drag placed units to reorder.</li>
+          <li>🎲 Reroll swaps untaken cards. ❄ keeps a card (or up to 2 upgrades) for next time. ↶ Undo takes a move back.</li>
+          <li>With a full row, dropping on a different unit <strong>replaces</strong> it (outlined orange).</li>
         </ul>
       </div>
     </div>

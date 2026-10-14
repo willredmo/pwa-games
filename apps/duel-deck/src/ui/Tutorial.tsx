@@ -126,7 +126,7 @@ const STEPS: Step[] = [
     text: (
       <>
         Press and hold any unit or card (or hover it with a mouse) to see its ability and what's changing its numbers. The ☰
-        menu has every unit and the full rules.
+        menu has every unit and a quick rules recap.
       </>
     ),
     next: true,
