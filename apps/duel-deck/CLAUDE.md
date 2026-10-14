@@ -709,6 +709,23 @@ for updates / Update now. Update state is shared via `src/pwa.ts`.
 emulator (port 5176) to test the service worker and headers locally.
 
 ### Layout
+
+> **Rule: units have a maximum drawn size.** A unit's contents (character,
+> name, stats, badges, HP bar) are never taller than `UNIT_MAX_H` (52 CSS px,
+> in `board/render.ts`), however big the screen and its rows get. Slots may
+> grow; what's drawn in them may not.
+> - Draw anything that belongs to a unit inside `drawUnit`'s scaled block, or
+>   size it with `contentScale(h)` (the drag preview and the empty-slot number
+>   do). Never size unit art or text straight off `rowH`/`h` outside it.
+> - Don't raise `UNIT_MAX_H` or `CHAR_SIZE` without checking a tablet
+>   (768×1024, rowH ~84) and a wide desktop as well as a phone.
+> - The same goes for unit portraits in the DOM (offer cards, info cards, the
+>   result screen): give them a fixed or `min()`-capped size, never one that
+>   scales with the viewport.
+>
+> Why: everything used to scale with the row height, so big screens showed
+> giant characters and 37px stat text.
+
 The app is exactly one screen (`height: 100dvh`, no page scroll): the board's
 stage is `flex: 1` and takes whatever height the chrome leaves, and the canvas
 reads its client size each frame. The rows that come and go between phases (round

@@ -308,7 +308,8 @@ const CHAR_SIZE = 0.58;
  * 84 on a 768×1024 tablet), and everything in a slot scaled with them, so big
  * screens showed huge characters and stats. Past this the slot still grows but
  * its contents stay this size, centred vertically; phones (rowH ~42) are below
- * it and unchanged.
+ * it and unchanged. This is a project rule (CLAUDE.md, "Layout"): anything a
+ * unit draws must respect it.
  */
 const UNIT_MAX_H = 52;
 /** Scale for a slot's contents: 1 up to UNIT_MAX_H, smaller past it. */
