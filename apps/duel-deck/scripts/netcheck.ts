@@ -27,7 +27,7 @@ import { packCommit, unpackCommit, type Commit } from "../src/online/room";
 
 const MATCHES = Number(process.argv[2]) || 200;
 const ROUND_CAP = 14;
-const KEYS = ["guard", "striker", "skirmisher", "bulwark", "berserker", "squire", "herald", "lancer", "medic"];
+const KEYS = ["guard", "striker", "skirmisher", "bulwark", "berserker", "squire", "herald", "lancer", "medic", "warden", "acolyte"];
 const pick = <T,>(a: readonly T[]): T => a[Math.floor(Math.random() * a.length)];
 const flip = (s: Side | null) => (s === "player" ? "enemy" : s === "enemy" ? "player" : null);
 

@@ -64,12 +64,12 @@ function m(c: RGB): string {
 }
 
 /** Top (most forward) extent of each body, in units of R — used for crowns. */
-const TOP: Record<string, number> = { guard: 0.82, striker: 1, skirmisher: 1, bulwark: 0.87, berserker: 1, squire: 0.66, knight: 0.86, herald: 0.98, lancer: 1, medic: 0.88 };
+const TOP: Record<string, number> = { guard: 0.82, striker: 1, skirmisher: 1, bulwark: 0.87, berserker: 1, squire: 0.66, knight: 0.86, herald: 0.98, lancer: 1, medic: 0.88, warden: 0.88, acolyte: 1 };
 /** Lowest (rearmost) extent of each body in local space, in R — where legs go. */
-const BOTTOM: Record<string, number> = { guard: 0.82, striker: 0.8, skirmisher: 1, bulwark: 0.87, berserker: 0.9, squire: 0.78, knight: 0.92, herald: 0.79, lancer: 0.85, medic: 0.88 };
+const BOTTOM: Record<string, number> = { guard: 0.82, striker: 0.8, skirmisher: 1, bulwark: 0.87, berserker: 0.9, squire: 0.78, knight: 0.92, herald: 0.79, lancer: 0.85, medic: 0.88, warden: 0.88, acolyte: 0.86 };
 /** Eye line (local y, in R) and half-spacing. */
-const EYE_Y: Record<string, number> = { guard: -0.1, striker: 0.16, skirmisher: 0.02, bulwark: -0.04, berserker: -0.06, squire: -0.06, knight: -0.12, herald: 0.02, lancer: 0.02, medic: -0.04 };
-const EYE_X: Record<string, number> = { guard: 0.3, striker: 0.24, skirmisher: 0.27, bulwark: 0.25, berserker: 0.32, squire: 0.24, knight: 0.26, herald: 0.17, lancer: 0.24, medic: 0.19 };
+const EYE_Y: Record<string, number> = { guard: -0.1, striker: 0.16, skirmisher: 0.02, bulwark: -0.04, berserker: -0.06, squire: -0.06, knight: -0.12, herald: 0.02, lancer: 0.02, medic: -0.04, warden: -0.06, acolyte: 0.18 };
+const EYE_X: Record<string, number> = { guard: 0.3, striker: 0.24, skirmisher: 0.27, bulwark: 0.25, berserker: 0.32, squire: 0.24, knight: 0.26, herald: 0.17, lancer: 0.24, medic: 0.19, warden: 0.28, acolyte: 0.24 };
 
 const enum Eye {
   Open,
@@ -163,6 +163,25 @@ function bodyPath(ctx: CanvasRenderingContext2D, key: string, R: number): void {
         else ctx.lineTo(x, y);
       }
       break;
+    case "warden": {
+      // Octagon: a squat, steady block, sturdier-looking than its stats.
+      for (let i = 0; i < 8; i++) {
+        const a = Math.PI / 8 + (i * Math.PI) / 4;
+        const x = Math.cos(a) * R * 0.95;
+        const y = Math.sin(a) * R * 0.95;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      break;
+    }
+    case "acolyte": {
+      // Teardrop, point forward: a drop of what it gives away.
+      ctx.moveTo(0, -R);
+      ctx.bezierCurveTo(R * 0.35, -R * 0.55, R * 0.86, -R * 0.05, R * 0.82, R * 0.32);
+      ctx.arc(0, R * 0.32, R * 0.82, 0, Math.PI, false);
+      ctx.bezierCurveTo(-R * 0.86, -R * 0.05, -R * 0.35, -R * 0.55, 0, -R);
+      break;
+    }
     default:
       ctx.arc(0, 0, R * 0.9, 0, Math.PI * 2);
   }
@@ -261,6 +280,72 @@ function weapon(
       ctx.lineTo(0, -R * 0.96);
       ctx.closePath();
       ctx.fillStyle = m(P.edge);
+      ctx.fill();
+      ctx.restore();
+      break;
+    }
+    case "warden": {
+      // A staff topped with a glowing orb; on an "attack" it raises it and a
+      // faint dome of light flickers ahead, the barrier going up.
+      const lift = Math.max(0, w) * R * 0.22;
+      ctx.save();
+      ctx.translate(R * 0.8, R * 0.4 - lift);
+      ctx.rotate(sway * 0.5);
+      ctx.strokeStyle = m(WOOD);
+      ctx.lineWidth = lw * 1.1;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, -R * 1.05);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, -R * 1.18, R * 0.18, 0, Math.PI * 2);
+      ctx.fillStyle = m([0x9e, 0xe6, 0xff]);
+      ctx.strokeStyle = m([0x2a, 0x6f, 0xa8]);
+      ctx.lineWidth = lw * 0.7;
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+      const glow = Math.max(0, w) + str * 0.5;
+      if (glow > 0.05) {
+        ctx.save();
+        ctx.globalAlpha *= Math.min(1, glow) * 0.55;
+        ctx.strokeStyle = m([0x9e, 0xe6, 0xff]);
+        ctx.lineWidth = lw * 1.6;
+        ctx.beginPath();
+        ctx.arc(0, 0, R * 1.35, -Math.PI * 0.85, -Math.PI * 0.15);
+        ctx.stroke();
+        ctx.restore();
+      }
+      break;
+    }
+    case "acolyte": {
+      // A chalice held up in both hands, a little heart glowing above it that
+      // swells when it gives.
+      const lift = Math.max(0, w) * R * 0.25;
+      ctx.save();
+      ctx.translate(R * 0.72, R * 0.3 - lift);
+      ctx.rotate(sway * 0.4);
+      ctx.beginPath();
+      ctx.moveTo(-R * 0.22, -R * 0.42);
+      ctx.quadraticCurveTo(-R * 0.2, -R * 0.12, 0, -R * 0.1);
+      ctx.quadraticCurveTo(R * 0.2, -R * 0.12, R * 0.22, -R * 0.42);
+      ctx.closePath();
+      ctx.fillStyle = m(GOLD);
+      ctx.strokeStyle = m([0x8a, 0x5a, 0x00]);
+      ctx.lineWidth = lw * 0.7;
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillRect(-R * 0.04, -R * 0.1, R * 0.08, R * 0.22);
+      ctx.fillRect(-R * 0.14, R * 0.1, R * 0.28, R * 0.06);
+      const hs = R * (0.13 + 0.07 * Math.max(0, w) + 0.15 * sway);
+      const hy = -R * 0.62;
+      ctx.beginPath();
+      ctx.moveTo(0, hy + hs * 0.9);
+      ctx.bezierCurveTo(-hs * 1.4, hy - hs * 0.1, -hs * 0.6, hy - hs * 1.1, 0, hy - hs * 0.35);
+      ctx.bezierCurveTo(hs * 0.6, hy - hs * 1.1, hs * 1.4, hy - hs * 0.1, 0, hy + hs * 0.9);
+      ctx.closePath();
+      ctx.fillStyle = m([0xff, 0x6b, 0x8a]);
       ctx.fill();
       ctx.restore();
       break;

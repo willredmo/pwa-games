@@ -569,6 +569,9 @@ const AI_UNIT_VALUE: Record<string, number> = {
   herald: 5.4,
   lancer: 5.6,
   medic: 5.3,
+  // New, not yet measured with the "always take X" sim; on a par with Medic.
+  warden: 5.3,
+  acolyte: 5.2,
   guard: 6,
   berserker: 5.8,
   bulwark: 5.5,

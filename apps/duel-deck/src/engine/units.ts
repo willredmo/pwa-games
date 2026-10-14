@@ -102,6 +102,33 @@ export const UNITS: Record<string, UnitStats> = {
     ability: { name: "Mend", trigger: "After each exchange", text: "If it isn't your front unit, your front unit heals 3 (up to 3 times a round).", scaling: "+1 healing every 2 levels" },
     mastery: "Mends 5 times a round instead of 3.",
   },
+  // Burst protection from behind: soaks the first hits the front takes, but
+  // never grows the front's health, so it can't stall a round the way
+  // uncapped healing did.
+  warden: {
+    name: "Warden",
+    atk: 1,
+    maxHp: 6,
+    shape: "octagon",
+    classes: ["warden", "support"],
+    archetype: "support",
+    role: "Support: shields your front unit from behind",
+    ability: { name: "Barrier", trigger: "Start of round", text: "If it isn't your front unit, your front unit gets a shield that absorbs the first 4 damage it takes.", scaling: "+1 shield per level" },
+    mastery: "The unit behind the front gets the same shield.",
+  },
+  // Gives itself away: half its health moves to the front each round. Big
+  // health, no other use, so it wants the back of the row.
+  acolyte: {
+    name: "Acolyte",
+    atk: 1,
+    maxHp: 8,
+    shape: "drop",
+    classes: ["acolyte", "support"],
+    archetype: "support",
+    role: "Support: gives half its health to your front unit",
+    ability: { name: "Lifebond", trigger: "Start of round", text: "If it isn't your front unit, it gives half its health to your front unit for the round.", scaling: "Its health grows with levels, so the gift does too" },
+    mastery: "Your front unit also gains +2 attack.",
+  },
   // The late-game unit: the weakest body in the pool, but its merges escalate
   // (see SQUIRE_STEP) and at KNIGHT_AT merges it is promoted to a Knight.
   squire: {
@@ -148,7 +175,7 @@ export const SYNERGIES: Record<Archetype, { name: string; icon: string; text: st
   support: {
     name: "Sanctuary",
     icon: "🕊",
-    text: "Every support ability counts twice: Heralds' rally and Medics' mend are doubled.",
+    text: "Every support ability counts twice: rally, mend, barrier and lifebond are doubled.",
   },
 };
 /** Smallest row a synergy needs: a single unit (Ascendant) is no "row of one class". */
@@ -275,6 +302,16 @@ export function innateTraits(key: string, merges = 0): UnitTraits {
       const rally = 3 + Math.floor(m / 2);
       return master ? { rally, rallyHp: rally } : { rally };
     }
+    case "warden": {
+      // Read by applyAugments, which only credits Wardens behind the front.
+      // 3 + 1 every 2 levels measured 41% (sim, --aug=random); 4 + 1 a level 52%.
+      const barrier = 4 + m;
+      return master ? { barrier, barrierBehind: true } : { barrier };
+    }
+    case "acolyte":
+      // `lifebond` multiplies the gift (Sanctuary doubles it); the Acolyte
+      // always loses half its own health. Read by applyAugments.
+      return master ? { lifebond: 1, lifebondAtk: 2 } : { lifebond: 1 };
     case "squire":
       return { deathBuff: { target: "behind", atk: 1 + Math.floor(m / 2) } };
     case "knight": {

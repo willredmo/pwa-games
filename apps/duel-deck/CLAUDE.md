@@ -409,10 +409,23 @@ nothing, so mirror matches ran to the 300-round sim cap: now, when both rows
 fall together, an Ascendant side's champion still hits the enemy pool for its
 attack (`RoundResult.ascendantHit`). Sim (12k, `--aug=random`): holder 47%,
 0 cap hits, longest match 53 rounds.
+### Warden and Acolyte (support, third wave)
+- **Warden** (octagon, 1/6), **Barrier**: from behind the front, the front
+  starts the round with a shield of 4 (+1 a level) that soaks damage before
+  health (`shield`, spent in `strike` and counted as blocked). Mastery shields
+  the unit behind the front too. A shield never adds health, so unlike
+  uncapped healing it can't stall a round. Sim (10k, `--aug=random`): 3 + 1
+  every 2 levels was 41%, 4 + 1 a level 52%.
+- **Acolyte** (teardrop, 1/8), **Lifebond**: from behind the front, it gives
+  up half its health and the front gains it for the round (`lifebond` is the
+  multiplier on the gift; it still only loses half). Mastery adds +2 attack to
+  the front. Sim 50%.
+- Both are applied in `applyAugments` after Herald's rally, and Sanctuary
+  doubles them (barrier, and the gift) along with rally and mend.
 ### Classes and full-row synergies
 Every unit has a class (`UnitStats.archetype`, separate from `classes`, the tags
 upgrades target): **Attack** Striker, Berserker, Lancer, Skirmisher;
-**Defense** Guard, Bulwark, Squire, Knight; **Support** Herald, Medic. Shown on
+**Defense** Guard, Bulwark, Squire, Knight; **Support** Herald, Medic, Warden, Acolyte. Shown on
 offer cards (top corner), info cards and the Units screen. When every slot of
 a row (5, or 6 with Reinforcements; never a 1-unit Ascendant row,
 `SYNERGY_MIN`) holds one class, `synergyOf` picks its synergy and

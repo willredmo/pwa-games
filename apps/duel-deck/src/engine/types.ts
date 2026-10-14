@@ -8,7 +8,7 @@ export function otherSide(side: Side): Side {
   return side === "player" ? "enemy" : "player";
 }
 
-export type Shape = "circle" | "square" | "triangle" | "diamond" | "hexagon" | "shield" | "star" | "kite" | "cross";
+export type Shape = "circle" | "square" | "triangle" | "diamond" | "hexagon" | "shield" | "star" | "kite" | "cross" | "octagon" | "drop";
 
 /**
  * A unit's class. A row whose every slot holds one class gets that class's
@@ -136,6 +136,16 @@ export interface UnitTraits {
   pierceDepth?: number;
   /** Rally also gives the front this much health (a mastered Herald). */
   rallyHp?: number;
+  /** From behind the front: the front starts the round with a shield of this much (Warden's Barrier). */
+  barrier?: number;
+  /** A mastered Warden: the unit behind the front gets the same shield. */
+  barrierBehind?: boolean;
+  /** Damage absorbed before health this round (set on the front by Barrier). */
+  shield?: number;
+  /** From behind the front: gives half its health to the front, times this (Acolyte's Lifebond; Sanctuary doubles). */
+  lifebond?: number;
+  /** A mastered Acolyte: the front also gains this much attack. */
+  lifebondAtk?: number;
   /** Its blows can't be dodged (Full Assault). */
   trueStrike?: boolean;
   /** The first blow each round that would kill it leaves it on 1 health instead (Sanctuary). */

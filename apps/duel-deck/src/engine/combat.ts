@@ -56,6 +56,8 @@ interface RoundState {
   mends: Map<string, number>;
   /** Units whose Sanctuary has already saved them this round. */
   endured: Set<string>;
+  /** Barrier left on each shielded unit this round (Warden). */
+  shields: Map<string, number>;
 }
 
 /** Everything one tick's blows read and write. */
@@ -150,6 +152,14 @@ function strike(
     return;
   }
   let damage = reduced(raw, target, ctx.board);
+  // Barrier (Warden): a shield soaks damage before health, until it's used up.
+  // Counted as blocked, so playback shows it like armour.
+  const shield = round.shields.get(target.id) ?? target.traits?.shield ?? 0;
+  if (shield > 0 && damage > 0) {
+    const soak = Math.min(shield, damage);
+    damage -= soak;
+    round.shields.set(target.id, shield - soak);
+  }
   // Sanctuary: the first blow each round that would kill it leaves it on 1.
   if (target.traits?.endure && target.hp > 0 && target.hp - damage <= 0 && !round.endured.has(target.id)) {
     round.endured.add(target.id);
@@ -433,6 +443,7 @@ export function resolveRound(input: Board, opts?: { tickCap?: number }): RoundRe
     lit: new Map(),
     mends: new Map(),
     endured: new Set(),
+    shields: new Map(),
   };
   const { damageDealt, kills } = round;
 

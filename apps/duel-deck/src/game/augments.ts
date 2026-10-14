@@ -743,6 +743,10 @@ export function applyAugments(
         if (t.rally) gained.rally = t.rally;
         if (t.rallyHp) gained.rallyHp = t.rallyHp;
         if (t.mend) gained.mend = t.mend;
+        if (t.barrier) gained.barrier = t.barrier;
+        if (t.lifebond) gained.lifebond = t.lifebond;
+        if (t.barrier) t.barrier *= 2;
+        if (t.lifebond) t.lifebond *= 2;
         if (t.rally) t.rally *= 2;
         if (t.rallyHp) t.rallyHp *= 2;
         if (t.mend) t.mend *= 2;
@@ -778,6 +782,38 @@ export function applyAugments(
       front.hp = front.maxHp;
       if (!front.auras.includes("herald")) front.auras.push("herald");
       front.auraDetails = [...(front.auraDetails ?? []), { id: "herald", label: "📯 Herald's rally", atk: rally, hp: rallyHp }];
+    }
+
+    const behind = units.slice(1);
+    // Warden's Barrier: Wardens behind the front shield it; a mastered one
+    // shields the unit behind the front too. Combat soaks damage into it.
+    const barrier = behind.reduce((sum, u) => sum + (u.traits?.barrier ?? 0), 0);
+    if (barrier > 0) {
+      const shielded = behind.some((u) => u.traits?.barrierBehind) && units[1] ? [front, units[1]] : [front];
+      for (const u of shielded) {
+        const t = u.traits ?? (u.traits = {});
+        t.shield = (t.shield ?? 0) + barrier;
+        if (!u.auras.includes("warden")) u.auras.push("warden");
+        u.auraDetails = [...(u.auraDetails ?? []), { id: "warden", label: "🔰 Warden's barrier", atk: 0, hp: 0, traits: { shield: barrier } }];
+      }
+    }
+
+    // Acolyte's Lifebond: each Acolyte behind the front gives up half its
+    // health, and the front gains it (twice over under Sanctuary).
+    for (const u of behind) {
+      const mult = u.traits?.lifebond ?? 0;
+      if (mult <= 0) continue;
+      const gift = Math.floor(u.maxHp / 2);
+      if (gift <= 0) continue;
+      u.maxHp -= gift;
+      u.hp = u.maxHp;
+      const atk = u.traits?.lifebondAtk ?? 0;
+      front.maxHp += gift * mult;
+      front.hp = front.maxHp;
+      front.atk += atk;
+      if (!front.auras.includes("acolyte")) front.auras.push("acolyte");
+      front.auraDetails = [...(front.auraDetails ?? []), { id: "acolyte", label: "💞 Lifebond", atk, hp: gift * mult }];
+      u.auraDetails = [...(u.auraDetails ?? []), { id: "acolyte", label: "💞 Lifebond (given)", atk: 0, hp: -gift }];
     }
   }
 }

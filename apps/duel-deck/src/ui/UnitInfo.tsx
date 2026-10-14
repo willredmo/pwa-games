@@ -40,6 +40,10 @@ function describeTraits(t: UnitTraits): string[] {
     out.push(`each blow it lands also hits the ${t.pierceDepth === 2 ? "two units" : "unit"} behind the front for ${t.pierce}`);
   if (t.mend) out.push(`from behind the front: heals your front unit ${t.mend}♥ after each exchange (${t.mendUses ?? 3} times a round)`);
   if (t.rally) out.push(`from behind the front: your front unit gets +${t.rally}⚔${t.rallyHp ? ` +${t.rallyHp}♥` : ""}`);
+  if (t.barrier) out.push(`from behind the front: your front unit starts with a ${t.barrier}-damage shield${t.barrierBehind ? " (and the unit behind it)" : ""}`);
+  if (t.shield) out.push(`shield: the first ${t.shield} damage it takes this round is absorbed`);
+  if (t.lifebond)
+    out.push(`from behind the front: gives half its health to your front unit${t.lifebond > 1 ? ` (x${t.lifebond})` : ""}${t.lifebondAtk ? `, plus +${t.lifebondAtk}⚔` : ""}`);
   if (t.trueStrike) out.push("its blows can't be dodged");
   if (t.endure) out.push("survives the first blow each round that would kill it, on 1♥");
   return out;

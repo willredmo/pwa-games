@@ -9,6 +9,22 @@ export interface UnitLore {
 }
 
 export const UNIT_LORE: Record<string, UnitLore> = {
+  warden: {
+    title: "The Quiet Wall",
+    story:
+      "Wardens are octagons because a circle rolled away and a square looked too eager. " +
+      "A Warden never blocks a blow itself. It stands one step back, lifts its staff, and " +
+      "the light it throws over the front unit takes the first hits instead. Ask a Warden " +
+      "why it doesn't just stand in front, and it will tell you the light reaches further than it does.",
+  },
+  acolyte: {
+    title: "The Open Hand",
+    story:
+      "An Acolyte is a single drop of something kind, poured into a body that keeps " +
+      "giving it away. Every round it hands half of itself to whoever stands at the front, " +
+      "and every round it is somehow whole again by the next. Nobody has asked where the " +
+      "other half goes. The Acolyte would only say: to where it was needed.",
+  },
   lancer: {
     title: "The Long Reach",
     story:

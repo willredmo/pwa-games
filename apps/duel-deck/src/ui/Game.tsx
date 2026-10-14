@@ -60,7 +60,7 @@ import { settleRound } from "../game/roundEnd";
 /** Badge glyph for an augment id — "✦" if an id ever outlives its definition. */
 const auraIcon = (id: string) =>
   getAugment(id)?.icon ??
-  (id === "herald" ? "📯" : id === "drill" ? "🎯" : id.startsWith("syn-") ? (SYNERGIES[id.slice(4) as Archetype]?.icon ?? "✦") : "✦");
+  (id === "herald" ? "📯" : id === "warden" ? "🔰" : id === "acolyte" ? "💞" : id === "drill" ? "🎯" : id.startsWith("syn-") ? (SYNERGIES[id.slice(4) as Archetype]?.icon ?? "✦") : "✦");
 import { cellCenter, draw, pixelToCell, type Cell, type TargetKind } from "../board/render";
 import { POSE_MS, prefersReducedMotion, type Pose, type PoseState } from "../board/anim";
 import { FxLayer, type FxKind } from "../board/fx";
