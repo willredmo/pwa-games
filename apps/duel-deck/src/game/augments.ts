@@ -84,10 +84,36 @@ export interface AugmentState {
   /** One-time grants baked onto specific units (e.g. Last Stand). */
   grants: Record<string, Grant>; // unitId -> delta
   /**
-   * An upgrade frozen at a previous choice: offered first at the next one
-   * (if still not held), and kept frozen until taken or unfrozen. Player-only.
+   * Upgrades frozen at a previous choice (up to MAX_FROZEN_AUGMENTS): offered
+   * first at the next one (if still not held), and kept frozen until taken or
+   * unfrozen. Player-only. A plain string in saves from before multi-freeze;
+   * read it through rozenAugments.
    */
-  frozen?: string;
+  frozen?: string[] | string;
+}
+
+/** Most upgrades frozen at once: all of a 3-card hand would skip the rarity ladder. */
+export const MAX_FROZEN_AUGMENTS = 2;
+
+/** The frozen upgrade ids, whatever shape the save stored them in. */
+export function frozenAugments(state: AugmentState): string[] {
+  const f = state.frozen;
+  return !f ? [] : typeof f === "string" ? [f] : f;
+}
+
+/**
+ * Freeze or unfreeze id. Returns false (and changes nothing) when freezing
+ * would go past MAX_FROZEN_AUGMENTS.
+ */
+export function toggleFrozenAugment(state: AugmentState, id: string): boolean {
+  const cur = frozenAugments(state);
+  if (cur.includes(id)) {
+    state.frozen = cur.filter((x) => x !== id);
+    return true;
+  }
+  if (cur.length >= MAX_FROZEN_AUGMENTS) return false;
+  state.frozen = [...cur, id];
+  return true;
 }
 
 /**
@@ -563,11 +589,16 @@ export const rarityOf = (a: AugmentDef): Rarity => a.rarity ?? "common";
  * least one card of it, so the second and third upgrade rounds feel different.
  */
 export function offerAugments(state: AugmentState, n: number, tier = 1): AugmentDef[] {
-  // A frozen upgrade leads the offer (whatever its rarity: it was offered once
-  // already) and is kept out of the random draw.
-  const frozen = state.frozen && !state.active.includes(state.frozen) ? getAugment(state.frozen) : undefined;
+  // Frozen upgrades lead the offer (whatever their rarity: each was offered
+  // once already) and are kept out of the random draw.
+  const frozen = frozenAugments(state)
+    .filter((id) => !state.active.includes(id))
+    .map(getAugment)
+    .filter((a): a is AugmentDef => !!a)
+    .slice(0, n);
+  const frozenIds = new Set(frozen.map((a) => a.id));
   const pool = AUGMENTS.filter(
-    (a) => !state.active.includes(a.id) && a.id !== frozen?.id && RARITY_UNLOCK[rarityOf(a)] <= tier,
+    (a) => !state.active.includes(a.id) && !frozenIds.has(a.id) && RARITY_UNLOCK[rarityOf(a)] <= tier,
   );
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -578,8 +609,8 @@ export function offerAugments(state: AugmentState, n: number, tier = 1): Augment
     const i = pool.findIndex((a) => rarityOf(a) === fresh);
     if (i > 0) pool.unshift(...pool.splice(i, 1));
   }
-  const drawn = pool.slice(0, Math.max(0, Math.min(n - (frozen ? 1 : 0), pool.length)));
-  return frozen ? [frozen, ...drawn] : drawn;
+  const drawn = pool.slice(0, Math.max(0, Math.min(n - frozen.length, pool.length)));
+  return [...frozen, ...drawn];
 }
 
 /** Take an augment. Returns the max-HP cost to apply to the player's pool. */
@@ -591,7 +622,7 @@ export function takeAugment(
   const def = getAugment(id);
   if (!def || state.active.includes(id)) return 0;
   state.active.push(id);
-  if (state.frozen === id) state.frozen = undefined;
+  if (frozenAugments(state).includes(id)) state.frozen = frozenAugments(state).filter((x) => x !== id);
   def.onPick?.(state, units);
   return def.hpCost ?? 0;
 }

@@ -42,10 +42,12 @@ import {
 import {
   AUGMENTS,
   createAugmentState,
+  frozenAugments,
   getAugment,
   mergeRatioFor,
   offerAugments,
   takeAugment,
+  toggleFrozenAugment,
   transferGrant,
   type AugmentDef,
   type AugmentState,
@@ -1269,13 +1271,13 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   };
 
   /**
-   * Freeze an upgrade to be offered first at the next choice (one at a time:
-   * freezing another moves it). Lives on the player's augment state, which is
-   * saved with the match.
+   * Freeze an upgrade to be offered first at the next choice (up to
+   * MAX_FROZEN_AUGMENTS; the panel disables the rest once that's reached).
+   * Lives on the player's augment state, which is saved with the match.
    */
   const toggleFreezeAug = (id: string) => {
     const st = playerAug.current;
-    st.frozen = st.frozen === id ? undefined : id;
+    if (!toggleFrozenAugment(st, id)) return;
     setAugOffers((o) => [...o]); // re-render the panel
     if (lastSave.current) save({ ...lastSave.current });
   };
@@ -1809,7 +1811,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
             onPeek={() => setPeeking((p) => !p)}
             rerollsLeft={augRerolls}
             onReroll={rerollAugments}
-            frozenId={playerAug.current.frozen}
+            frozenIds={frozenAugments(playerAug.current)}
             onFreeze={toggleFreezeAug}
           />
         )}

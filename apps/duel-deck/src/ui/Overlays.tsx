@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./overlays.css";
 import type { AugmentDef, AugmentState } from "../game/augments";
-import { AUGMENTS, RALLY_CAP, getAugment, rarityOf, unitsAffectedBy, type Rarity } from "../game/augments";
+import { AUGMENTS, MAX_FROZEN_AUGMENTS, RALLY_CAP, getAugment, rarityOf, unitsAffectedBy, type Rarity } from "../game/augments";
 import { KNIGHT_LEVEL, UNITS, UNIT_KEYS, levelOf } from "../engine/units";
 import { levelTier } from "../board/render";
 import { AUGMENT_EVERY, PICK_COUNT, START_HP } from "../game/match";
@@ -27,8 +27,8 @@ interface AugmentPanelProps {
   /** Rerolls left on this choice, and the action that spends one. */
   rerollsLeft: number;
   onReroll: () => void;
-  /** The upgrade frozen for the next choice, if any (one at a time). */
-  frozenId?: string;
+  /** Upgrades frozen for the next choice (up to MAX_FROZEN_AUGMENTS). */
+  frozenIds: string[];
   onFreeze: (id: string) => void;
 }
 
@@ -57,9 +57,10 @@ export function AugmentPanel({
   onPeek,
   rerollsLeft,
   onReroll,
-  frozenId,
+  frozenIds,
   onFreeze,
 }: AugmentPanelProps) {
+  const freezeFull = frozenIds.length >= MAX_FROZEN_AUGMENTS;
   const [picked, setPicked] = useState<string | null>(null);
   const timer = useRef<number | undefined>(undefined);
   const choose = (id: string) => {
@@ -87,18 +88,20 @@ export function AugmentPanel({
             className="ghost-btn ghost-btn--sm"
             onClick={onReroll}
             disabled={rerollsLeft <= 0 || peeking || !!picked}
-            title="Draw new upgrades (a frozen one stays)"
+            title="Draw new upgrades (frozen ones stay)"
           >
             🎲 Reroll ({rerollsLeft})
           </button>
         </div>
         <div className={`cards cards--deal${picked ? " cards--picked" : ""}`}>
-          {offers.map((a, i) => (
+          {offers.map((a, i) => {
+            const isFrozen = frozenIds.includes(a.id);
+            return (
             <div className="card-row-wrap" key={a.id}>
             <button
               className={`card-row card-row--deal card-row--${a.category} card-row--${rarityOf(a)}${
                 picked ? (picked === a.id ? " card-row--chosen" : " card-row--away") : ""
-              }${frozenId === a.id ? " card-row--frozen" : ""}`}
+              }${frozenIds.includes(a.id) ? " card-row--frozen" : ""}`}
               style={{ "--i": i } as React.CSSProperties}
               onClick={() => choose(a.id)}
               tabIndex={peeking ? -1 : undefined}
@@ -116,17 +119,24 @@ export function AugmentPanel({
             </button>
             {/* Freeze: offered first at your next upgrade choice. */}
             <button
-              className={`freeze-btn freeze-btn--row${frozenId === a.id ? " freeze-btn--on" : ""}`}
+              className={`freeze-btn freeze-btn--row${isFrozen ? " freeze-btn--on" : ""}`}
               onClick={() => onFreeze(a.id)}
-              disabled={peeking || !!picked}
-              aria-pressed={frozenId === a.id}
+              disabled={peeking || !!picked || (freezeFull && !isFrozen)}
+              aria-pressed={isFrozen}
               aria-label={`Freeze ${a.name} for your next upgrade choice`}
-              title={frozenId === a.id ? "Frozen: offered first next time. Click to unfreeze" : "Freeze: offer this first at your next upgrade choice"}
+              title={
+                isFrozen
+                  ? "Frozen: offered first next time. Click to unfreeze"
+                  : freezeFull
+                    ? `${MAX_FROZEN_AUGMENTS} frozen max: unfreeze one first`
+                    : "Freeze: offer this first at your next upgrade choice"
+              }
             >
               ❄
             </button>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
@@ -760,7 +770,7 @@ export function HelpPanel({ onClose }: HelpPanelProps) {
           <li><strong>Clicking works everywhere dragging does.</strong> Click an offer or one of your units to pick it up, then click where it should go. Click it again to put it back down. Dashed outlines show the legal destinations.</li>
           <li>A merged unit gives <strong>half</strong> its attack and health to the target, permanently, and raises its level by one (every unit starts at <strong>Lv1</strong>). You lose stats overall versus placing it separately — what you gain is concentration: a tougher unit holding the front instead of another body behind it.</li>
           <li>When your row is <strong>full</strong>, you can also drop an offer onto a unit of a <em>different</em> type to <strong>replace</strong> it. The old unit is discarded, along with anything merged into it — the slot outlines orange to warn you.</li>
-          <li><strong>❄ Freeze</strong> an offer card to keep it for next round (it stays in its slot through rerolls, and unfreezes when you take it). On an upgrade choice, freeze one upgrade to have it offered first at your next choice.</li>
+          <li><strong>❄ Freeze</strong> an offer card to keep it for next round (it stays in its slot through rerolls, and unfreezes when you take it). On an upgrade choice, freeze up to two upgrades to have them offered first at your next choice.</li>
           <li>Move placed units to reorder the queue — only the front one fights, so position matters.</li>
           <li>Putting a placed unit onto <em>another of the same type</em> merges the two instead: the one you moved is absorbed for half its stats and leaves the board, and the two levels add together. Free — it costs a body, not a pick.</li>
           <li>Only the front-most unit on each side fights. Both strike at once, so a unit that dies still deals its damage.</li>

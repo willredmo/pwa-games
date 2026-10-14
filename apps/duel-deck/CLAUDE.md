@@ -218,10 +218,12 @@ the board, and not over the hint, which carries the replace warning. It is
 - **Freeze**: offer cards can be frozen (❄ beside each card). A frozen slot
   survives rerolls and carries into the next round's offer in the same slot,
   until taken (which unfreezes it; undo restores it) or unfrozen. Saved with
-  the match (`SavedMatch.frozen`), re-saved on each toggle via `lastSave`. One
-  upgrade can be frozen per choice (`AugmentState.frozen`): `offerAugments`
-  deals it first at the next choice, whatever the tier, until taken. Player
-  only; the AI doesn't freeze.
+  the match (`SavedMatch.frozen`), re-saved on each toggle via `lastSave`. Up
+  to two upgrades can be frozen (`MAX_FROZEN_AUGMENTS`, `AugmentState.frozen`,
+  read via `frozenAugments` since old saves hold a single string):
+  `offerAugments` deals them first at the next choice, whatever the tier, until
+  taken. The third ❄ is disabled; all three would let a player bank a whole hand
+  and skip the rarity ladder. Player only; the AI doesn't freeze.
 - **AI fit** (`augmentFit` in match.ts): Normal's unit picks add `FIT_BONUS`
   (1) per held augment built around a type, so it fields the units its
   augments need. Skirmisher and Striker upgrades still sit at 44-46%: those
