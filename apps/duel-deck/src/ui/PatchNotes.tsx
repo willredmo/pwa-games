@@ -17,6 +17,7 @@ export const PATCH_NOTES: Release[] = [
       "Full Assault reworked: +2 attack (was +1), and every unit's overkill carries on to the next enemy (was: blows can't be dodged, which only mattered against Skirmishers).",
       "Start-of-round buffs (Rally, Lifebond, Barrier) now play one unit at a time.",
       "Completing a class bonus shows its banner longer, with what it does.",
+      "iOS: the victory screen's sunburst and confetti now play.",
       "Phones: Reroll no longer gets cut off, and the round summary fits on one line. Tablets: the buttons fit on one row.",
     ],
   },

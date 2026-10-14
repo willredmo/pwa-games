@@ -587,7 +587,10 @@ on arrival (`OVERFLOW_TRAVEL_MS`). The clash holds until the sequence is done.
 dealt and taken, kills, falls, rounds fielded, last round seen; `foes` holds
 the enemy's), shown on the result screen's unit ledger with Your / Enemy tabs.
 Units that left the row (merged away, replaced) stay listed, faded. `ResultPanel` shows them full-window over a
-continuous backdrop (confetti rain and rays for a win, embers for a loss),
+continuous backdrop (confetti rain and rays for a win, embers for a loss;
+`ui/ResultBackdrop.tsx`, a canvas: the CSS version, a 160vmax masked
+conic-gradient and keyframes reading per-piece custom properties, didn't play
+on iOS),
 with an MVP (most damage) and the upgrades taken.
 
 ### AI difficulty

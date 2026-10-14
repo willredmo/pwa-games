@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./overlays.css";
 import type { AugmentDef, AugmentState } from "../game/augments";
 import { AUGMENTS, MAX_FROZEN_AUGMENTS, RALLY_CAP, getAugment, rarityOf, unitsAffectedBy, type Rarity } from "../game/augments";
@@ -9,6 +9,7 @@ import { mvpOf, roundsPlayed, type MatchStats, type UnitTally } from "../game/st
 import { prefersReducedMotion } from "../board/anim";
 import { UNIT_LORE } from "../game/lore";
 import { UnitPortrait } from "./UnitPortrait";
+import { ResultBackdrop } from "./ResultBackdrop";
 
 // Overlays: the augment offer track, the match-over panel, and help.
 // Presentational — match state is owned by App.
@@ -47,7 +48,6 @@ const CATEGORY_LABEL: Record<string, string> = {
   strategy: "Strategy",
 };
 
-const CONFETTI_COLORS = ["#f0b429", "#ff6b6b", "#4cc9f0", "#7bd88f", "#b26eff", "#fff6c8"];
 
 export function AugmentPanel({
   round,
@@ -513,32 +513,6 @@ function UnitLedger({ stats, winner }: { stats: MatchStats; winner: "player" | "
         </table>
       )}
     </section>
-  );
-}
-
-/** Continuous backdrop: sunburst and confetti rain for a win, drifting embers for a loss. */
-function ResultBackdrop({ won }: { won: boolean }) {
-  const bits = useMemo(
-    () =>
-      Array.from({ length: won ? 46 : 34 }, (_, i) => ({
-        "--x": `${(Math.random() * 100).toFixed(1)}%`,
-        "--drift": `${Math.round((Math.random() - 0.5) * 160)}px`,
-        "--r": `${Math.round(360 + Math.random() * 720)}deg`,
-        "--d": `${(won ? 3.2 : 6) + Math.random() * 3}s`,
-        "--dl": `${(-Math.random() * 8).toFixed(2)}s`,
-        "--s": (0.6 + Math.random() * 0.8).toFixed(2),
-        "--c": won ? CONFETTI_COLORS[i % CONFETTI_COLORS.length] : i % 3 ? "#ff7a45" : "#ffcf6b",
-      })) as React.CSSProperties[],
-    [won],
-  );
-  return (
-    <div className={`result-fx ${won ? "result-fx--win" : "result-fx--lose"}`} aria-hidden="true">
-      <div className="result-fx__rays" />
-      <div className="result-fx__glow" />
-      {bits.map((st, i) => (
-        <i key={i} className={won ? "result-fx__confetti" : "result-fx__ember"} style={st} />
-      ))}
-    </div>
   );
 }
 
