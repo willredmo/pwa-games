@@ -32,6 +32,16 @@ import type { AugmentState, Grant } from "../game/augments";
 
 export const GAME = "duel-deck";
 
+/**
+ * The rules version both devices must share. Each device runs the round itself,
+ * so two builds with different combat rules would silently disagree. Bump it
+ * with every change to what esolveRound/efreshForRound compute (unit
+ * stats, abilities, upgrades, caps). Rooms carry it (proto); a join with a
+ * different one is refused, and the lobby asks the outdated side to update.
+ * Rooms from before it existed have none, which reads as 1.
+ */
+export const PROTOCOL = 2;
+
 export type Player = "p1" | "p2";
 export const otherPlayer = (p: Player): Player => (p === "p1" ? "p2" : "p1");
 
@@ -68,6 +78,8 @@ export interface Room {
   host: string;
   guest?: string;
   createdAt: number;
+  /** The host's PROTOCOL (absent = 1). */
+  proto?: number;
   /** Bumped by a rematch, so both devices restart together. */
   startedAt: number;
   presence?: Partial<Record<Player, boolean>>;
@@ -143,11 +155,12 @@ export function unpackCommit(
 
 export async function hostRoom(): Promise<Session> {
   const me = clientId();
-  const code = await createRoom(GAME, { host: me, startedAt: Date.now() });
+  const code = await createRoom(GAME, { host: me, startedAt: Date.now(), proto: PROTOCOL });
   return { code, me: "p1" };
 }
 
-export type JoinError = "not-found" | "full" | "ended";
+/** update-me: the room runs newer rules than this build; update-them: older. */
+export type JoinError = "not-found" | "full" | "ended" | "update-me" | "update-them";
 
 /** Join (or rejoin) a room by code. */
 export async function joinRoom(input: string): Promise<Session | JoinError> {
@@ -162,6 +175,11 @@ export async function joinRoom(input: string): Promise<Session | JoinError> {
     }
     if (cur.left) {
       why = "ended";
+      return undefined;
+    }
+    const proto = cur.proto ?? 1;
+    if (proto !== PROTOCOL) {
+      why = proto > PROTOCOL ? "update-me" : "update-them";
       return undefined;
     }
     if (cur.host === me) return cur; // rejoining your own room

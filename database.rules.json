@@ -102,6 +102,7 @@
           "guest": { ".validate": "newData.isString() && newData.val().length <= 40" },
           "createdAt": { ".validate": "newData.isNumber() && (!data.exists() || data.val() === newData.val())" },
           "startedAt": { ".validate": "newData.isNumber()" },
+          "proto": { ".validate": "newData.isNumber()" },
           "presence": {
             "p1": { ".validate": "newData.isBoolean()" },
             "p2": { ".validate": "newData.isBoolean()" },

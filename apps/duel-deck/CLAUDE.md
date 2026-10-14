@@ -493,6 +493,17 @@ devices exchanging commits through a JSON round-trip that strips empty values
 the way the database does, and fails on any disagreement. It currently reports
 0 desyncs over ~2800 rounds.
 
+**Versions must match.** Since each device computes the round, two builds with
+different rules would desync silently. Two guards: the lobby checks
+`/version.json` before hosting or joining (`newerDeploy` in pwa.ts) and, if a
+newer deploy exists, shows "Update needed" with Update now (`updateNow` asks
+the service worker for the new build and waits for it, since a plain reload
+would serve the cached old one); and rooms carry `proto` (`PROTOCOL` in
+room.ts, absent = 1), so a join across protocols is refused with "update"
+or "ask your opponent to update". **Bump `PROTOCOL` with every change to what
+the engine or `refreshForRound` computes.** Deploy the database rules before
+hosting: the rules reject unknown room fields, so a build that writes `proto`
+can't host against older rules.
 Other notes: an online match is **not** saved to `localStorage` (half of it is
 the opponent's; `save()` is a no-op online) — a reload rejoins via the room, and
 `duel-deck:online` holds the code and side. Waiting on the other player is a
