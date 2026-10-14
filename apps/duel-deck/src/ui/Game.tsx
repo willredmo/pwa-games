@@ -1966,7 +1966,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           onContextMenu={(e) => e.preventDefault()}
         />
         <RoundBanner message={banner.message} tone={banner.tone} nonce={banner.nonce} />
-        {online && phase !== "over" && <EmoteBar session={online} round={round} />}
+        {online && phase !== "over" && <EmoteBar session={online} />}
         {tutorial && phase !== "over" && (
           <Tutorial
             state={{

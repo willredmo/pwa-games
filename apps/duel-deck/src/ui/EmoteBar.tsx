@@ -4,13 +4,12 @@ import { sfx } from "../game/sound";
 
 // Online only: a small fixed set of emoji the two players can send each other.
 // Fixed and sent by index (see EMOTES in room.ts), so there's no text to
-// moderate. Limits keep it from becoming spam: one every COOLDOWN_MS and at
-// most PER_ROUND a round. Bubbles sit over each side's half of the board (theirs
+// moderate. A short cooldown (COOLDOWN_MS) keeps it from becoming a stream;
+// there's no per-round cap, and the opponent can be muted. Bubbles sit over each side's half of the board (theirs
 // at the top, yours at the bottom) and fade on their own. The opponent's can
 // be muted from the tray; the choice is remembered on this device.
 
-const COOLDOWN_MS = 3000;
-const PER_ROUND = 5;
+const COOLDOWN_MS = 1000;
 const BUBBLE_MS = 2500;
 const MUTE_KEY = "duel-deck:mute-emotes";
 
@@ -20,7 +19,7 @@ interface Bubble {
   mine: boolean;
 }
 
-export function EmoteBar({ session, round }: { session: Session; round: number }) {
+export function EmoteBar({ session }: { session: Session }) {
   const [open, setOpen] = useState(false);
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const [muted, setMuted] = useState(() => {
@@ -30,15 +29,12 @@ export function EmoteBar({ session, round }: { session: Session; round: number }
       return false;
     }
   });
-  const [sentThisRound, setSentThisRound] = useState(0);
   const [coolUntil, setCoolUntil] = useState(0);
   const [, tick] = useState(0);
   const seq = useRef(0);
   const nextId = useRef(0);
   const mutedRef = useRef(muted);
   mutedRef.current = muted;
-
-  useEffect(() => setSentThisRound(0), [round]);
 
   const show = (emoji: string, mine: boolean) => {
     const id = nextId.current++;
@@ -74,14 +70,12 @@ export function EmoteBar({ session, round }: { session: Session; round: number }
   }, [coolUntil]);
 
   const cooling = Date.now() < coolUntil;
-  const capped = sentThisRound >= PER_ROUND;
   const send = (i: number) => {
-    if (cooling || capped) return;
+    if (cooling) return;
     // Start from the clock so a reload never repeats an `n` the other side saw.
     seq.current = Math.max(seq.current + 1, Date.now());
     sendEmote(session, i, seq.current);
     show(EMOTES[i], true);
-    setSentThisRound((n) => n + 1);
     setCoolUntil(Date.now() + COOLDOWN_MS);
     setOpen(false);
   };
@@ -112,7 +106,7 @@ export function EmoteBar({ session, round }: { session: Session; round: number }
                 key={e}
                 className="emote-tray__btn"
                 role="menuitem"
-                disabled={cooling || capped}
+                disabled={cooling}
                 onClick={() => send(i)}
                 aria-label={i === EMOTES.length - 1 ? "Good game" : `Send ${e}`}
               >
@@ -123,7 +117,6 @@ export function EmoteBar({ session, round }: { session: Session; round: number }
             <button className="emote-tray__mute" onClick={toggleMute} aria-pressed={muted}>
               {muted ? "🔇 Opponent muted" : "🔈 Mute opponent"}
             </button>
-            {capped && <span className="emote-tray__note">{PER_ROUND} a round max</span>}
           </div>
         )}
         <button
