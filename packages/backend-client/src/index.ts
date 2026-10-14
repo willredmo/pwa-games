@@ -174,6 +174,16 @@ export function presence(game: string, code: string, slot: string): () => void {
   };
 }
 
+/**
+ * Write a value at any database path outside the rooms, e.g. an append-only
+ * log. Firebase queues it while offline (for the life of the page), so it
+ * resolves once the server has it; the caller's rules decide who may write.
+ */
+export async function writeAt(fullPath: string, value: unknown): Promise<void> {
+  const { db, m } = await backend();
+  await m.set(m.ref(db, fullPath), value ?? null);
+}
+
 /** Whether the database connection is up right now (for "reconnecting…" UI). */
 export function watchConnection(cb: (connected: boolean) => void): () => void {
   let off: (() => void) | null = null;

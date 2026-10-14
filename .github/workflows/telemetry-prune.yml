@@ -1,0 +1,45 @@
+# Deletes Duel Deck balance telemetry older than three weeks.
+#
+# The Realtime Database has no expiry, so this runs the delete. Telemetry is
+# grouped by UTC day (telemetry/duel-deck/<YYYY-MM-DD>), so it removes whole
+# days before the cutoff. `pnpm telemetry` prunes the same way when run.
+#
+# Needs the repo secret FIREBASE_SERVICE_ACCOUNT: a service-account JSON key
+# for the roguelike-games project (Firebase console → Project settings →
+# Service accounts → Generate new private key). Without it the job skips.
+
+name: Prune telemetry
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    env:
+      RETAIN_DAYS: 21
+      HAS_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
+    steps:
+      - name: Skip without credentials
+        if: env.HAS_KEY != 'true'
+        run: echo "FIREBASE_SERVICE_ACCOUNT is not set; nothing pruned."
+      - name: Prune days older than the cutoff
+        if: env.HAS_KEY == 'true'
+        env:
+          KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$KEY" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          fb="npx -y firebase-tools --project roguelike-games"
+          cutoff=$(date -u -d "$RETAIN_DAYS days ago" +%F)
+          days=$($fb database:get /telemetry/duel-deck --shallow)
+          if [ -z "$days" ] || [ "$days" = "null" ]; then echo "No telemetry."; exit 0; fi
+          for d in $(echo "$days" | jq -r 'keys[]'); do
+            if [[ "$d" < "$cutoff" ]]; then
+              echo "Removing $d"
+              $fb database:remove "/telemetry/duel-deck/$d" --force
+            fi
+          done
+          echo "Cutoff $cutoff: done."

@@ -71,7 +71,8 @@ import {
   ResultPanel,
   UnitsView,
 } from "./Overlays";
-import { emptyStats, recordRound, type MatchStats } from "../game/stats";
+import { emptyStats, mvpOf, recordRound, type MatchStats } from "../game/stats";
+import { MatchLog, rowLog, type PickLog } from "../game/telemetry";
 import { SPEEDS, clearMatch, saveMatch, type SavedMatch, type Speed } from "../game/save";
 import { sfx } from "../game/sound";
 import {
@@ -148,6 +149,8 @@ interface UndoEntry {
   /** Taking a frozen card unfreezes it, so undo must put that back. */
   frozen: number[];
   picksLeft: number;
+  /** The round's telemetry picks, so an undone pick isn't logged. */
+  picks: PickLog[];
   /**
    * Merges move augment grants (Last Stand) between unit ids by mutating the
    * augment state, so the grants are snapshotted too — restoring only the
@@ -300,6 +303,20 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     // step. Reloading rejoins through the room instead.
     if (!online) saveMatch(s);
   };
+  /** Balance telemetry for this match (game/telemetry.ts). */
+  const [matchLog] = useState(() =>
+    online ? MatchLog.online(online.code, online.me) : MatchLog.cpu(!!saved, saved?.difficulty ?? startDifficulty),
+  );
+  /**
+   * This round's log so far: the cards as dealt, each pick, and rerolls spent.
+   * The picks are snapshotted for undo along with the board.
+   */
+  const roundLog = useRef<{ offer: string[]; picks: PickLog[]; rr: number; augRr: number }>({
+    offer: offer.slice(),
+    picks: [],
+    rr: 0,
+    augRr: 0,
+  });
   const [phase, setPhase] = useState<Phase>(saved?.augmentPending ? "augment" : "pick");
   const [result, setResult] = useState<RoundResult | null>(null);
   const [frames, setFrames] = useState<Frame[]>([]);
@@ -739,6 +756,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         stats: statsRef.current,
         frozen: keep,
       });
+      roundLog.current = { offer: nextOffer.slice(), picks: [], rr: 0, augRr: 0 };
       setAugOffers(augs);
       setAugRerolls(AUGMENT_REROLLS);
       setUnitRerolls(unitRerollsFor(playerAug.current));
@@ -892,6 +910,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     usedOffers,
     frozen,
     picksLeft,
+    picks: roundLog.current.picks.slice(),
     grants: JSON.parse(JSON.stringify(playerAug.current.grants)),
   });
   const pushUndo = () => {
@@ -909,6 +928,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     setUsedOffers(prev.usedOffers);
     setFrozen(prev.frozen);
     setPicksLeft(prev.picksLeft);
+    roundLog.current.picks = prev.picks;
     setSelected(null);
   };
 
@@ -956,6 +976,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       refreshForRound(next, playerAug.current, enemyAug.current);
       const landed = next.slots.player[cell.lane][cell.spot];
       if (landed) {
+        roundLog.current.picks.push({ k: key, a: action === "merge" ? "m" : action === "replace" ? "r" : "p", l: levelOf(landed.merges) });
         if (action === "merge") {
           setPose(landed.id, "merge", POSE_MS.merge);
           fxAt(next, cell, "merge");
@@ -1257,6 +1278,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     const fresh = rollOffer(OFFER_COUNT, playerAug.current);
     setOffer(offer.map((k, i) => (usedOffers.includes(i) || frozen.includes(i) ? k : fresh[i])));
     setUnitRerolls(unitRerolls - 1);
+    roundLog.current.rr++;
     setRerollN((n) => n + 1);
     setHistory([]);
     setSelected(null);
@@ -1287,6 +1309,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     if (phase !== "augment" || augRerolls <= 0) return;
     setAugOffers(offerAugments(playerAug.current, augmentOfferCount(playerAug.current), upgradeTier(round)));
     setAugRerolls(augRerolls - 1);
+    roundLog.current.augRr++;
   };
 
   const onPickAugment = (id: string) => {
@@ -1299,7 +1322,14 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     // Against the CPU, it upgrades now too. Online, the opponent is choosing
     // at the same time on their own device; their pick reaches us with their
     // commit, so there's nothing to do here but take ours.
+    const enemyHad = enemyAug.current.active.length;
     if (!online) aiTakeAugment(next, ENEMY, enemyAug.current, round, difficultyRef.current);
+    matchLog.augment(round, {
+      o: augOffers.map((a) => a.id),
+      t: id,
+      rr: roundLog.current.augRr,
+      ...(enemyAug.current.active.length > enemyHad ? { e: enemyAug.current.active[enemyAug.current.active.length - 1] } : {}),
+    });
     refreshForRound(next, playerAug.current, enemyAug.current);
     // The upgrade is locked in: re-save without the pending flag, so a reload
     // now resumes in this round's picks rather than offering it again.
@@ -1350,6 +1380,26 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       const healed = settleRound(result, PLAYER, playerAug.current, committed);
       const enemyHealed = settleRound(result, ENEMY, enemyAug.current, committed);
       recordRound(statsRef.current, result, committed, PLAYER, healed);
+      const log = roundLog.current;
+      matchLog.round(round, {
+        offer: log.offer,
+        picks: log.picks,
+        rr: log.rr,
+        row: rowLog(sideUnits(committed, PLAYER)),
+        foe: rowLog(sideUnits(committed, ENEMY)),
+        won: result.roundWinner === PLAYER ? 1 : result.roundWinner ? -1 : 0,
+        hp: [result.board.hp.player, result.board.hp.enemy],
+      });
+      if (result.matchWinner) {
+        matchLog.end({
+          won: result.matchWinner === PLAYER ? 1 : -1,
+          rounds: round,
+          hp: [result.board.hp.player, result.board.hp.enemy],
+          aug: [...playerAug.current.active],
+          foeAug: [...enemyAug.current.active],
+          ...(mvpOf(statsRef.current) ? { mvp: mvpOf(statsRef.current)!.key } : {}),
+        });
+      }
       // The HP bars read the shown board, which still holds the pre-round
       // pools — show the hit as the banner lands. (On the final round there is
       // no next round to carry it, so the loser's bar stayed above zero.)

@@ -1,6 +1,5 @@
 import {
   clientId,
-  configure,
   createRoom,
   normalizeCode,
   presence,
@@ -10,6 +9,7 @@ import {
 
   watch,
 } from "@pwa-games/backend-client";
+import "./firebase";
 import { makeUnit } from "../engine/board";
 import type { Side, Unit } from "../engine/types";
 import type { AugmentState, Grant } from "../game/augments";
@@ -29,14 +29,6 @@ import type { AugmentState, Grant } from "../game/augments";
 // own screen. That only works because the engine is side-symmetric, which is
 // checked by `pnpm netcheck`.
 
-// Public web config: it identifies the project; the database rules guard it.
-configure({
-  apiKey: "AIzaSyDSy9OF5r3sJ13D3IhgEACL5oVffWm33Nk",
-  authDomain: "roguelike-games.firebaseapp.com",
-  databaseURL: "https://roguelike-games-default-rtdb.firebaseio.com",
-  projectId: "roguelike-games",
-  appId: "1:130931296377:web:6b48e09eb320de0fb62ca8",
-});
 
 export const GAME = "duel-deck";
 

@@ -488,6 +488,28 @@ title and host again. Rules live in `database.rules.json` at the repo root and
 must be deployed (`firebase deploy --only database`) before online works at all;
 without the `duel-deck` block every write is a 401.
 
+### Telemetry (game/telemetry.ts, scripts/telemetry.ts)
+Balance data from real players, always on and not shown in the UI. Each match
+writes to `telemetry/duel-deck/<UTC day>/<match id>/` in the Realtime Database:
+`meta` at the start, `rounds/<n>` after every round (cards as dealt, each pick
+as place/merge/replace with the level it reached, rerolls, both rows as
+`key:level`, the round result, HP), `augs/<n>` at each upgrade choice (offered,
+taken, rerolls, and the CPU's pick) and `end`. Per round rather than once at
+the end so abandoned matches and killed iOS PWAs still count. The id is kept in
+`duel-deck:log` so a resumed save keeps writing to the same match; online it's
+derived from the room code and side. Off under `vite dev` unless the URL has
+`?telemetry=1`; the sims never import it.
+
+The database rules make every telemetry path create-only (`!data.exists()`),
+shape-checked, and unreadable by clients. `pnpm telemetry [--days=N] [--v=x.y.z]
+[--mode=cpu|online]` reads it through the Firebase CLI and prints pick rates,
+how often a pick merges, and the win rate of rows holding each unit and of each
+upgrade's holders, for players and for the CPU. Compare it with `pnpm sim`.
+
+Retention is three weeks. Grouping by day makes a prune one delete per day:
+`pnpm telemetry` prunes on every run (`--prune` only prunes), and
+`.github/workflows/telemetry-prune.yml` does it daily once the repo secret
+`FIREBASE_SERVICE_ACCOUNT` (a service-account key) is set.
 ### Sound (game/sound.ts)
 Synthesized, no audio files — oscillators and one noise buffer, like
 knock-hockey's. Call sites name the *event* (`sfx("death")`), never the
