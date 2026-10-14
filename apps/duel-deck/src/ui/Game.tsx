@@ -69,6 +69,7 @@ import { EmoteBar } from "./EmoteBar";
 import { Tutorial } from "./Tutorial";
 import { HP_BAR_BLAST_MS, HpBarBlast } from "./HpBarBlast";
 import { RoundBanner, type BannerTone } from "./RoundBanner";
+import { PatchNotes } from "./PatchNotes";
 import { UnitPortrait } from "./UnitPortrait";
 import { OfferInfo, UnitInfo } from "./UnitInfo";
 import {
@@ -77,7 +78,7 @@ import {
   ConfirmPanel,
   HelpPanel,
   ResultPanel,
-  UnitsView,
+  CodexView,
 } from "./Overlays";
 import { emptyStats, mvpOf, recordRound, type MatchStats } from "../game/stats";
 import { MatchLog, rowLog, type PickLog } from "../game/telemetry";
@@ -378,6 +379,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     return () => mq.removeEventListener("change", on);
   }, []);
   const [showUnits, setShowUnits] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
   /** Battle was pressed with picks still unspent; waiting on "battle anyway?". */
   const [confirmCommit, setConfirmCommit] = useState(false);
   const [showAugments, setShowAugments] = useState(false);
@@ -2029,9 +2031,13 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         {showMenu && (
           <MenuPanel
             onClose={() => setShowMenu(false)}
-            onUnits={() => {
+            onCodex={() => {
               setShowMenu(false);
               setShowUnits(true);
+            }}
+            onNotes={() => {
+              setShowMenu(false);
+              setShowNotes(true);
             }}
             onHelp={() => {
               setShowMenu(false);
@@ -2053,7 +2059,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           />
         )}
         {showHelp && <HelpPanel onClose={() => setShowHelp(false)} />}
-        {showUnits && <UnitsView onClose={() => setShowUnits(false)} />}
+        {showUnits && <CodexView onClose={() => setShowUnits(false)} />}
+        {showNotes && <PatchNotes onClose={() => setShowNotes(false)} />}
         {confirmCommit && phase === "pick" && (
           <ConfirmPanel
             title="Battle with picks left?"

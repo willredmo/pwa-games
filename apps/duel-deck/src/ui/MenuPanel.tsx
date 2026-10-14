@@ -15,7 +15,8 @@ import {
 
 export interface MenuPanelProps {
   onClose: () => void;
-  onUnits: () => void;
+  onCodex: () => void;
+  onNotes: () => void;
   onHelp: () => void;
   onNewMatch: () => void;
   /** Back to the title screen, keeping this match saved to resume. */
@@ -31,7 +32,7 @@ export interface MenuPanelProps {
 type CheckState = "idle" | "checking" | "done";
 
 export function MenuPanel(props: MenuPanelProps) {
-  const { onClose, onUnits, onHelp, onNewMatch, onExit, sound, onSound, battleLog, onBattleLog, difficultyLabel } = props;
+  const { onClose, onCodex, onNotes, onHelp, onNewMatch, onExit, sound, onSound, battleLog, onBattleLog, difficultyLabel } = props;
   const waiting = usePwaUpdate();
   const [latest, setLatest] = useState<DeployInfo | null>(null);
   const [check, setCheck] = useState<CheckState>("idle");
@@ -59,13 +60,17 @@ export function MenuPanel(props: MenuPanelProps) {
         </div>
 
         <div className="menu-list">
-          <button className="menu-item" onClick={onUnits}>
+          <button className="menu-item" onClick={onCodex}>
             <span className="menu-item__icon">📖</span>
-            <span>Units<small>Every unit, its ability and its story</small></span>
+            <span>Codex<small>Every unit and upgrade, and how they fit together</small></span>
           </button>
           <button className="menu-item" onClick={onHelp}>
             <span className="menu-item__icon">❓</span>
             <span>How to play<small>Rounds, merging, upgrades</small></span>
+          </button>
+          <button className="menu-item" onClick={onNotes}>
+            <span className="menu-item__icon">✨</span>
+            <span>What's new<small>Patch notes for every version</small></span>
           </button>
           {/* Also on the title screen, but a battle is exactly when you want
               to silence it, and the title is a whole match away from here. */}

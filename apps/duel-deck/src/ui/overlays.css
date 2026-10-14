@@ -655,5 +655,38 @@
 .class-card__head h3 { margin: 0; font-size: 1rem; }
 .class-card__icon { font-size: 1.1rem; }
 .class-card__units { display: flex; flex-wrap: wrap; gap: 0.2rem 0.6rem; margin: 0.4rem 0; }
-.class-card__unit { display: inline-flex; align-items: center; gap: 0.2rem; font-size: 0.8rem; }
+.class-card__unit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.05rem 0.4rem 0.05rem 0.1rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.class-card__unit:hover, .class-card__unit:focus-visible { border-color: #5b5480; background: #322d4a; }
+/* Codex: class headings over the unit list, cross-links, and the flash on
+   the entry a link jumped to. scroll-margin clears the sticky header. */
+.codex-class { margin: 0.9rem 0 0.1rem; font-size: 1rem; padding-left: 0.5rem; border-left: 4px solid; }
+.codex-class--attack { border-color: #ff7a45; }
+.codex-class--defense { border-color: #6fb2ff; }
+.codex-class--support { border-color: #7bd88f; }
+.codex-anchor { scroll-margin-top: 5.5rem; }
+button.unit-entry__aug {
+  border: 1px solid transparent;
+  font: inherit;
+  cursor: pointer;
+}
+button.unit-entry__aug:hover, button.unit-entry__aug:focus-visible { border-color: #8a80b8; color: #fff; }
+.codex-unit-chip { display: inline-flex; align-items: center; gap: 0.2rem; padding-left: 0.15rem; }
+.card-row .unit-entry__augs { margin-top: 0.35rem; }
+.codex-flash { animation: codex-flash 1.4s ease-out; }
+@keyframes codex-flash {
+  0%, 30% { box-shadow: 0 0 0 2px #f0b429, 0 0 18px rgba(240, 180, 41, 0.45); }
+  100% { box-shadow: 0 0 0 2px transparent; }
+}
 .class-card__bonus { margin: 0; font-size: 0.85rem; line-height: 1.35; }

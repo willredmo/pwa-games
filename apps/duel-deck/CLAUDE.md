@@ -362,7 +362,7 @@ and their descriptions say so.
 Every unit has an innate ability (`UnitStats.ability` for display;
 `innateTraits(key, merges)` for the mechanics, seeded into `unit.traits` before
 augments each round). Abilities grow with merges (`ability.scaling`), and that
-one function feeds combat, the hover breakdown and the Units screen alike.
+one function feeds combat, the hover breakdown and the Codex alike.
 Evasion stays at one dodge — a second made merged Skirmishers near-untouchable
 (63–84%) — so its merges add a riposte instead. Abilities: Guard
 Bodyguard and Squire Pass the torch (`deathBuff` on the unit behind), Knight
@@ -386,7 +386,7 @@ its levels away); the board label reads "MAX LEVEL 10". `mergeCapFor` returns
 Infinity for a side whose mods say `uncapped` (Ascendant).
 
 At the cap a unit's ability takes its **Mastery** form, a branch in
-`innateTraits`, so combat, the info card and the Units screen share it
+`innateTraits`, so combat, the info card and the Codex share it
 (`UnitStats.mastery` is the text): Guard's Bodyguard covers every ally;
 Striker charges each new enemy (`chargeEach`: Charge keyed per target);
 Skirmisher dodges twice; Bulwark's Fortify adds +1 attack; Berserker's
@@ -447,7 +447,7 @@ attack (`RoundResult.ascendantHit`). Sim (12k, `--aug=random`): holder 47%,
 Every unit has a class (`UnitStats.archetype`, separate from `classes`, the tags
 upgrades target): **Attack** Striker, Berserker, Lancer, Skirmisher;
 **Defense** Guard, Bulwark, Squire, Knight; **Support** Herald, Medic, Warden, Acolyte. Shown on
-offer cards (top corner), info cards and the Units screen. When every slot of
+offer cards (top corner), info cards and the Codex. When every slot of
 a row (5, or 6 with Reinforcements; never a 1-unit Ascendant row,
 `SYNERGY_MIN`) holds one class, `synergyOf` picks its synergy and
 `applyAugments` applies it for the round, badged and itemised (`syn-<class>`
@@ -466,6 +466,15 @@ endure together was +50. At match level (`pnpm sim 10000 --aug=random`) Iron Lin
 holders win 49% (45% at +2, 56% at +4); synergies fire in ~4% of AI rows
 (Defense 3.8%, Attack 0.8%, Support never: the AI doesn't build five
 supports), so real-player telemetry will be the better measure.
+### Codex (ui/Overlays.tsx `CodexView`)
+The reference screen, from the title screen and ☰ (it was "Units"; renamed so
+it can hold more than units). Two tabs: **Units**, with the three classes and
+their full-row bonuses at the top and the units grouped under their class, and
+**Upgrades**, every augment by category. They link both ways: a unit in a
+class card jumps to its entry, a unit's upgrade chips jump to the upgrade, and
+an upgrade's unit chips jump back (`unitsAffectedBy`; upgrades touching every
+unit or none list no units). The target scrolls under the sticky header
+(`scroll-margin-top`) and flashes gold. ☰ also has What's new.
 ### Squire → Knight
 The late-game unit. Player-facing rule: **a Squire is knighted at level 7**
 (`KNIGHT_LEVEL`; level 6 with Early knighthood). Internally that is `KNIGHT_AT`

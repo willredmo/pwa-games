@@ -17,7 +17,7 @@ export interface TitleProps {
   onPlay: () => void;
   onResume: () => void;
   onHelp: () => void;
-  onUnits: () => void;
+  onCodex: () => void;
   onNotes: () => void;
   /** Patch notes for this version haven't been opened yet: show a dot. */
   newNotes: boolean;
@@ -109,7 +109,7 @@ export function Title(props: TitleProps) {
         <div className="title__links">
           <button className="link-btn" onClick={props.onTutorial}>Tutorial</button>
           <button className="link-btn" onClick={props.onHelp}>How to play</button>
-          <button className="link-btn" onClick={props.onUnits}>Units</button>
+          <button className="link-btn" onClick={props.onCodex}>Codex</button>
           <button className="link-btn" onClick={props.onNotes}>
             What's new{props.newNotes && <span className="link-btn__dot" aria-label="(new)" />}
           </button>

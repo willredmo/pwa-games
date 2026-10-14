@@ -623,64 +623,117 @@ export function ResultPanel({ winner, round, stats, hp, upgrades, difficulty, on
   );
 }
 
-/** Every unit: animated portrait, stats, backstory, and the upgrades built around it. */
-export function UnitsView({ onClose }: { onClose: () => void }) {
+type CodexTab = "units" | "upgrades";
+const CLASS_ORDER = ["attack", "defense", "support"] as const;
+const unitAnchor = (key: string) => `codex-unit-${key}`;
+const augAnchor = (id: string) => `codex-aug-${id}`;
+/** The upgrades built around a unit (not the ones that touch every unit). */
+const upgradesFor = (key: string) => AUGMENTS.filter((a) => !isGeneral(a.id) && (AFFECTS.get(a.id) ?? []).includes(key));
+
+/**
+ * The codex: every unit (by class, with its ability, story and upgrades) and
+ * every upgrade (with the units it's built around), cross-linked both ways.
+ */
+export function CodexView({ onClose, initialTab = "units" }: { onClose: () => void; initialTab?: CodexTab }) {
+  const [tab, setTab] = useState<CodexTab>(initialTab);
+  /** The entry to scroll to and flash once the tab it lives on has rendered. */
+  const [focus, setFocus] = useState<{ id: string; n: number } | null>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!focus) {
+      scroller.current?.scrollTo({ top: 0 });
+      return;
+    }
+    const el = document.getElementById(focus.id);
+    if (!el) return;
+    el.scrollIntoView({ block: "start", behavior: prefersReducedMotion() ? "auto" : "smooth" });
+    el.classList.remove("codex-flash");
+    void el.offsetWidth; // restart the flash when it's the same entry again
+    el.classList.add("codex-flash");
+  }, [focus, tab]);
+
+  const go = (t: CodexTab, id: string) => {
+    setTab(t);
+    setFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }));
+  };
+  const switchTab = (t: CodexTab) => {
+    setTab(t);
+    setFocus(null);
+  };
+
   return (
     // Full-window, not inside the board like the other overlays: the stories
     // need reading width.
     <div className="overlay overlay--full" onClick={onClose}>
-      <div className="panel panel--wide panel--scroll panel--codex" onClick={(e) => e.stopPropagation()}>
+      <div ref={scroller} className="panel panel--wide panel--scroll panel--codex" onClick={(e) => e.stopPropagation()}>
         <div className="panel__head panel__head--sticky">
-          <h2>Units</h2>
+          <h2>Codex</h2>
+          <div className="tabs" role="tablist">
+            {(["units", "upgrades"] as const).map((t) => (
+              <button key={t} role="tab" aria-selected={tab === t} className={`tab${tab === t ? " tab--on" : ""}`} onClick={() => switchTab(t)}>
+                {t === "units" ? `Units (${UNIT_KEYS.length})` : `Upgrades (${AUGMENTS.length})`}
+              </button>
+            ))}
+          </div>
           <button className="close-btn" onClick={onClose} aria-label="Close">✕</button>
         </div>
-        {/* Classes first: they decide which units belong together. */}
-        <section className="class-guide" aria-label="Classes">
-          <p className="class-guide__intro">
-            Every unit has a class. Fill <strong>every slot</strong> of your row with one class (5 units, or 6 with
-            Reinforcements) and the whole row gets that class's bonus each round.
-          </p>
-          <div className="class-guide__list">
-            {(["attack", "defense", "support"] as const).map((a) => {
-              const members = UNIT_KEYS.filter((k) => UNITS[k].archetype === a);
-              return (
-                <div key={a} className={`class-card class-card--${a}`}>
-                  <div className="class-card__head">
-                    <span className="class-card__icon" aria-hidden="true">{ARCHETYPES[a].icon}</span>
-                    <h3>{ARCHETYPES[a].name}</h3>
-                  </div>
-                  <div className="class-card__units">
-                    {members.map((k) => (
-                      <span key={k} className="class-card__unit">
-                        <UnitPortrait unitKey={k} side="player" size={28} />
-                        {UNITS[k].name}
-                      </span>
-                    ))}
-                  </div>
-                  <p className="class-card__bonus">
-                    <strong>
-                      {SYNERGIES[a].icon} {SYNERGIES[a].name}:
-                    </strong>{" "}
-                    {SYNERGIES[a].text}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-        <div className="unit-codex">
-          {UNIT_KEYS.map((key, i) => {
+        {tab === "units" ? (
+          <CodexUnits onUnit={(k) => go("units", unitAnchor(k))} onAug={(id) => go("upgrades", augAnchor(id))} />
+        ) : (
+          <CodexUpgrades onUnit={(k) => go("units", unitAnchor(k))} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CodexUnits({ onUnit, onAug }: { onUnit: (key: string) => void; onAug: (id: string) => void }) {
+  let n = 0;
+  return (
+    <>
+      {/* Classes first: they decide which units belong together. */}
+      <section className="class-guide" aria-label="Classes">
+        <p className="class-guide__intro">
+          Every unit has a class. Fill <strong>every slot</strong> of your row with one class (5 units, or 6 with
+          Reinforcements) and the whole row gets that class's bonus each round. Tap a unit to jump to it.
+        </p>
+        <div className="class-guide__list">
+          {CLASS_ORDER.map((a) => (
+            <div key={a} className={`class-card class-card--${a}`}>
+              <div className="class-card__head">
+                <span className="class-card__icon" aria-hidden="true">{ARCHETYPES[a].icon}</span>
+                <h3>{ARCHETYPES[a].name}</h3>
+              </div>
+              <div className="class-card__units">
+                {UNIT_KEYS.filter((k) => UNITS[k].archetype === a).map((k) => (
+                  <button key={k} className="class-card__unit" onClick={() => onUnit(k)}>
+                    <UnitPortrait unitKey={k} side="player" size={28} />
+                    {UNITS[k].name}
+                  </button>
+                ))}
+              </div>
+              <p className="class-card__bonus">
+                <strong>
+                  {SYNERGIES[a].icon} {SYNERGIES[a].name}:
+                </strong>{" "}
+                {SYNERGIES[a].text}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+      {CLASS_ORDER.map((a) => (
+        <section key={a} className="unit-codex" aria-label={ARCHETYPES[a].name}>
+          <h3 className={`codex-class codex-class--${a}`}>
+            {ARCHETYPES[a].icon} {ARCHETYPES[a].name}
+          </h3>
+          {UNIT_KEYS.filter((k) => UNITS[k].archetype === a).map((key) => {
             const u = UNITS[key];
             const lore = UNIT_LORE[key];
-            const related = AUGMENTS.filter(
-              (a) => !isGeneral(a.id) && (AFFECTS.get(a.id) ?? []).includes(key),
-            );
+            const related = upgradesFor(key);
             return (
-              <article
-                key={key}
-                className="unit-entry"
-                style={{ "--i": i } as React.CSSProperties}
-              >
+              <article key={key} id={unitAnchor(key)} className="unit-entry codex-anchor" style={{ "--i": n++ } as React.CSSProperties}>
                 <div className="unit-entry__portrait">
                   <UnitPortrait unitKey={key} side="player" size={72} />
                 </div>
@@ -701,9 +754,7 @@ export function UnitsView({ onClose }: { onClose: () => void }) {
                       <span className="unit-entry__ability-name">✦ {u.ability.name}</span>
                       <span className="unit-entry__ability-trigger">{u.ability.trigger}</span>
                       <span className="unit-entry__ability-text">{u.ability.text}</span>
-                      {u.ability.scaling && (
-                        <span className="unit-entry__ability-scaling">↑ {u.ability.scaling}</span>
-                      )}
+                      {u.ability.scaling && <span className="unit-entry__ability-scaling">↑ {u.ability.scaling}</span>}
                       {u.mastery && (
                         <span className="unit-entry__ability-scaling">
                           ★ Level {MAX_LEVEL} (max): {u.mastery}
@@ -713,8 +764,8 @@ export function UnitsView({ onClose }: { onClose: () => void }) {
                   )}
                   {u.offered === false && (
                     <p className="unit-entry__earned">
-                      Never offered: a Squire is knighted when it reaches level {KNIGHT_LEVEL}. Stats shown are at
-                      the moment of knighting, before upgrades.
+                      Never offered: a Squire is knighted when it reaches level {KNIGHT_LEVEL}. Stats shown are at the
+                      moment of knighting, before upgrades.
                     </p>
                   )}
                   {lore && <p className="unit-entry__story">{lore.story}</p>}
@@ -722,9 +773,9 @@ export function UnitsView({ onClose }: { onClose: () => void }) {
                     <p className="unit-entry__augs">
                       <span className="unit-entry__augs-label">Upgrades:</span>
                       {related.map((a) => (
-                        <span key={a.id} className="unit-entry__aug" title={a.description}>
+                        <button key={a.id} className="unit-entry__aug" title={a.description} onClick={() => onAug(a.id)}>
                           {a.icon} {a.name}
-                        </span>
+                        </button>
                       ))}
                     </p>
                   )}
@@ -732,9 +783,61 @@ export function UnitsView({ onClose }: { onClose: () => void }) {
               </article>
             );
           })}
-        </div>
-      </div>
-    </div>
+        </section>
+      ))}
+    </>
+  );
+}
+
+function CodexUpgrades({ onUnit }: { onUnit: (key: string) => void }) {
+  return (
+    <>
+      <p className="panel__hint">
+        Every upgrade that can be offered. You pick one every {AUGMENT_EVERY} rounds and each can be taken once per
+        match. Rares can appear from the second pick, epics from the third.
+      </p>
+      {CATEGORY_ORDER.map((cat) => {
+        const defs = AUGMENTS.filter((a) => a.category === cat);
+        if (defs.length === 0) return null;
+        return (
+          <section key={cat}>
+            <h3>{CATEGORY_LABEL[cat]}</h3>
+            <div className="cards">
+              {defs.map((a, i) => {
+                const units = isGeneral(a.id) ? [] : (AFFECTS.get(a.id) ?? []);
+                return (
+                  <div
+                    key={a.id}
+                    id={augAnchor(a.id)}
+                    className={`card-row card-row--static card-row--${a.category} codex-anchor`}
+                    style={{ "--i": i } as React.CSSProperties}
+                  >
+                    <span className="card-row__head">
+                      <span className="card-row__name">
+                        <span className="aura-icon">{a.icon}</span> {a.name}
+                      </span>
+                      <RarityTag rarity={rarityOf(a)} />
+                    </span>
+                    <span className="card-row__desc">{a.description}</span>
+                    {units.length > 0 && (
+                      <span className="unit-entry__augs">
+                        <span className="unit-entry__augs-label">Units:</span>
+                        {units.map((k) => (
+                          <button key={k} className="unit-entry__aug codex-unit-chip" onClick={() => onUnit(k)}>
+                            <UnitPortrait unitKey={k} side="player" size={18} />
+                            {UNITS[k].name}
+                          </button>
+                        ))}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+    </>
   );
 }
 

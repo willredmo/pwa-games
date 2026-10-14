@@ -5,7 +5,7 @@ import { setSoundEnabled, unlockSound } from "./game/sound";
 import { Game } from "./ui/Game";
 import { Title } from "./ui/Title";
 import { Lobby, type LobbyProps } from "./ui/Lobby";
-import { HelpPanel, UnitsView } from "./ui/Overlays";
+import { CodexView, HelpPanel } from "./ui/Overlays";
 import { UpdatePrompt } from "./ui/UpdatePrompt";
 import { tutorialDone } from "./ui/Tutorial";
 import { PatchNotes, hasUnseenNotes } from "./ui/PatchNotes";
@@ -158,7 +158,7 @@ export default function App() {
           onPlay={() => start(settings.difficulty, null)}
           onResume={() => saved && start(saved.difficulty ?? settings.difficulty, saved)}
           onHelp={() => setHelp(true)}
-          onUnits={() => setUnits(true)}
+          onCodex={() => setUnits(true)}
           onNotes={() => {
             setNotes(true);
             setNewNotes(false);
@@ -190,7 +190,7 @@ export default function App() {
         />
       )}
       {help && <HelpPanel onClose={() => setHelp(false)} />}
-      {units && <UnitsView onClose={() => setUnits(false)} />}
+      {units && <CodexView onClose={() => setUnits(false)} />}
       {notes && <PatchNotes onClose={() => setNotes(false)} />}
       <UpdatePrompt />
     </div>
