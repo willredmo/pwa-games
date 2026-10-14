@@ -18,6 +18,9 @@ export interface TitleProps {
   onResume: () => void;
   onHelp: () => void;
   onUnits: () => void;
+  onNotes: () => void;
+  /** Patch notes for this version haven't been opened yet: show a dot. */
+  newNotes: boolean;
   /** Start the first-match tutorial. */
   onTutorial: () => void;
   /** Lead with the tutorial: nothing saved and it's never been finished or skipped. */
@@ -107,6 +110,9 @@ export function Title(props: TitleProps) {
           <button className="link-btn" onClick={props.onTutorial}>Tutorial</button>
           <button className="link-btn" onClick={props.onHelp}>How to play</button>
           <button className="link-btn" onClick={props.onUnits}>Units</button>
+          <button className="link-btn" onClick={props.onNotes}>
+            What's new{props.newNotes && <span className="link-btn__dot" aria-label="(new)" />}
+          </button>
           <button
             className="link-btn"
             onClick={() => props.onSound(!props.sound)}

@@ -1132,6 +1132,17 @@ button.menu-item:hover { border-color: #5a5180; }
   cursor: pointer;
 }
 .link-btn:hover { color: #d7ebff; }
+.link-btn__dot {
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-left: 0.3rem;
+  vertical-align: 0.15em;
+  border-radius: 50%;
+  background: #ffcf5a;
+}
+.notes__release h3 { margin-bottom: 0.3rem; }
+.notes__date { margin-left: 0.4rem; font-size: 0.76rem; font-weight: normal; color: var(--muted); }
 
 /* --- Online lobby (ui/Lobby.tsx) ----------------------------------------
    Ported from knock-hockey's, with duel-deck's palette: the two games show

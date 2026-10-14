@@ -8,6 +8,7 @@ import { Lobby, type LobbyProps } from "./ui/Lobby";
 import { HelpPanel, UnitsView } from "./ui/Overlays";
 import { UpdatePrompt } from "./ui/UpdatePrompt";
 import { tutorialDone } from "./ui/Tutorial";
+import { PatchNotes, hasUnseenNotes } from "./ui/PatchNotes";
 import { leaveRoom, loadSession, readSession, saveSession, type Session } from "./online/room";
 import "./App.css";
 
@@ -51,6 +52,8 @@ export default function App() {
   const [run, setRun] = useState<Run | null>(null);
   const [help, setHelp] = useState(false);
   const [units, setUnits] = useState(false);
+  const [notes, setNotes] = useState(false);
+  const [newNotes, setNewNotes] = useState(hasUnseenNotes);
   /** An online duel this device was in, offered for rejoining after a reload. */
   const [savedOnline, setSavedOnline] = useState<Session | null>(loadSession);
   const [lobby, setLobby] = useState<Pick<LobbyProps, "kind" | "session" | "code"> | null>(() => {
@@ -156,6 +159,11 @@ export default function App() {
           onResume={() => saved && start(saved.difficulty ?? settings.difficulty, saved)}
           onHelp={() => setHelp(true)}
           onUnits={() => setUnits(true)}
+          onNotes={() => {
+            setNotes(true);
+            setNewNotes(false);
+          }}
+          newNotes={newNotes}
           onTutorial={startTutorial}
           suggestTutorial={!saved && !tutorialDone()}
           rejoinCode={savedOnline?.code ?? null}
@@ -183,6 +191,7 @@ export default function App() {
       )}
       {help && <HelpPanel onClose={() => setHelp(false)} />}
       {units && <UnitsView onClose={() => setUnits(false)} />}
+      {notes && <PatchNotes onClose={() => setNotes(false)} />}
       <UpdatePrompt />
     </div>
   );

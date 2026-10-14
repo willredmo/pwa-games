@@ -740,7 +740,9 @@ worker is in `prompt` mode: a new deploy downloads in the background and
 `ui/UpdatePrompt.tsx` shows an Update toast (checked on launch, on returning to
 the foreground and hourly), so a build never swaps mid-battle and iOS installs
 that are never fully closed still update. Bump `version` in package.json for
-releases. The build writes `/version.json` (version + deploy time; no-cache,
+releases, and add that version's player-facing notes to `PATCH_NOTES` in
+`ui/PatchNotes.tsx` (the title screen's "What's new", dotted until opened
+on this device, `duel-deck:notes-seen`). The build writes `/version.json` (version + deploy time; no-cache,
 never precached). The ☰ menu's About section (`ui/MenuPanel.tsx`) shows this
 build's version and deploy time beside the latest deploy's, and offers Check
 for updates / Update now. Update state is shared via `src/pwa.ts`.
