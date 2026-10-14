@@ -1,5 +1,5 @@
 import type { Unit, UnitTraits } from "../engine/types";
-import { UNITS, innateTraits, levelOf } from "../engine/units";
+import { MAX_LEVEL, UNITS, innateTraits, isMastered, levelOf } from "../engine/units";
 import { getAugment } from "../game/augments";
 
 // Hover card for a unit on the board: its numbers now, its numbers before any
@@ -102,8 +102,14 @@ export function UnitInfo({
         </span>
       </div>
       <div className="unit-info__base">
-        Level {levelOf(unit.merges)} · Base ⚔{unit.baseAtk} ♥{unit.baseMaxHp}
+        Level {levelOf(unit.merges)}
+        {levelOf(unit.merges) === MAX_LEVEL ? " (max)" : ""} · Base ⚔{unit.baseAtk} ♥{unit.baseMaxHp}
       </div>
+      {UNITS[unit.key]?.mastery && (
+        <div className={`unit-info__mastery${isMastered(unit.merges) ? " unit-info__mastery--on" : ""}`}>
+          ★ {isMastered(unit.merges) ? "Mastery" : `At level ${MAX_LEVEL}`}: {UNITS[unit.key].mastery}
+        </div>
+      )}
       {toKnight != null && toKnight > 0 && (
         <div className="unit-info__knight">
           ⚜ {toKnight} more merge{toKnight === 1 ? "" : "s"} to Knight (level {levelOf(unit.merges + toKnight)})
@@ -184,6 +190,11 @@ export function OfferInfo({
           </div>
           <div className="unit-info__ability-text">{u.ability.text}</div>
           {u.ability.scaling && <div className="unit-info__ability-scaling">↑ {u.ability.scaling}</div>}
+          {u.mastery && (
+            <div className="unit-info__ability-scaling">
+              ★ Level {MAX_LEVEL} (max): {u.mastery}
+            </div>
+          )}
         </div>
       )}
     </div>

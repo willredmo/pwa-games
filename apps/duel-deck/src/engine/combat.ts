@@ -182,9 +182,16 @@ function strike(
   // above, so a miss doesn't impale.
   const pierce = attacker.traits?.pierce ?? 0;
   if (isMain && pierce > 0) {
+    // A mastered Lancer reaches two deep: each impaled unit passes it on.
+    const depth = attacker.traits?.pierceDepth ?? 1;
     ctx.after.push(() => {
-      const next = nextBehind(ctx.board, target, lane);
-      if (next) strike(ctx, lane, attacker, next, pierce, "pierce");
+      let behind: Unit = target;
+      for (let d = 0; d < depth; d++) {
+        const next = nextBehind(ctx.board, behind, lane);
+        if (!next) break;
+        strike(ctx, lane, attacker, next, pierce, "pierce");
+        behind = next;
+      }
     });
   }
 
@@ -201,8 +208,11 @@ function frontBlow(ctx: TickCtx, lane: number, attacker: Unit, target: Unit, fir
   const hurt = bonus > 0 && (ctx.startHp.get(target.id) ?? target.hp) * 2 < target.maxHp;
   // Charge: the first attack this unit makes each round hits harder.
   const opening = attacker.traits?.openingBonus ?? 0;
-  const charging = opening > 0 && !ctx.round.opened.has(attacker.id);
+  // A mastered Striker charges each new enemy: the first blow per target.
+  const chargeKey = attacker.traits?.chargeEach ? `${attacker.id}>${target.id}` : attacker.id;
+  const charging = opening > 0 && !ctx.round.opened.has(chargeKey);
   ctx.round.opened.add(attacker.id);
+  ctx.round.opened.add(chargeKey);
   const tag: AttackTag | undefined = firstStrike
     ? "first-strike"
     : charging
@@ -346,7 +356,7 @@ function mendHeals(ctx: TickCtx): void {
         const mend = u.traits?.mend ?? 0;
         if (u === front || u.hp <= 0 || mend <= 0) continue;
         const used = ctx.round.mends.get(u.id) ?? 0;
-        if (used >= MEND_USES) continue;
+        if (used >= (u.traits?.mendUses ?? MEND_USES)) continue;
         const gain = Math.min(mend, front.maxHp - front.hp);
         if (gain <= 0) continue;
         ctx.round.mends.set(u.id, used + 1);

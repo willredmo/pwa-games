@@ -23,6 +23,8 @@ export interface UnitStats {
   traits?: UnitTraits;
   /** Its innate ability, as shown to the player. */
   ability?: UnitAbility;
+  /** What the ability becomes at MAX_LEVEL, as shown to the player. */
+  mastery?: string;
   /** False for units that never appear in the offer (the Knight is earned). */
   offered?: boolean;
 }
@@ -117,6 +119,14 @@ export interface UnitTraits {
   pierce?: number;
   /** After each exchange, if this unit isn't the front, it heals the front for this much (Medic's Mend). */
   mend?: number;
+  /** Mends per round, when not the default (a mastered Medic). */
+  mendUses?: number;
+  /** Charge fires on the first blow against each new enemy (a mastered Striker). */
+  chargeEach?: boolean;
+  /** Impale reaches this many units behind the front (default 1; a mastered Lancer). */
+  pierceDepth?: number;
+  /** Rally also gives the front this much health (a mastered Herald). */
+  rallyHp?: number;
 }
 
 /** A unit's innate ability, for display. Mechanics live in its `traits`. */
@@ -139,6 +149,8 @@ export interface SideMods {
   lastLight?: number;
   /** Holdout: extra damage reduction for the side's last unit standing. */
   holdout?: number;
+  /** Ascendant: this side's units have no level cap. */
+  uncapped?: boolean;
 }
 
 /**

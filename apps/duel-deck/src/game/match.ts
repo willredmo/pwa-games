@@ -1,5 +1,7 @@
 import {
+  capacityOf,
   createBoard,
+  mergeCapFor,
   ensureDepth,
   promoteToKnight,
   firstEmptySpot,
@@ -13,7 +15,7 @@ import {
   cloneBoard,
 } from "../engine/board";
 import { resolveRound } from "../engine/combat";
-import { KNIGHT_AT, OFFER_KEYS, UNITS, mergesInto } from "../engine/units";
+import { KNIGHT_AT, OFFER_KEYS, UNITS, canAbsorb } from "../engine/units";
 import type { Board, Side, Unit } from "../engine/types";
 import {
   SABOTAGE_ATK,
@@ -77,6 +79,26 @@ export function unitRerollsFor(state: AugmentState): number {
 
 export function isAugmentRound(round: number): boolean {
   return round % AUGMENT_EVERY === 0;
+}
+
+/**
+ * Whether `side`'s row is complete: every slot filled, every unit at its level
+ * cap. Picks can't grow it then (only replace), so unspent ones become Drill.
+ */
+export function rowMaxed(board: Board, side: Side): boolean {
+  const cap = mergeCapFor(board, side);
+  if (!Number.isFinite(cap)) return false;
+  const units = sideUnits(board, side);
+  return units.length > 0 && units.length >= capacityOf(board, side) && units.every((u) => u.merges >= cap);
+}
+
+/**
+ * Drill for a commit: one attack per unspent pick, for this round only, once
+ * the row is maxed. Not permanent stats (that would just remove the cap) and
+ * not healing (two maxed rows could stall forever): it ends matches faster.
+ */
+export function drillFor(board: Board, side: Side, unusedPicks: number): number {
+  return rowMaxed(board, side) ? Math.max(0, unusedPicks) : 0;
 }
 
 export function newBoard(): Board {
@@ -220,7 +242,7 @@ function concentrate(board: Board, side: Side, key: string, state: AugmentState)
   let best: { lane: number; spot: number; merges: number } | null = null;
   for (let lane = 0; lane < board.lanes; lane++) {
     board.slots[side][lane].forEach((u, spot) => {
-      if (u && mergesInto(u.key, key) && (!best || u.merges > best.merges)) best = { lane, spot, merges: u.merges };
+      if (u && canAbsorb(u.key, u.merges, key, 1, mergeCapFor(board, side)) && (!best || u.merges > best.merges)) best = { lane, spot, merges: u.merges };
     });
   }
   const b = best as { lane: number; spot: number } | null;
@@ -333,16 +355,17 @@ export function aiCommit(
   // Same rerolls as the player: spend them on an offer that's useless to a full
   // row (nothing it can merge into).
   for (let left = state ? unitRerollsFor(state) : UNIT_REROLLS; left > 0; left--) {
-    const have = sideUnits(board, side).map((u) => u.key);
-    const usable = offer.some((k) => have.some((h) => mergesInto(h, k)));
+    const cap = mergeCapFor(board, side);
+    const usable = offer.some((k) => sideUnits(board, side).some((u) => canAbsorb(u.key, u.merges, k, 1, cap)));
     if (usable || firstEmptySpot(board, side)) break;
     offer = rollOffer(OFFER_COUNT, state);
   }
   const available = offer.map((_, i) => i);
   const picked: string[] = [];
-  const owned = () => new Set(sideUnits(board, side).map((u) => u.key));
   while (picked.length < PICK_COUNT && available.length > 0) {
-    const mine = owned();
+    // Units it could still merge into: same type, under the level cap.
+    const cap = mergeCapFor(board, side);
+    const mine = sideUnits(board, side);
     // A Squire's printed ATK (2) undersells it, so every AI values it as a
     // mid-tier pick; Squire augments only nudge that. (A big nudge made holding
     // one switch the AI to an all-in merge plan, which the sim then credited to
@@ -353,7 +376,7 @@ export function aiCommit(
     const value = (i: number) => {
       const key = offer[i];
       // Owning a type only matters once the row is full and picks merge.
-      const owns = !firstEmptySpot(board, side) && [...mine].some((k) => mergesInto(k, key));
+      const owns = !firstEmptySpot(board, side) && mine.some((u) => canAbsorb(u.key, u.merges, key, 1, cap));
       // Survivors deal the round's damage, so a unit's health matters as well
       // as its attack — an attack-only score over-picked glass cannons.
       const base =

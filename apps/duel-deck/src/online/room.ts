@@ -146,6 +146,7 @@ export function unpackCommit(
       momentum: a.momentum ?? 0,
       rally: a.rally ?? 0,
       kills: a.kills ?? 0,
+      drill: a.drill ?? 0,
       grants,
     },
   };

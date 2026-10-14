@@ -12,7 +12,7 @@
 import { cloneBoard, sideUnits } from "../src/engine/board";
 import { resolveRound } from "../src/engine/combat";
 import type { Side } from "../src/engine/types";
-import { newBoard, aiCommit, type Difficulty, aiPickAugment, aiTakeAugment, isAugmentRound, refreshForRound, upgradeTier, augmentOfferCount } from "../src/game/match";
+import { newBoard, aiCommit, drillFor, PICK_COUNT, type Difficulty, aiPickAugment, aiTakeAugment, isAugmentRound, refreshForRound, upgradeTier, augmentOfferCount } from "../src/game/match";
 import { createAugmentState, offerAugments, takeAugment, AUGMENTS } from "../src/game/augments";
 import { settleRound } from "../src/game/roundEnd";
 
@@ -39,7 +39,7 @@ const other = (s: Side): Side => (s === "player" ? "enemy" : "player");
 
 const rounds: number[] = [];
 const sideWins: Record<Side, number> = { player: 0, enemy: 0 };
-let capHits = 0, totRounds = 0, totDraws = 0, zeroDmg = 0;
+let capHits = 0, totRounds = 0, totDraws = 0, zeroDmg = 0, drillRounds = 0;
 const MAXR = 10; // rounds >= MAXR bucketed together
 const byRound = Array.from({ length: MAXR + 1 }, () => ({ n: 0, draws: 0, dmg: 0 }));
 const augWin: Record<string, [number, number]> = {};
@@ -68,8 +68,12 @@ for (let i = 0; i < N; i++) {
     }
     // Hard scouts the rows as they stood before either side picked.
     const scout = cloneBoard(c);
-    aiCommit(c, "player", aug.player, { difficulty: diff.player, oppAug: aug.enemy, scout });
-    aiCommit(c, "enemy", aug.enemy, { difficulty: diff.enemy, oppAug: aug.player, scout });
+    const pp = aiCommit(c, "player", aug.player, { difficulty: diff.player, oppAug: aug.enemy, scout });
+    const ep = aiCommit(c, "enemy", aug.enemy, { difficulty: diff.enemy, oppAug: aug.player, scout });
+    // Drill: a maxed row's unspent picks, this round only (as in the app).
+    aug.player.drill = drillFor(c, "player", PICK_COUNT - pp.length);
+    aug.enemy.drill = drillFor(c, "enemy", PICK_COUNT - ep.length);
+    if (aug.player.drill || aug.enemy.drill) drillRounds++;
     refreshForRound(c, aug.player, aug.enemy);
     const res = resolveRound(c);
     // Same round-end bookkeeping as the app (Momentum, Rally, kills, Veteran,
@@ -118,6 +122,7 @@ console.log(`draw rule: ${rule}   matches: ${N}   cap: ${CAP}`);
 console.log(`player (${diff.player}) wins ${f(100 * sideWins.player / N)}%   enemy (${diff.enemy}) wins ${f(100 * sideWins.enemy / N)}%`);
 console.log(`rounds/match: p10 ${pct(0.1)} median ${pct(0.5)} p90 ${pct(0.9)} max ${rounds[rounds.length - 1]}   mean ${f(totRounds / N)}`);
 console.log(`draw rounds: ${f(100 * totDraws / totRounds)}%   zero-damage rounds: ${f(100 * zeroDmg / totRounds)}%   cap hits: ${capHits}`);
+console.log(`rounds with Drill (a maxed row): ${f(100 * drillRounds / totRounds)}%`);
 console.log("by round:");
 byRound.forEach((b, r) => { if (r && b.n) console.log(`  r${String(r).padEnd(3)}${r === MAXR ? "+" : " "} draws ${f(100 * b.draws / b.n, 0).padStart(3)}%  avg dmg ${f(b.dmg / b.n).padStart(5)}  (n=${b.n})`); });
 const q = (xs: number[], p: number) => xs[Math.min(xs.length - 1, Math.floor(p * xs.length))];

@@ -1,6 +1,6 @@
 import type { Board, Shape, Side, Unit } from "../engine/types";
 import { capacityOf } from "../engine/board";
-import { levelOf } from "../engine/units";
+import { MAX_LEVEL, levelOf } from "../engine/units";
 import {
   activePose,
   clamp01,
@@ -860,18 +860,21 @@ function drawSplitSlot(
 }
 
 /**
- * Level badge colours, rarity-style. Thresholds come from `pnpm sim`: the
- * median unit ends a match at level 5, a row's strongest typically reaches 13
- * (p90 19, p99 26), so purple is a row's star, gold a strong one, red rare.
+ * Level badge colours, rarity-style, under the level cap (MAX_LEVEL 10): the
+ * median unit ends a match around level 7 and most rows have one at 10, so
+ * gold is the cap itself (shown as "MAX") and red is past it, which only
+ * Ascendant allows.
  */
 export const LEVEL_TIERS: { from: number; fill: string; ink: string; glow?: string }[] = [
   { from: 1, fill: "rgba(255, 255, 255, 0.10)", ink: "rgba(236, 232, 245, 0.55)" },
   { from: 2, fill: "#3fae6a", ink: "#06240f" },
   { from: 5, fill: "#3a86d6", ink: "#04182c" },
-  { from: 10, fill: "#9a5cf0", ink: "#fff", glow: "rgba(200, 160, 255, 0.9)" },
-  { from: 15, fill: "#f0b429", ink: "#2a1f05", glow: "rgba(255, 226, 122, 0.95)" },
-  { from: 20, fill: "#e5483a", ink: "#fff", glow: "rgba(255, 150, 120, 0.95)" },
+  { from: 8, fill: "#9a5cf0", ink: "#fff", glow: "rgba(200, 160, 255, 0.9)" },
+  { from: MAX_LEVEL, fill: "#f0b429", ink: "#2a1f05", glow: "rgba(255, 226, 122, 0.95)" },
+  { from: MAX_LEVEL + 1, fill: "#e5483a", ink: "#fff", glow: "rgba(255, 150, 120, 0.95)" },
 ];
+/** A level as its badge reads: "Lv7", "MAX" at the cap, "Lv14" past it. */
+export const levelLabel = (level: number) => (level === MAX_LEVEL ? "MAX" : `Lv${level}`);
 export const levelTier = (level: number) =>
   [...LEVEL_TIERS].reverse().find((t) => level >= t.from) ?? LEVEL_TIERS[0];
 
@@ -1023,8 +1026,8 @@ function drawUnit(
 
     // Level badge, coloured by tier (LEVEL_TIERS): every unit starts at a faint Lv1.
     ctx.font = `800 ${Math.round(h * 0.22)}px system-ui, sans-serif`;
-    const levelLabel = `Lv${levelOf(unit.merges)}`;
-    const mergeW = Math.max(h * 0.4, ctx.measureText(levelLabel).width + h * 0.16);
+    const badge = levelLabel(levelOf(unit.merges));
+    const mergeW = Math.max(h * 0.4, ctx.measureText(badge).width + h * 0.16);
     const mergeX = x + w - mergeW - pad * 0.5;
     {
       const by = y + h * 0.12;
@@ -1039,7 +1042,7 @@ function drawUnit(
       }
       ctx.fillStyle = tier.ink;
       ctx.textAlign = "center";
-      ctx.fillText(levelLabel, mergeX + mergeW / 2, by + h * 0.16);
+      ctx.fillText(badge, mergeX + mergeW / 2, by + h * 0.16);
       ctx.textAlign = "left";
     }
 

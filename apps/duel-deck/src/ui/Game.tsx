@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   capacityOf,
   cloneBoard,
+  mergeCapFor,
   emptySpotCount,
   findUnitCell,
   insertUnit,
@@ -17,7 +18,7 @@ import {
   writeLane,
 } from "../engine/board";
 import { resolveRound } from "../engine/combat";
-import { KNIGHTING_BONUS, UNITS, levelOf, mergesInto } from "../engine/units";
+import { KNIGHTING_BONUS, MAX_LEVEL, UNITS, canAbsorb, isMastered, levelOf, mergesInto } from "../engine/units";
 import type { AttackEvent, BattleEvent, Board, RoundResult, Side, Tick, Unit } from "../engine/types";
 import {
   AUGMENT_EVERY,
@@ -29,6 +30,8 @@ import {
   START_HP,
   aiCommit,
   aiTakeAugment,
+  drillFor,
+  rowMaxed,
   type Difficulty,
   isAugmentRound,
   knightAt,
@@ -55,7 +58,7 @@ import {
 import { settleRound } from "../game/roundEnd";
 
 /** Badge glyph for an augment id — "✦" if an id ever outlives its definition. */
-const auraIcon = (id: string) => getAugment(id)?.icon ?? (id === "herald" ? "📯" : "✦");
+const auraIcon = (id: string) => getAugment(id)?.icon ?? (id === "herald" ? "📯" : id === "drill" ? "🎯" : "✦");
 import { cellCenter, draw, pixelToCell, type Cell, type TargetKind } from "../board/render";
 import { POSE_MS, prefersReducedMotion, type Pose, type PoseState } from "../board/anim";
 import { FxLayer, type FxKind } from "../board/fx";
@@ -569,7 +572,13 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       // Without room, a twin merges and anything else is replaced. Every click
       // on your row therefore does something, rather than silently switching
       // the selection to the unit that was clicked.
-      if (mergesInto(unit.key, key)) return !boardFull && cell.zone === "right" ? "place" : "merge";
+      if (mergesInto(unit.key, key)) {
+        // A twin at its level cap can't take more: with room the card inserts
+        // beside it; with the row full there's nothing to do here (replacing a
+        // maxed unit with its own type would only throw its levels away).
+        if (!canAbsorb(unit.key, unit.merges, key, 1, mergeCapFor(board, PLAYER))) return boardFull ? "invalid" : "place";
+        return !boardFull && cell.zone === "right" ? "place" : "merge";
+      }
       return boardFull ? "replace" : "place";
     },
     [board, boardFull],
@@ -588,7 +597,11 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       const target = board.slots.player[cell.lane][cell.spot];
       if (!target || target.id === d.unitId) return "invalid";
       // Twins: the left half (the character) merges, the right half just moves.
-      if (mergesInto(target.key, d.key)) return cell.zone === "right" ? "reorder" : "merge";
+      if (mergesInto(target.key, d.key)) {
+        const source = board.slots.player[d.lane][d.from];
+        const fits = !!source && canAbsorb(target.key, target.merges, source.key, source.merges + 1, mergeCapFor(board, PLAYER));
+        return fits && cell.zone !== "right" ? "merge" : "reorder";
+      }
       return "reorder";
     },
     [board],
@@ -642,7 +655,11 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       const k = actionFor(c, grab);
       if (k === "invalid") continue;
       const occupant = board.slots.player[c.lane][c.spot];
-      const twin = !!occupant && mergesInto(occupant.key, grab.key);
+      // A twin only offers the merge while it's under the cap.
+      const grabbed = grab.kind === "unit" ? board.slots.player[grab.lane][grab.from] : null;
+      const twin =
+        !!occupant &&
+        canAbsorb(occupant.key, occupant.merges, grab.key, grabbed ? grabbed.merges + 1 : 1, mergeCapFor(board, PLAYER));
       targetKinds[`${c.lane},${c.spot}`] =
         grab.kind === "unit"
           ? twin
@@ -680,6 +697,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     if (kind === "place" && target) return `↧ INSERT ${UNITS[grab.key].name} at #${dropCell.spot + 1}`;
     if (kind === "place") return `＋ ADD ${UNITS[grab.key].name}`;
     if (kind === "reorder") return `MOVE TO #${dropCell.spot + 1}`;
+    if (target && mergesInto(target.key, grab.key)) return `MAX LEVEL ${MAX_LEVEL}`;
     return null;
   })();
 
@@ -751,6 +769,9 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
 
   const startRound = useCallback(
     (base: Board, roundNum: number) => {
+      // Drill lasts one round.
+      playerAug.current.drill = 0;
+      enemyAug.current.drill = 0;
       const next = refreshed(base);
       scoutRef.current = next;
       // Frozen cards keep their slot; the rest are dealt fresh.
@@ -851,7 +872,10 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   );
 
   const commit = useCallback(
-    (current: Board) => {
+    (current: Board, unusedPicks = 0) => {
+      // Drill: a maxed row turns its unspent picks into attack for this round.
+      // On the augment state, so it travels with an online commit.
+      playerAug.current.drill = drillFor(current, PLAYER, unusedPicks);
       if (online) {
         // Lock the row in and publish it. The round can't be built until the
         // opponent's arrives, so there is nothing to show but the wait.
@@ -870,11 +894,12 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         return;
       }
       const committed = cloneBoard(current);
-      aiCommit(committed, ENEMY, enemyAug.current, {
+      const aiPicked = aiCommit(committed, ENEMY, enemyAug.current, {
         difficulty: difficultyRef.current,
         oppAug: playerAug.current,
         scout: scoutRef.current ?? current,
       });
+      enemyAug.current.drill = drillFor(committed, ENEMY, PICK_COUNT - aiPicked.length);
       refreshForRound(committed, playerAug.current, enemyAug.current);
       playRound(committed);
     },
@@ -882,7 +907,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   );
 
   /** Commit the picks. Upgrades are chosen at the start of the round, so this always goes to battle. */
-  const finishPicks = useCallback((current: Board) => commit(current), [commit]);
+  const finishPicks = (current: Board) => commit(current, picksLeft);
 
   // --- Online: the room ----------------------------------------------------
 
@@ -985,6 +1010,16 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     sfx("knight");
   };
 
+  /** A unit just reached the level cap: its ability takes its Mastery form. */
+  const announceMastery = (b: Board, cell: Cell, name: string) => {
+    showBanner(`★ ${name} mastered!`, "win");
+    fxAt(b, cell, "bounty");
+    sfx("knight");
+  };
+  /** Whether a merge carried a unit from below the cap to it (or past it: Ascendant). */
+  const justMastered = (before: Unit | null | undefined, after: Unit | null | undefined) =>
+    !!before && !!after && !isMastered(before.merges) && isMastered(after.merges);
+
   /** Place a new unit from the offer into the queue at `cell`. */
   const placeFromOffer = useCallback(
     (offerIndex: number, cell: Cell) => {
@@ -1012,6 +1047,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           sfx("merge");
           const before = board.slots.player[cell.lane][cell.spot];
           if (before?.key === "squire" && landed.key === "knight") announceKnight(next, cell);
+          else if (justMastered(before, landed)) announceMastery(next, cell, landed.name);
         } else {
           if (action === "replace") fxAt(next, cell, "replace");
           setPose(landed.id, "spawn", POSE_MS.spawn);
@@ -1047,15 +1083,17 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         if (targetId) {
           transferGrant(playerAug.current, g.unitId, targetId);
           const wasSquire = board.slots.player[cell.lane][cell.spot]?.key === "squire";
+          const before = board.slots.player[cell.lane][cell.spot];
           refreshForRound(next, playerAug.current, enemyAug.current);
           const at = findUnitCell(next, targetId);
           if (at) {
             setPose(targetId, "merge", POSE_MS.merge);
             fxAt(next, at, "merge");
             sfx("merge");
-            if (wasSquire && next.slots.player[at.lane][at.spot]?.key === "knight") {
+            const after = next.slots.player[at.lane][at.spot];
+            if (wasSquire && after?.key === "knight") {
               announceKnight(next, at);
-            }
+            } else if (justMastered(before, after)) announceMastery(next, at, after!.name);
           }
         }
       } else {
@@ -1972,7 +2010,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         <button
           className="primary-btn"
           // Unspent picks are almost always a misclick, not a plan — ask first.
-          onClick={() => (picksLeft > 0 ? setConfirmCommit(true) : finishPicks(board))}
+          // (A maxed row's unspent picks aren't a misclick: they're Drill.)
+          onClick={() => (picksLeft > 0 && !rowMaxed(board, PLAYER) ? setConfirmCommit(true) : finishPicks(board))}
           disabled={phase !== "pick"}
         >
           ⚔ Battle
@@ -2004,7 +2043,9 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           key={picksLeft}
           className={`pick-label${picksLeft > 0 ? " pick-label--open" : " pick-label--done"}`}
         >
-          {picksLeft > 0
+          {picksLeft > 0 && rowMaxed(board, PLAYER)
+            ? `Row maxed · unused picks → 🎯 Drill +${picksLeft}⚔`
+            : picksLeft > 0
             ? `Pick ${picksLeft}${boardFull ? " · row full" : ""}`
             : unitRerolls > 0
               ? "✓ Picks done · ❄ freeze for next round"

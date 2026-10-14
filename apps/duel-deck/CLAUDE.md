@@ -357,6 +357,40 @@ units were tuned with a round-robin of single-unit builds (every one within
 ~44–56% of the others). The stalemate guard counts swings, not landed damage,
 so two dodging fronts don't end a round as a draw.
 
+### Level cap, Mastery and Drill
+Units stop at **level 10** (`MAX_LEVEL`, `MAX_MERGES` = 9 in `engine/units.ts`).
+`canAbsorb` is the one rule (like with like, within the cap), used by
+`canMerge`/`mergePlaced` in board.ts (so the AI and every merge path obey it),
+by the drop rules in Game.tsx and by the AI's pick values. Placed-onto-placed
+merges add levels, so two level-6 units can't fold into a 12. A maxed twin
+can't take a card: with room the drop inserts beside it, with a full row it's
+not a target at all (replacing a maxed unit with its own type would only throw
+its levels away); the board label reads "MAX LEVEL 10". `mergeCapFor` returns
+Infinity for a side whose mods say `uncapped` (Ascendant).
+
+At the cap a unit's ability takes its **Mastery** form, a branch in
+`innateTraits`, so combat, the info card and the Units screen share it
+(`UnitStats.mastery` is the text): Guard's Bodyguard covers every ally;
+Striker charges each new enemy (`chargeEach`: Charge keyed per target);
+Skirmisher dodges twice; Bulwark's Fortify adds +1 attack; Berserker's
+Overflow is uncapped (`cleaveFull`); Herald's rally adds as much health
+(`rallyHp`); Lancer impales two deep (`pierceDepth`); Medic mends 5 times
+(`mendUses`); Knight's armour is 2. The badge reads gold "MAX"
+(`levelLabel`); `LEVEL_TIERS` became 1/2/5/8/10/11+, red being past the cap.
+Reaching it gets a banner and the knighting sound.
+
+**Drill:** once every slot holds a maxed unit (`rowMaxed` in match.ts), picks
+can only replace, so each pick left unspent at Battle gives every unit +1
+attack for that round (`drillFor` → `AugmentState.drill`, applied in
+`applyAugments`, cleared at the next round, sent with the online commit). Not
+permanent stats (that would undo the cap) and not healing (two maxed rows could
+stall). The Battle button skips the "picks left?" confirm then.
+
+Sim after the cap (`pnpm sim 12000 --aug=random`, 2026-10-13): units 44-59%
+(Knight 59%, Skirmisher 58%; Squire 44% as an unknighted Squire at match end),
+upgrades 43-60% (Bloodpact, Champion, Legion top; Squire upgrades fell to
+44-45%), median match 21 rounds, median unit level 7 and most rows' best unit
+at 10, Drill in 0.7% of rounds.
 ### Squire → Knight
 The late-game unit. Player-facing rule: **a Squire is knighted at level 7**
 (`KNIGHT_LEVEL`; level 6 with Early knighthood). Internally that is `KNIGHT_AT`

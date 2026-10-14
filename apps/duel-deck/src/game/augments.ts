@@ -90,6 +90,12 @@ export interface AugmentState {
    * read it through rozenAugments.
    */
   frozen?: string[] | string;
+  /**
+   * Drill: attack every unit gets this round, one per pick left unspent while
+   * the whole row is at its level cap (`drillFor` in match.ts). Set at commit,
+   * cleared when the next round starts, and sent with the online commit.
+   */
+  drill?: number;
 }
 
 /** Most upgrades frozen at once: all of a 3-card hand would skip the rarity ladder. */
@@ -694,15 +700,29 @@ export function applyAugments(
     unit.auraDetails = details;
   });
 
+  // Drill: a maxed row's unspent picks, as attack for this round only.
+  const drill = state.drill ?? 0;
+  if (drill > 0) {
+    for (const u of units) {
+      u.atk += drill;
+      if (!u.auras.includes("drill")) u.auras.push("drill");
+      u.auraDetails = [...(u.auraDetails ?? []), { id: "drill", label: "🎯 Drill", atk: drill, hp: 0 }];
+    }
+  }
+
   // Herald's Rally: every rallying unit behind the front lifts the front's
   // attack for the round. After the loop, so it lands on augmented stats.
   const front = units[0];
   if (front) {
     const rally = units.slice(1).reduce((sum, u) => sum + (u.traits?.rally ?? 0), 0);
+    // A mastered Herald's rally carries health too.
+    const rallyHp = units.slice(1).reduce((sum, u) => sum + (u.traits?.rallyHp ?? 0), 0);
     if (rally > 0) {
       front.atk += rally;
+      front.maxHp += rallyHp;
+      front.hp = front.maxHp;
       if (!front.auras.includes("herald")) front.auras.push("herald");
-      front.auraDetails = [...(front.auraDetails ?? []), { id: "herald", label: "📯 Herald's rally", atk: rally, hp: 0 }];
+      front.auraDetails = [...(front.auraDetails ?? []), { id: "herald", label: "📯 Herald's rally", atk: rally, hp: rallyHp }];
     }
   }
 }

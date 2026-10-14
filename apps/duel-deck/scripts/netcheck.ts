@@ -17,6 +17,7 @@
 // does, and fails if the two ever disagree about a round.
 
 import { insertUnit, makeUnit, occupants, writeLane } from "../src/engine/board";
+import { MAX_MERGES } from "../src/engine/units";
 import { resolveRound } from "../src/engine/combat";
 import type { Side, Unit } from "../src/engine/types";
 import { ENEMY, PLAYER, newBoard, refreshForRound } from "../src/game/match";
@@ -45,6 +46,18 @@ function assemble(mine: Unit[], myAug: AugmentState, theirs: Commit, myHp: numbe
   return board;
 }
 
+/**
+ * A unit with a random level up to the cap, so Mastery abilities (which only
+ * switch on at MAX_LEVEL) are exercised as well as the plain ones.
+ */
+function grown(key: string): Unit {
+  const u = makeUnit(key, PLAYER);
+  u.merges = Math.random() < 0.3 ? MAX_MERGES : Math.floor(Math.random() * MAX_MERGES);
+  u.baseAtk += Math.round(u.merges * u.baseAtk * 0.5);
+  u.baseMaxHp += Math.round(u.merges * u.baseMaxHp * 0.5);
+  return u;
+}
+
 let desyncs = 0;
 let rounds = 0;
 
@@ -58,9 +71,12 @@ for (let m = 0; m < MATCHES; m++) {
   for (let round = 1; round <= ROUND_CAP; round++) {
     // Each side builds its row privately, as a player would.
     for (let i = 0; i < 2; i++) {
-      if (aRow.length < 5) aRow.push(makeUnit(pick(KEYS), PLAYER));
-      if (bRow.length < 5) bRow.push(makeUnit(pick(KEYS), PLAYER));
+      if (aRow.length < 5) aRow.push(grown(pick(KEYS)));
+      if (bRow.length < 5) bRow.push(grown(pick(KEYS)));
     }
+    // Drill now and then, so it's covered by the round trip too.
+    aAug.drill = Math.random() < 0.2 ? 1 + Math.floor(Math.random() * 2) : 0;
+    bAug.drill = Math.random() < 0.2 ? 1 + Math.floor(Math.random() * 2) : 0;
     if (round % 3 === 0) {
       takeAugment(aAug, pick(AUGMENTS).id, aRow);
       takeAugment(bAug, pick(AUGMENTS).id, bRow);

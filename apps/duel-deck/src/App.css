@@ -785,6 +785,8 @@ body { background-color: #12101c; }
 .reroll-btn { white-space: nowrap; }
 .unit-info--offer { width: 17rem; max-width: calc(100vw - 16px); }
 .unit-info__knight { margin-top: 0.15rem; font-weight: 700; color: #ffd666; }
+.unit-info__mastery { margin-top: 0.15rem; font-size: 0.92em; opacity: 0.6; }
+.unit-info__mastery--on { opacity: 1; font-weight: 700; color: #f0b429; }
 .unit-info--pinned { width: 17rem; max-width: calc(100vw - 24px); }
 /* Long-press opens info cards: stop the OS menu / text selection on the game. */
 .app__board, .hand .card { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
