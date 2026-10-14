@@ -1,15 +1,5 @@
 import { useState } from "react";
-import {
-  SFX_VARIANTS,
-  chooseVariant,
-  chosenVariant,
-  playVariant,
-  sfx,
-  setSoundEnabled,
-  unlockSound,
-  type Sfx,
-  type VariantKind,
-} from "../game/sound";
+import { sfx, setSoundEnabled, unlockSound, type Sfx } from "../game/sound";
 
 // Dev-only: every sound effect on one page, to review and retune the palette
 // (game/sound.ts). Open the dev server with ?sounds. Not in production builds.
@@ -17,7 +7,7 @@ import {
 const SOUNDS: { kind: Sfx; name: string; when: string; unused?: boolean; scales?: boolean }[] = [
   { kind: "hit", name: "Hit", when: "A blow lands (the clash plays one sound per beat, from its biggest blow).", scales: true },
   { kind: "big-hit", name: "Big hit", when: "The beat's biggest blow is BIG_HIT damage or more." },
-  { kind: "death", name: "Death", when: "A unit falls (slightly after the impact)." },
+  { kind: "death", name: "Death", when: "A unit falls: a cartoon poof." },
   { kind: "dodge", name: "Dodge", when: "A Skirmisher's Evasion dodges a blow." },
   { kind: "block", name: "Block", when: "Armour or a shield soaks part of a hit." },
   { kind: "ability", name: "Ability", when: "A named ability fires (Charge, Bodyguard, Overflow...)." },
@@ -25,7 +15,7 @@ const SOUNDS: { kind: Sfx; name: string; when: string; unused?: boolean; scales?
   { kind: "merge", name: "Merge", when: "Two units become one." },
   { kind: "knight", name: "Knighted / Mastered", when: "A Squire is knighted, or a unit reaches level 10." },
   { kind: "upgrade", name: "Upgrade", when: "You take an upgrade." },
-  { kind: "round-win", name: "Round won", when: "You hold the row at the end of a round." },
+  { kind: "round-win", name: "Round won", when: "You hold the row at the end of a round: two bells." },
   { kind: "round-loss", name: "Round lost", when: "The enemy holds the row." },
   { kind: "victory", name: "Victory", when: "You win the match." },
   { kind: "defeat", name: "Defeat", when: "You lose the match." },
@@ -38,7 +28,6 @@ const SOUNDS: { kind: Sfx; name: string; when: string; unused?: boolean; scales?
 
 export function Soundboard() {
   const [strength, setStrength] = useState(0.5);
-  const [, rerender] = useState(0);
   const play = (kind: Sfx) => {
     unlockSound();
     setSoundEnabled(true);
@@ -48,47 +37,9 @@ export function Soundboard() {
     <div className="soundboard">
       <h1>Sound effects</h1>
       <p className="soundboard__note">
-        Every sound in the game, synthesized in <code>game/sound.ts</code>. Strength only changes the ones that scale with the
+        Every sound in the game, synthesized in <code>game/sound.ts</code>, through a compressor and a light room reverb; combat sounds vary slightly in pitch each time. Strength only changes the ones that scale with the
         size of a blow (marked ⚖).
       </p>
-      <h2 className="soundboard__h2">Compare versions</h2>
-      <p className="soundboard__note">
-        Candidates for the sounds under review. ★ is the one the game plays now; "Use" switches it for this page load so you
-        can hear it in context below.
-      </p>
-      {(Object.keys(SFX_VARIANTS) as VariantKind[]).map((kind) => (
-        <div key={kind} className="soundboard__variants">
-          <strong>{kind === "death" ? "Death" : "Round won"}</strong>
-          <div className="soundboard__variant-row">
-            {Object.keys(SFX_VARIANTS[kind]).map((name) => (
-              <span key={name} className={`soundboard__variant${chosenVariant(kind) === name ? " soundboard__variant--on" : ""}`}>
-                <button
-                  className="ghost-btn ghost-btn--sm"
-                  onClick={() => {
-                    unlockSound();
-                    setSoundEnabled(true);
-                    playVariant(kind, name);
-                  }}
-                >
-                  ▶ {name}
-                  {chosenVariant(kind) === name ? " ★" : ""}
-                </button>
-                {chosenVariant(kind) !== name && (
-                  <button
-                    className="link-btn"
-                    onClick={() => {
-                      chooseVariant(kind, name);
-                      rerender((n) => n + 1);
-                    }}
-                  >
-                    Use
-                  </button>
-                )}
-              </span>
-            ))}
-          </div>
-        </div>
-      ))}
       <h2 className="soundboard__h2">All sounds</h2>
       <label className="soundboard__strength">
         Strength {strength.toFixed(2)}

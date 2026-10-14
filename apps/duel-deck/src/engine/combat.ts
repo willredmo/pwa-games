@@ -56,8 +56,6 @@ interface RoundState {
   mends: Map<string, number>;
   /** Units whose Sanctuary has already saved them this round. */
   endured: Set<string>;
-  /** Barrier left on each shielded unit this round (Warden). */
-  shields: Map<string, number>;
 }
 
 /** Everything one tick's blows read and write. */
@@ -154,11 +152,15 @@ function strike(
   let damage = reduced(raw, target, ctx.board);
   // Barrier (Warden): a shield soaks damage before health, until it's used up.
   // Counted as blocked, so playback shows it like armour.
-  const shield = round.shields.get(target.id) ?? target.traits?.shield ?? 0;
+  // What's left lives on the unit (`shieldLeft`), so tick snapshots and the
+  // event carry it to the board's shield bar.
+  const shield = target.shieldLeft ?? target.traits?.shield ?? 0;
+  let shieldLeft: number | undefined;
   if (shield > 0 && damage > 0) {
     const soak = Math.min(shield, damage);
     damage -= soak;
-    round.shields.set(target.id, shield - soak);
+    shieldLeft = shield - soak;
+    target.shieldLeft = shieldLeft;
   }
   // Sanctuary: the first blow each round that would kill it leaves it on 1.
   if (target.traits?.endure && target.hp > 0 && target.hp - damage <= 0 && !round.endured.has(target.id)) {
@@ -178,6 +180,7 @@ function strike(
   if (tag) ev.tag = tag;
   if (blocked > 0) ev.blocked = blocked;
   if (opening > 0) ev.opening = opening;
+  if (shieldLeft !== undefined) ev.shieldLeft = shieldLeft;
   events.push(ev);
 
   // Cleave: only a main blow carries overkill on (not thorns / last breath / cleave itself).
@@ -429,6 +432,47 @@ function mendHeals(ctx: TickCtx): void {
   return ctx.attempted;
 }
 
+/**
+ * Start-of-round support: Herald's Rally and Acolyte's Lifebond. Applied as
+ * the round opens rather than baked into the pre-round stats (they used to be,
+ * in applyAugments), so while picking every unit shows its own numbers and the
+ * gift plays out as a beat before the first blow. Returns the buff events,
+ * which playback shows; the board is changed in place.
+ */
+function openingBuffs(board: Board): BattleEvent[] {
+  const events: BattleEvent[] = [];
+  for (const side of SIDES) {
+    for (let lane = 0; lane < board.lanes; lane++) {
+      const queue = occupants(board, side, lane);
+      const front = queue[0];
+      if (!front) continue;
+      for (const u of queue.slice(1)) {
+        const rally = u.traits?.rally ?? 0;
+        if (rally > 0) {
+          const hp = u.traits?.rallyHp ?? 0;
+          front.atk += rally;
+          front.maxHp += hp;
+          front.hp += hp;
+          events.push({ type: "buff", unit: front.id, source: u.id, atk: rally, hp, label: "Rally" });
+        }
+        const mult = u.traits?.lifebond ?? 0;
+        const gift = mult > 0 ? Math.floor(u.maxHp / 2) : 0;
+        if (gift > 0) {
+          u.maxHp -= gift;
+          u.hp = Math.min(u.hp, u.maxHp);
+          const atk = u.traits?.lifebondAtk ?? 0;
+          front.atk += atk;
+          front.maxHp += gift * mult;
+          front.hp += gift * mult;
+          events.push({ type: "buff", unit: u.id, source: u.id, atk: 0, hp: -gift, label: "Lifebond" });
+          events.push({ type: "buff", unit: front.id, source: u.id, atk, hp: gift * mult, label: "Lifebond" });
+        }
+      }
+    }
+  }
+  return events;
+}
+
 export function resolveRound(input: Board, opts?: { tickCap?: number }): RoundResult {
   const board = cloneBoard(input);
   const tickCap = opts?.tickCap ?? DEFAULT_TICK_CAP;
@@ -443,9 +487,9 @@ export function resolveRound(input: Board, opts?: { tickCap?: number }): RoundRe
     lit: new Map(),
     mends: new Map(),
     endured: new Set(),
-    shields: new Map(),
   };
   const { damageDealt, kills } = round;
+  const opening = openingBuffs(board);
 
   for (let t = 0; t < tickCap; t++) {
     const lanes = contestedLanes(board);
@@ -508,6 +552,7 @@ export function resolveRound(input: Board, opts?: { tickCap?: number }): RoundRe
     kills,
     ...(bounty > 0 ? { bounty } : {}),
     ...(ascendantHit > 0 ? { ascendantHit } : {}),
+    ...(opening.length > 0 ? { opening } : {}),
     matchWinner,
   };
 }

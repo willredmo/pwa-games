@@ -77,6 +77,11 @@ export interface Unit {
    * stats. Drives the hover breakdown, so it always matches the real numbers.
    */
   auraDetails?: AuraDetail[];
+  /**
+   * Shield left this round (Warden's Barrier), once a hit has dented it. Absent
+   * means untouched: the full `traits.shield`. Cleared by `applyAugments`.
+   */
+  shieldLeft?: number;
 }
 
 /** One augment's contribution to one unit. */
@@ -205,6 +210,8 @@ export interface AttackEvent {
   blocked?: number;
   /** Charge bonus included in `damage` (set even when tagged first-strike). */
   opening?: number;
+  /** The target's shield after this blow, when a shield soaked some of it. */
+  shieldLeft?: number;
 }
 /** A death-triggered buff landing on an ally, for the rest of the round. */
 export interface BuffEvent {
@@ -257,6 +264,8 @@ export interface RoundResult {
   bounty?: number;
   /** Ascendant: pool damage dealt by champions in a mutual wipe (both pools may take some). */
   ascendantHit?: number;
+  /** Start-of-round support buffs (Rally, Lifebond), applied before the first tick. */
+  opening?: BattleEvent[];
   /** Set once a player's HP pool hits 0. */
   matchWinner: Side | null;
 }

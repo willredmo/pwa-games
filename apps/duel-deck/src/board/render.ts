@@ -34,6 +34,9 @@ const COLORS = {
   atkText: "#ffc94d",
   hpText: "#5fe08f",
   hpTrack: "#14121f",
+  /** Warden's shield: its bar and the number beside the stats. */
+  shield: "#7fd3ff",
+  shieldSpent: "rgba(127, 211, 255, 0.4)",
   hpFill: "#4ad07a",
   target: "#f0b429",
   merge: "#5fe08f",
@@ -1039,7 +1042,19 @@ function drawUnit(
     const hpX = tx + ctx.measureText(atkLabel).width + h * 0.28;
     const hpLabel = `♥${Math.max(0, unit.hp)}`;
     ctx.fillText(hpLabel, hpX, statY);
-    const statsRight = hpX + ctx.measureText(hpLabel).width;
+    let statsRight = hpX + ctx.measureText(hpLabel).width;
+    // Warden's Barrier: what's left of the shield, after the health, in the
+    // shield bar's colour (the bar itself sits under the HP bar).
+    const shieldMax = unit.traits?.shield ?? 0;
+    const shieldNow = Math.max(0, Math.min(shieldMax, unit.shieldLeft ?? shieldMax));
+    if (shieldMax > 0) {
+      const shieldLabel = `🔰${shieldNow}`;
+      ctx.font = `800 ${Math.round(Math.max(11, h * 0.3))}px system-ui, sans-serif`;
+      ctx.fillStyle = shieldNow > 0 ? COLORS.shield : COLORS.shieldSpent;
+      const sx = statsRight + h * 0.2;
+      ctx.fillText(shieldLabel, sx, statY);
+      statsRight = sx + ctx.measureText(shieldLabel).width;
+    }
 
     // Squire countdown: merges left until knighthood, right-aligned on the
     // stats line. Shortened, then dropped, when the stats leave no room.
@@ -1108,7 +1123,21 @@ function drawUnit(
     // HP bar: eased fill, lingering ghost chunk, hit flash, low-HP pulse.
     const barW = w - (tx - x) - pad;
     const barH = Math.max(3, h * 0.08);
-    const barY = y + h * 0.9;
+    // A shielded unit's HP bar moves up to make room for the shield bar below.
+    const barY = y + h * (shieldMax > 0 ? 0.83 : 0.9);
+    if (shieldMax > 0) {
+      // Shield bar: full width is the whole Barrier, the fill what's left.
+      const sh = Math.max(2, h * 0.06);
+      const sy = y + h * 0.94;
+      ctx.fillStyle = COLORS.hpTrack;
+      roundRect(ctx, tx, sy, barW, sh, sh / 2);
+      ctx.fill();
+      if (shieldNow > 0) {
+        ctx.fillStyle = COLORS.shield;
+        roundRect(ctx, tx, sy, Math.max(sh, (barW * shieldNow) / shieldMax), sh, sh / 2);
+        ctx.fill();
+      }
+    }
     const r = barH / 2;
     const max = unit.maxHp || 1;
     const frac = clamp01(v.hp / max);

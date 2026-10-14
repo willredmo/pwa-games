@@ -420,8 +420,17 @@ attack (`RoundResult.ascendantHit`). Sim (12k, `--aug=random`): holder 47%,
   up half its health and the front gains it for the round (`lifebond` is the
   multiplier on the gift; it still only loses half). Mastery adds +2 attack to
   the front. Sim 50%.
-- Both are applied in `applyAugments` after Herald's rally, and Sanctuary
-  doubles them (barrier, and the gift) along with rally and mend.
+- Sanctuary doubles them (barrier, and the gift) along with rally and mend.
+- **Shield bar:** a shielded unit shows `🔰N` after its stats and a blue bar
+  under its HP bar (`COLORS.shield`). Combat records what's left on the unit
+  (`shieldLeft`, cleared each round by `applyAugments`) and on the hit event,
+  so playback drains it blow by blow.
+- **Rally and Lifebond happen as the round opens,** not in the pre-round stats:
+  `openingBuffs` in combat.ts applies them and returns buff events
+  (`RoundResult.opening`), which playback shows as their own beat before the
+  first blow (the Acolyte's `−N♥` and the front's gain). While picking, every
+  unit shows its own, unbuffed numbers. The Warden's Barrier stays in
+  `applyAugments`, so the shield is visible from the start.
 ### Classes and full-row synergies
 Every unit has a class (`UnitStats.archetype`, separate from `classes`, the tags
 upgrades target): **Attack** Striker, Berserker, Lancer, Skirmisher;
@@ -632,7 +641,10 @@ Retention is three weeks. Grouping by day makes a prune one delete per day:
 `.github/workflows/telemetry-prune.yml` does it daily once the repo secret
 `FIREBASE_SERVICE_ACCOUNT` (a service-account key) is set.
 ### Sound (game/sound.ts)
-Synthesized, no audio files — oscillators and one noise buffer, like
+Synthesized, no audio files (`?sounds` on the dev server plays every one). The
+master chain is a compressor plus a short generated room reverb, and combat
+sounds vary ±4% in pitch per play; death is a cartoon \"poof\" and round won
+two bells (chosen 2026-10-13).  — oscillators and one noise buffer, like
 knock-hockey's. Call sites name the *event* (`sfx("death")`), never the
 waveform, so the palette can be retuned or swapped for samples without touching
 playback. Unlocked from the first real click (Play, or turning sound on), since

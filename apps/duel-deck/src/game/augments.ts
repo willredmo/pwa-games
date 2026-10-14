@@ -715,6 +715,7 @@ export function applyAugments(
     unit.auras = auras;
     unit.traits = traits;
     unit.auraDetails = details;
+    delete unit.shieldLeft; // a fresh round, a fresh shield
   });
 
   // Full-row synergy: a row of one class, badged and itemised like an augment.
@@ -769,21 +770,12 @@ export function applyAugments(
     }
   }
 
-  // Herald's Rally: every rallying unit behind the front lifts the front's
-  // attack for the round. After the loop, so it lands on augmented stats.
+  // Herald's Rally and Acolyte's Lifebond happen in combat as the round opens
+  // (`openingBuffs` in combat.ts), so the board shows every unit at its own
+  // stats while picking. Warden's Barrier stays here: a shield is shown on the
+  // front from the start.
   const front = units[0];
   if (front) {
-    const rally = units.slice(1).reduce((sum, u) => sum + (u.traits?.rally ?? 0), 0);
-    // A mastered Herald's rally carries health too.
-    const rallyHp = units.slice(1).reduce((sum, u) => sum + (u.traits?.rallyHp ?? 0), 0);
-    if (rally > 0) {
-      front.atk += rally;
-      front.maxHp += rallyHp;
-      front.hp = front.maxHp;
-      if (!front.auras.includes("herald")) front.auras.push("herald");
-      front.auraDetails = [...(front.auraDetails ?? []), { id: "herald", label: "📯 Herald's rally", atk: rally, hp: rallyHp }];
-    }
-
     const behind = units.slice(1);
     // Warden's Barrier: Wardens behind the front shield it; a mastered one
     // shields the unit behind the front too. Combat soaks damage into it.
@@ -796,24 +788,6 @@ export function applyAugments(
         if (!u.auras.includes("warden")) u.auras.push("warden");
         u.auraDetails = [...(u.auraDetails ?? []), { id: "warden", label: "🔰 Warden's barrier", atk: 0, hp: 0, traits: { shield: barrier } }];
       }
-    }
-
-    // Acolyte's Lifebond: each Acolyte behind the front gives up half its
-    // health, and the front gains it (twice over under Sanctuary).
-    for (const u of behind) {
-      const mult = u.traits?.lifebond ?? 0;
-      if (mult <= 0) continue;
-      const gift = Math.floor(u.maxHp / 2);
-      if (gift <= 0) continue;
-      u.maxHp -= gift;
-      u.hp = u.maxHp;
-      const atk = u.traits?.lifebondAtk ?? 0;
-      front.maxHp += gift * mult;
-      front.hp = front.maxHp;
-      front.atk += atk;
-      if (!front.auras.includes("acolyte")) front.auras.push("acolyte");
-      front.auraDetails = [...(front.auraDetails ?? []), { id: "acolyte", label: "💞 Lifebond", atk, hp: gift * mult }];
-      u.auraDetails = [...(u.auraDetails ?? []), { id: "acolyte", label: "💞 Lifebond (given)", atk: 0, hp: -gift }];
     }
   }
 }

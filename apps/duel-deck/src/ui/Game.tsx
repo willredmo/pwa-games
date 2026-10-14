@@ -216,7 +216,10 @@ function applyEvent(board: Board, ev: BattleEvent): void {
   const cell = id ? findUnitCell(board, id) : null;
   const u = cell ? board.slots[cell.side][cell.lane][cell.spot] : null;
   if (!u) return;
-  if (ev.type === "attack") u.hp -= ev.damage;
+  if (ev.type === "attack") {
+    u.hp -= ev.damage;
+    if (ev.shieldLeft !== undefined) u.shieldLeft = ev.shieldLeft;
+  }
   else if (ev.type === "heal") u.hp += ev.amount;
   else if (ev.type === "buff") {
     u.atk += ev.atk;
@@ -225,9 +228,19 @@ function applyEvent(board: Board, ev: BattleEvent): void {
   }
 }
 
-function buildFrames(committed: Board, ticks: Tick[]): Frame[] {
+/** A stat change as playback labels it: "+2⚔ +3♥", or "−4♥" for a loss. */
+const statText = (atk: number, hp: number) =>
+  [atk ? `${atk > 0 ? "+" : "−"}${Math.abs(atk)}⚔` : "", hp ? `${hp > 0 ? "+" : "−"}${Math.abs(hp)}♥` : ""].filter(Boolean).join(" ");
+
+function buildFrames(committed: Board, ticks: Tick[], opening: BattleEvent[] = []): Frame[] {
   const frames: Frame[] = [];
   let prev = committed;
+  // Start-of-round support (Rally, Lifebond) gets its own beat before anyone
+  // moves, so the gift is seen landing rather than already baked in.
+  if (opening.length > 0) {
+    frames.push({ kind: "ability", board: prev, events: opening, duration: ABILITY_MS });
+    prev = applyEvents(prev, opening);
+  }
   for (const tick of ticks) {
     // Charge gets its own beat before any lunge — ahead of a first strike too,
     // since a Striker's first swing can be both.
@@ -888,7 +901,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     committedRef.current = committed;
     setBoard(committed);
     setResult(res);
-    setFrames(buildFrames(committed, res.ticks));
+    setFrames(buildFrames(committed, res.ticks, res.opening));
     setSelected(null);
     setPhase("battle");
   }, []);
@@ -1612,7 +1625,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         const key = src.unit.key;
         if (!named.has(ev.source)) {
           named.add(ev.source);
-          const gain = [ev.atk > 0 ? `+${ev.atk}⚔` : "", ev.hp > 0 ? `+${ev.hp}♥` : ""].filter(Boolean).join(" ");
+          const gain = statText(ev.atk, ev.hp);
           const name = ev.label ?? (key === "guard" ? "Bodyguard" : key === "squire" ? "Pass the torch" : "Last rally");
           const scope = !ev.label && key === "knight" ? " all" : "";
           if (key === "knight" || ev.label) fxAt(f.board, src.cell, "rally");
@@ -1620,21 +1633,22 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         }
         // Allies receive one after another, so a Last rally can be followed.
         const at = 300 + n++ * 140;
-        // A self-buff (Last light) has nothing to travel: it lands at once.
-        const self = !!ev.label;
+        // A self-buff (Last light, an Acolyte giving its health away) has
+        // nothing to travel: it lands at once. Others fly from the source.
+        const self = ev.source === ev.unit;
+        const travels = !self && (key === "guard" || key === "squire" || key === "herald" || key === "acolyte");
         later(at, () => {
-          if (self) return;
-          if (key === "guard") fxBetween(f.board, src.cell, cell, "bodyguard");
-          else if (key === "squire") fxBetween(f.board, src.cell, cell, "torch");
+          if (!travels) return;
+          if (key === "guard" || key === "acolyte") fxBetween(f.board, src.cell, cell, "bodyguard");
+          else fxBetween(f.board, src.cell, cell, "torch");
         });
-        const lands = at + (key === "knight" || self ? 0 : 520);
+        const lands = at + (travels ? 520 : 0);
         last = Math.max(last, lands);
         later(lands, () => {
           apply(ev);
           if (ev.hp > 0) fxAt(f.board, cell, "heal");
           if (ev.atk > 0) fxAt(f.board, cell, "merge");
-          const gain = [ev.atk > 0 ? `+${ev.atk}⚔` : "", ev.hp > 0 ? `+${ev.hp}♥` : ""].filter(Boolean).join(" ");
-          fxAt(f.board, cell, "stat-gain", { text: gain });
+          fxAt(f.board, cell, "stat-gain", { text: statText(ev.atk, ev.hp) });
         });
       }
       // Leave the last gain on screen long enough to read before moving on.
