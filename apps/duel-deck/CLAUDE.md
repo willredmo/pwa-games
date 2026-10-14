@@ -270,6 +270,21 @@ the board, and not over the hint, which carries the replace warning. It is
 - **Side panels** (`ui/SidePanels.tsx`, ≥1100px wide only): your upgrades and
   match tallies on the left, the enemy's upgrades and difficulty on the right.
 
+### Losing explodes your row
+When the match is lost (`matchWinner === ENEMY`, so online too), every unit on
+your row bursts and then one blast goes off from the middle of the row
+(`explodeRow` in Game.tsx, fx kind `"explosion"` in board/fx.ts, `sfx("explode")`):
+white flash, a fireball of layered radial gradients that cools from white to
+red, two shockwave rings, side-coloured debris, sparks, then smoke and rising
+embers. The result screen waits `EXPLOSION_DELAY_MS` + `EXPLOSION_MS` longer,
+and its own embers carry on from there. Built to look the same everywhere:
+plain Canvas 2D only (no `ctx.filter`, which Safari ignores; blur is faked with
+gradients), particles integrated by frame time so 120 Hz phones don't run it
+fast, ~130 particles. Shake is the fx layer's canvas translate, not a CSS
+transform. Android vibrates (`navigator.vibrate`, only with sound on); iOS has
+no vibration API, so it's skipped. Reduced motion keeps the flash and fireball
+and drops the shake and most debris. A hidden browser pane doesn't run rAF, so
+it was checked by stepping an `FxLayer` by hand onto a test canvas.
 ### Augment badges are derived, never stored
 Each augment carries a unique `icon`, and every unit shows the icons of the
 augments currently changing its numbers (`Unit.auras`, augment ids in pick

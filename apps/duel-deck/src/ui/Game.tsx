@@ -135,6 +135,9 @@ interface FeedItem {
 
 /** Touch has no hover: holding this long on a unit or offer card opens its info card. */
 const LONG_PRESS_MS = 450;
+/** Losing the match: wait for the last fall to read, then the blast plays this long before the result screen. */
+const EXPLOSION_DELAY_MS = 350;
+const EXPLOSION_MS = 1700;
 
 /**
  * "waiting" is online only: your row is committed and locked, and the round
@@ -466,6 +469,32 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     const c = canvas && cellCenter(canvas, b, to);
     if (a && c) {
       fxRef.current.add({ kind, x: a.x, y: a.y, size: a.size, side: from.side, tx: c.x, ty: c.y }, performance.now());
+    }
+  };
+
+  /**
+   * The match is lost: every unit on your row bursts, then the whole row goes
+   * up in one blast from its middle. Vibrates where the browser allows it
+   * (Android; iOS Safari has no vibration API, so it's simply skipped).
+   */
+  const explodeRow = (b: Board) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const cap = capacityOf(b, PLAYER);
+    const first = cellCenter(canvas, b, { side: PLAYER, lane: 0, spot: 0 });
+    const last = cellCenter(canvas, b, { side: PLAYER, lane: 0, spot: Math.max(0, cap - 1) });
+    if (!first || !last) return;
+    const now = performance.now();
+    sideUnits(b, PLAYER).forEach((u, i) => {
+      const cell = findUnitCell(b, u.id);
+      if (cell) window.setTimeout(() => fxAt(b, cell, "death"), i * 55);
+    });
+    fxRef.current.add({ kind: "explosion", x: (first.x + last.x) / 2, y: (first.y + last.y) / 2, size: first.size, side: PLAYER }, now);
+    sfx("explode");
+    try {
+      if (sound) navigator.vibrate?.([60, 40, 140]);
+    } catch {
+      /* not supported */
     }
   };
 
@@ -1428,6 +1457,9 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       // gets nothing, since neither sting would be true.
       if (winner === PLAYER) sfx("round-win");
       else if (winner === ENEMY) sfx("round-loss");
+      // Losing the match blows your row up before the result screen.
+      const boom = result.matchWinner === ENEMY;
+      if (boom) later(EXPLOSION_DELAY_MS, () => explodeRow(committed));
       // Let the result banner land before the next round deals.
       timer = window.setTimeout(() => {
         if (result.matchWinner) {
@@ -1441,7 +1473,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           respawned.hp = { ...result.board.hp };
           startRound(respawned, round + 1);
         }
-      }, scaled(RESULT_MS));
+      }, scaled(RESULT_MS) + (boom ? scaled(EXPLOSION_DELAY_MS) + EXPLOSION_MS : 0));
     };
 
     /** Both front units lunge at each other. */

@@ -26,7 +26,8 @@ export type Sfx =
   | "round-win"
   | "round-loss"
   | "victory"
-  | "defeat";
+  | "defeat"
+  | "explode";     // the losing row blows up
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
@@ -206,6 +207,14 @@ export function sfx(kind: Sfx, strength = 0.5): void {
         { freq: 784, at: 0.28, dur: 0.2, gain: 0.08 },
         { freq: 1047, at: 0.42, dur: 0.6, gain: 0.1 },
       ]);
+      break;
+    case "explode":
+      // A crack, a long low rumble and a falling thump: the noise buffer is
+      // only 0.25s, so the rumble is a few overlapping lowpassed bursts.
+      burst({ freq: 2600, q: 0.5, gain: 0.3, decay: 0.12, type: "highpass" });
+      tone({ freq: 110, to: 32, gain: 0.32, dur: 0.9, type: "sine" });
+      tone({ freq: 70, to: 28, gain: 0.18, dur: 1.1, type: "triangle", at: 0.05 });
+      for (let i = 0; i < 5; i++) burst({ freq: 260 - i * 30, q: 0.6, gain: 0.32 - i * 0.05, decay: 0.3, type: "lowpass", at: i * 0.12 });
       break;
     case "defeat":
       phrase([

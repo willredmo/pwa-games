@@ -59,7 +59,9 @@ export type FxKind =
   /** Fortify: stone pulse on a surviving Bulwark and "+N♥ forever". */
   | "fortify"
   /** An ability's stat gain on the unit receiving it ("+2⚔", "+3♥"; needs `text`). */
-  | "stat-gain";
+  | "stat-gain"
+  /** The losing row blows up at the end of a match: flash, fireball, shockwave, debris, smoke. `size` is a cell. */
+  | "explosion";
 
 export interface FxSpawn {
   kind: FxKind;
@@ -151,6 +153,7 @@ const enum ET {
   Afterimage,
   Banner,
   Stone,
+  Fireball,
 }
 
 interface Effect {
@@ -416,6 +419,9 @@ export class FxLayer {
         e.text = `+${fx.amount ?? 1}♥ forever`;
         break;
       }
+      case "explosion":
+        this.explode(x, y, s, fx.side, now);
+        break;
       case "stat-gain": {
         // Big enough to read at a glance: gold for attack, green for health.
         const atk = (fx.text ?? "").includes("⚔");
@@ -572,6 +578,9 @@ export class FxLayer {
         case ET.Stone:
           this.drawStone(ctx, e, t);
           break;
+        case ET.Fireball:
+          this.drawFireball(ctx, e, t);
+          break;
         case ET.Ring: {
           const r = e.size * (0.15 + easeOutCubic(t));
           ctx.globalAlpha = (1 - t) * 0.9;
@@ -602,6 +611,95 @@ export class FxLayer {
       }
     }
     list.length = w;
+    ctx.globalAlpha = 1;
+  }
+
+  /**
+   * The match-losing blast. Plain Canvas 2D only (gradients, arcs, "lighter"
+   * compositing), never `ctx.filter`, which Safari ignores, so it looks the
+   * same on iOS, Android and desktop. Particles move by frame time, so 120 Hz
+   * screens don't run it fast. About 120 particles at most; reduced motion
+   * keeps the flash and fireball, drops the shake and most of the debris.
+   */
+  private explode(x: number, y: number, s: number, side: Side | undefined, now: number): void {
+    const R = s * 2.6;
+    if (!this.reduced) {
+      this.shakeSize = s * 0.55;
+      this.trauma = 1;
+      this.traumaAt = now;
+    }
+    this.fx(ET.Flash, now, 260, x, y, R * 1.5, "#ffffff", "#fff", 0, false, 0);
+    this.fx(ET.Fireball, now, 1100, x, y, R, "#fff6c8", COL.ember, 0, false, 0);
+    this.fx(ET.Ring, now + 40, 650, x, y, R * 1.7, "#ffd9a0", "#fff", 0, false, 0);
+    this.fx(ET.Ring, now + 160, 800, x, y, R * 2.3, COL.ember, COL.ember, 0, false, 0);
+    const c = sideCol(side);
+    const l = sideLight(side);
+    const shards = this.count(42);
+    for (let i = 0; i < shards; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = s * (2.5 + Math.random() * 5);
+      const p = this.emit(PT.Shard, now, 900 + Math.random() * 600, x + Math.cos(a) * s * 0.3, y + Math.sin(a) * s * 0.3,
+        Math.cos(a) * sp, Math.sin(a) * sp - s * 2.2, s * 7, s * (0.09 + Math.random() * 0.16), i % 4 === 0 ? INK : i % 4 === 1 ? l : c);
+      if (p) {
+        p.rot = Math.random() * 6.28;
+        p.vr = (Math.random() - 0.5) * 22;
+      }
+    }
+    const sparks = this.count(28);
+    for (let i = 0; i < sparks; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = s * (4 + Math.random() * 6);
+      this.emit(PT.Spark, now, 380 + Math.random() * 380, x, y, Math.cos(a) * sp, Math.sin(a) * sp, s * 4,
+        s * (0.05 + Math.random() * 0.04), i % 3 === 0 ? "#fff" : i % 3 === 1 ? COL.goldLight : COL.ember);
+    }
+    const smoke = this.count(18);
+    for (let i = 0; i < smoke; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.random() * R * 0.6;
+      this.emit(PT.Smoke, now + 150 + Math.random() * 250, 1500 + Math.random() * 700, x + Math.cos(a) * r, y + Math.sin(a) * r * 0.7,
+        Math.cos(a) * s * 0.8, -s * (0.4 + Math.random() * 0.8), -s * 0.35, s * (0.35 + Math.random() * 0.3), i % 2 ? "#4b4458" : "#6d6680");
+    }
+    const embers = this.count(24);
+    for (let i = 0; i < embers; i++) {
+      this.emit(PT.Dot, now + 200 + Math.random() * 500, 1300 + Math.random() * 900, x + (Math.random() - 0.5) * R * 1.4,
+        y + (Math.random() - 0.5) * R * 0.8, (Math.random() - 0.5) * s * 0.8, -s * (0.6 + Math.random() * 1.2), -s * 0.2,
+        s * (0.04 + Math.random() * 0.04), i % 2 ? COL.ember : COL.goldLight);
+    }
+  }
+
+  /** Fireball: layered radial gradients (no blur filter) that swell, then cool from white to red and fade. */
+  private drawFireball(ctx: CanvasRenderingContext2D, e: Effect, t: number): void {
+    const grow = easeOutCubic(clamp01(t / 0.35));
+    const fade = t < 0.3 ? 1 : 1 - easeInCubic((t - 0.3) / 0.7);
+    const R = e.size * (0.25 + grow * 0.95);
+    ctx.globalCompositeOperation = "lighter";
+    const layers: [number, string, string][] = [
+      [1, "rgba(255,120,40,0.85)", "rgba(160,20,10,0)"],
+      [0.7, "rgba(255,190,80,0.9)", "rgba(255,90,30,0)"],
+      [0.38 * (1 - t * 0.6), "rgba(255,255,235,1)", "rgba(255,210,120,0)"],
+    ];
+    for (const [k, inner, outer] of layers) {
+      const r = Math.max(1, R * k);
+      const g = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, r);
+      g.addColorStop(0, inner);
+      g.addColorStop(1, outer);
+      ctx.globalAlpha = fade;
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, r, 0, 6.2832);
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = "source-over";
+    // Billowing lobes give the ball an edge rather than a perfect circle.
+    ctx.globalAlpha = fade * 0.4;
+    ctx.fillStyle = t < 0.4 ? "#ffb347" : "#c2452d";
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2 + t * 1.5;
+      const d = R * (0.55 + 0.12 * Math.sin(i * 2.3 + t * 9));
+      ctx.beginPath();
+      ctx.arc(e.x + Math.cos(a) * d, e.y + Math.sin(a) * d * 0.8, R * 0.32 * (1 - t * 0.5), 0, 6.2832);
+      ctx.fill();
+    }
     ctx.globalAlpha = 1;
   }
 
