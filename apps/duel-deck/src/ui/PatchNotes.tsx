@@ -10,6 +10,17 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.3.4",
+    date: "Oct 15, 2026",
+    notes: [
+      "Iron Line is stronger: every unit starts each round with a 5 shield (was +3 health).",
+      "Full Assault is stronger: +2 attack (was +1), and blows still can't be dodged.",
+      "Start-of-round buffs (Rally, Lifebond, Barrier) now play one unit at a time.",
+      "Completing a class bonus shows its banner longer, with what it does.",
+      "Phones: Reroll no longer gets cut off, and the round summary fits on one line. Tablets: the buttons fit on one row.",
+    ],
+  },
+  {
     version: "1.3.3",
     date: "Oct 14, 2026",
     notes: [

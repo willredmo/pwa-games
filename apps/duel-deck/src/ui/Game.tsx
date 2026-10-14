@@ -117,6 +117,8 @@ const BIG_HIT = 7;
  * the name and the numbers can be read before the battle moves on.
  */
 const ABILITY_MS = 1100;
+/** One supporting unit's start-of-round buff (each gets its own beat). */
+const OPENING_BEAT_MS = 800;
 /** After the main blows, before the first side hit (Overflow, Thorns…) plays. */
 const EXTRA_GAP_MS = 450;
 /** Overflow's shockwave travel: its damage lands on the second target on arrival. */
@@ -247,11 +249,21 @@ const statText = (atk: number, hp: number, shield = 0) =>
 function buildFrames(committed: Board, ticks: Tick[], opening: BattleEvent[] = []): Frame[] {
   const frames: Frame[] = [];
   let prev = committed;
-  // Start-of-round support (Rally, Lifebond) gets its own beat before anyone
-  // moves, so the gift is seen landing rather than already baked in.
-  if (opening.length > 0) {
-    frames.push({ kind: "ability", board: prev, events: opening, duration: ABILITY_MS });
-    prev = applyEvents(prev, opening);
+  // Start-of-round support (Rally, Lifebond, Barrier) plays before anyone
+  // moves, one supporting unit at a time, so each gift is seen landing rather
+  // than all at once. A unit's own events (an Acolyte's −N♥ and the front's
+  // +N♥, a mastered Warden's two shields) share its beat.
+  const bySource: BattleEvent[][] = [];
+  for (const ev of opening) {
+    const src = ev.type === "buff" ? ev.source : null;
+    const last = bySource[bySource.length - 1];
+    const lastSrc = last?.[0]?.type === "buff" ? last[0].source : null;
+    if (last && src && src === lastSrc) last.push(ev);
+    else bySource.push([ev]);
+  }
+  for (const events of bySource) {
+    frames.push({ kind: "ability", board: prev, events, duration: OPENING_BEAT_MS });
+    prev = applyEvents(prev, events);
   }
   for (const tick of ticks) {
     // Charge gets its own beat before any lunge — ahead of a first strike too,
@@ -371,7 +383,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   const [phase, setPhase] = useState<Phase>(saved?.augmentPending ? "augment" : "pick");
   const [result, setResult] = useState<RoundResult | null>(null);
   const [frames, setFrames] = useState<Frame[]>([]);
-  const [banner, setBanner] = useState<{ message: string | null; tone: BannerTone; nonce: number }>({
+  const [banner, setBanner] = useState<{ message: string | null; tone: BannerTone; nonce: number; sub?: string | null }>({
     message: null,
     tone: "neutral",
     nonce: 0,
@@ -405,7 +417,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       ? offerAugments(saved.player, augmentOfferCount(saved.player), upgradeTier(saved.round))
       : [],
   );
-  const [lastRound, setLastRound] = useState<string | null>(null);
+  /** The last round's one-line summary, in full and in a phone-width form. */
+  const [lastRound, setLastRound] = useState<{ long: string; short: string } | null>(null);
   /** Unit-offer rerolls left this round (Scout adds one). */
   const [unitRerolls, setUnitRerolls] = useState(() =>
     unitRerollsFor(saved?.player ?? createAugmentState()),
@@ -488,8 +501,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   if (!fxRef.current) fxRef.current = new FxLayer();
   const viewRef = useRef<Parameters<typeof draw>[1] | null>(null);
 
-  const showBanner = useCallback((message: string, tone: BannerTone) => {
-    setBanner((b) => ({ message, tone, nonce: b.nonce + 1 }));
+  const showBanner = useCallback((message: string, tone: BannerTone, sub: string | null = null) => {
+    setBanner((b) => ({ message, tone, nonce: b.nonce + 1, sub }));
   }, []);
 
   /** Scale a duration by playback speed, and halve it under reduced motion. */
@@ -1097,14 +1110,14 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     if (phase !== "pick" || prev.phase !== "pick" || prev.syn === synergyNow) return;
     if (synergyNow) {
       const syn = SYNERGIES[synergyNow];
-      showBanner(`${syn.icon} ${syn.name}! ${syn.text}`, "win");
+      showBanner(`${syn.icon} ${syn.name}!`, "win", syn.text);
       sfx("knight");
       for (const u of sideUnits(board, PLAYER)) {
         const cell = findUnitCell(board, u.id);
         if (cell) fxAt(board, cell, "bounty");
       }
     } else if (prev.syn) {
-      showBanner(`${SYNERGIES[prev.syn].icon} ${SYNERGIES[prev.syn].name} lost: your row isn't one class any more`, "neutral");
+      showBanner(`${SYNERGIES[prev.syn].icon} ${SYNERGIES[prev.syn].name} lost`, "neutral", "Your row isn't all one class any more");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, synergyNow]);
@@ -1579,15 +1592,20 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       // Round damage is the winner's survivors' attack, so name the survivors.
       const left = result.survivors?.ids.length ?? 0;
       const standing = `${left} unit${left === 1 ? "" : "s"} left standing`;
-      setLastRound(
+      setLastRound({
+        short:
+          `${winner ? `${winner === PLAYER ? "You" : "Enemy"} held · ${left} left` : "Both rows wiped"}` +
+          (winner ? ` · ${winner === PLAYER ? "Enemy" : "You"} −${result.hpLoss} HP` : "") +
+          (healed > 0 ? ` · +${healed} healed` : ""),
+        long:
         `${winner ? `${winner === PLAYER ? "You" : "Enemy"} held the row with ${standing}` : "Both rows wiped"}` +
           ` · dealt ${dealt.player} / took ${dealt.enemy}` +
           (winner ? ` · ${winner === PLAYER ? "Enemy" : "You"} lost ${result.hpLoss} HP` : " · no HP lost") +
           (healed > 0 ? ` · you healed ${healed} (Field medic)` : "") +
           (enemyHealed > 0 ? ` · enemy healed ${enemyHealed}` : "") +
-          (result.ascendantHit ? ` · 👑 champions struck the pools for ${result.ascendantHit}` : "") +
+          (result.ascendantHit ? ` · 🌟 champions struck the pools for ${result.ascendantHit}` : "") +
           bounty,
-      );
+      });
       if (winner === PLAYER) showBanner(`You hold the row! ${left} left · −${result.hpLoss}${bounty}`, "win");
       else if (winner === ENEMY) showBanner(`Wiped out! ${left} left · −${result.hpLoss}${bounty}`, "lose");
       else showBanner(`Both rows fall${bounty}`, "draw");
@@ -2027,7 +2045,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           onClick={onBoardClick}
           onContextMenu={(e) => e.preventDefault()}
         />
-        <RoundBanner message={banner.message} tone={banner.tone} nonce={banner.nonce} />
+        <RoundBanner message={banner.message} tone={banner.tone} nonce={banner.nonce} sub={banner.sub} />
         {online && phase !== "over" && <EmoteBar session={online} />}
         {barBlast && <HpBarBlast selector=".hpbar--enemy" side="enemy" />}
         {tutorial && phase !== "over" && (
@@ -2124,7 +2142,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
 
       {/* Always rendered: the board fills the space left over, so rows that came
           and went would resize it between phases. */}
-      <p className="app__log">{lastRound ?? ""}</p>
+      <p className="app__log" title={lastRound?.long}>{lastRound && <LongShort long={lastRound.long} short={lastRound.short} />}</p>
 
       {/* The board's chrome. Wrapped so a wide screen can stand it beside
           the board instead of under it, which is the only way the board
@@ -2168,13 +2186,16 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           className={`pick-label${picksLeft > 0 ? " pick-label--open" : " pick-label--done"}`}
         >
           {synergyGoal && <SynergyMeter goal={synergyGoal} />}
-          {picksLeft > 0 && rowMaxed(board, PLAYER)
-            ? `Row maxed · unused picks → 🎯 Drill +${picksLeft}⚔`
-            : picksLeft > 0
-            ? `Pick ${picksLeft}${boardFull ? " · row full" : ""}`
-            : unitRerolls > 0
-              ? "✓ Picks done · ❄ freeze for next round"
-              : "✓ Picks done — arrange your row, then battle"}
+          {/* Phones get the short form: the label shares one line with Reroll. */}
+          {picksLeft > 0 && rowMaxed(board, PLAYER) ? (
+            <LongShort long={`Row maxed · unused picks → 🎯 Drill +${picksLeft}⚔`} short={`🎯 Drill +${picksLeft}⚔ if unused`} />
+          ) : picksLeft > 0 ? (
+            <LongShort long={`Pick ${picksLeft}${boardFull ? " · row full" : ""}`} short={`Pick ${picksLeft}${boardFull ? " · full" : ""}`} />
+          ) : unitRerolls > 0 ? (
+            <LongShort long="✓ Picks done · ❄ freeze for next round" short="✓ Done · ❄ to keep" />
+          ) : (
+            <LongShort long="✓ Picks done — arrange your row, then battle" short="✓ Done · arrange, battle" />
+          )}
         </p>
         {(picksLeft > 0 || unitRerolls > 0) && (
           <button
@@ -2187,7 +2208,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
                 : "Picks done: reroll to find cards worth freezing for next round"
             }
           >
-            🎲 Reroll ({unitRerolls})
+            🎲<span className="hud__long"> Reroll</span> ({unitRerolls})
           </button>
         )}
       </div>
@@ -2400,7 +2421,17 @@ function SynergyMeter({ goal }: { goal: SynergyGoal }) {
         ))}
       </span>
       <span className="syn-meter__text">{short}</span>
-      <span aria-hidden="true"> · </span>
+      <span className="syn-meter__sep" aria-hidden="true">·</span>
     </span>
+  );
+}
+
+/** Text with a shorter form for phones (`hud__long` / `hud__short`). */
+function LongShort({ long, short }: { long: string; short: string }) {
+  return (
+    <>
+      <span className="hud__long">{long}</span>
+      <span className="hud__short">{short}</span>
+    </>
   );
 }

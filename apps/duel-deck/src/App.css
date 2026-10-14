@@ -576,6 +576,18 @@
   --b2: #f0b429;
   --glow: rgba(240, 180, 41, 0.7);
 }
+.banner__emoji { -webkit-text-fill-color: initial; color: #fff; }
+.banner__sub {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: clamp(0.85rem, 3.8vw, 1.05rem);
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.3;
+  color: #fff;
+  -webkit-text-fill-color: #fff;
+}
 .banner__text--win { --b1: #e3f1ff; --b2: #3a86d6; --glow: rgba(58, 134, 214, 0.85); }
 .banner__text--lose { --b1: #ffe1dc; --b2: #d1483a; --glow: rgba(209, 72, 58, 0.85); }
 .banner__text--draw { --b1: #eceaf2; --b2: #8d8aa0; --glow: rgba(141, 138, 160, 0.6); }
@@ -629,6 +641,8 @@ body { background-color: #12101c; }
   .hpbar--low .hpbar__hp { color: #ff7a6b; animation: hp-pulse 0.8s ease-in-out infinite; }
 
   .banner__text { animation: banner-in 1.7s cubic-bezier(0.2, 0.9, 0.3, 1) both, banner-shine 1.7s linear both; }
+  /* A banner with a second line to read (a synergy) stays up about 3 s. */
+  .banner__text--long { animation-duration: 4.2s, 4.2s; }
 
   .hud .primary-btn:not(:disabled) { animation: breathe 2.4s ease-in-out infinite; }
   .primary-btn:hover:not(:disabled)::after, .ghost-btn:hover:not(:disabled)::after { transform: translateX(120%); transition: transform 0.6s; }
@@ -754,7 +768,15 @@ body { background-color: #12101c; }
 .pick-row { display: flex; align-items: center; justify-content: center; gap: 0.6rem; min-height: 2.1rem; }
 /* Outside the pick phase the row keeps its space (so the board doesn't jump) but shows nothing. */
 .pick-row--idle { visibility: hidden; }
-.pick-row .pick-label { margin: 0.35rem 0 0.15rem; }
+.pick-row .pick-label {
+  margin: 0.35rem 0 0.15rem;
+  /* One line, always: a wrapped label would change the row's height and with it the board's. */
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.syn-meter__sep { margin: 0 0.15rem 0 0.1rem; }
 
 /* --- Unit hover breakdown --- */
 .unit-info {
@@ -783,7 +805,7 @@ body { background-color: #12101c; }
 .unit-info__src { font-weight: 700; color: #e3dff2; }
 .unit-info__fx { color: #ffe27a; }
 .unit-info__none { color: #9d97b8; font-style: italic; border-top: 1px solid #2f2a45; padding-top: 0.3rem; }
-.reroll-btn { white-space: nowrap; }
+.reroll-btn { white-space: nowrap; flex: none; }
 .unit-info--offer { width: 17rem; max-width: calc(100vw - 16px); }
 .unit-info__knight { margin-top: 0.15rem; font-weight: 700; color: #ffd666; }
 .unit-info__mastery { margin-top: 0.15rem; font-size: 0.92em; opacity: 0.6; }
@@ -1287,6 +1309,10 @@ button.menu-item:hover { border-color: #5a5180; }
   }
   .app__controls .hud,
   .app__controls .hand { width: 100%; }
+  /* The HUD's four buttons on one row: short labels until the column is wide enough. */
+  .app__controls .hud { flex-wrap: nowrap; gap: 0.45rem; }
+  .app__controls .hud .hud__long { display: none; }
+  .app__controls .hud .hud__short { display: inline; }
   /* Five across, shrinking to fit — the same treatment as the phone, whose
      375px is about what this column is. Wrapping gave a ragged 4 + 1. */
   .app__controls .hand { flex-wrap: nowrap; gap: 0.3rem; }
@@ -1478,3 +1504,10 @@ button.menu-item:hover { border-color: #5a5180; }
 /* Winning: the enemy HP bar's slow-motion blast (ui/HpBarBlast.tsx). */
 .hpbar-blast { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 80; }
 .hpbar--blown .hpbar__track, .hpbar--blown .hpbar__hp { opacity: 0; transition: opacity 0.15s 0.3s; }
+
+/* Wider screens: a roomier controls column, room for the full HUD labels. */
+@media (min-width: 64rem) and (min-height: 34rem) {
+  .app { grid-template-columns: minmax(20rem, 22rem) minmax(21rem, 30rem); }
+  .app__controls .hud .hud__long { display: inline; }
+  .app__controls .hud .hud__short { display: none; }
+}

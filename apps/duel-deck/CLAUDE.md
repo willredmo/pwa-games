@@ -443,7 +443,8 @@ attack (`RoundResult.ascendantHit`). Sim (12k, `--aug=random`): holder 47%,
   events (`RoundResult.opening`; Barrier's carry `shield`), which playback
   shows as their own beat before the first blow (the Acolyte's `−N♥`, the
   front's gain, `+N🔰`). While picking, every unit shows its own, unbuffed
-  numbers. `openingBuffs` replaces a unit's `traits` rather than mutating it:
+  numbers. Playback gives each supporting unit its own beat
+  (`OPENING_BEAT_MS`), one after another. `openingBuffs` replaces a unit's `traits` rather than mutating it:
   `resolveRound`'s clone shares traits objects with the caller's board.
 ### Third-wave upgrades (one or two for every unit)
 Lancer, the four supports and the Skirmisher had no upgrades built around
@@ -478,8 +479,9 @@ offer cards (top corner), info cards and the Codex. When every slot of
 a row (5, or 6 with Reinforcements; never a 1-unit Ascendant row,
 `SYNERGY_MIN`) holds one class, `synergyOf` picks its synergy and
 `applyAugments` applies it for the round, badged and itemised (`syn-<class>`
-auras): **🔥 Full Assault** +1 attack and blows can't be dodged
-(`trueStrike`); **🧱 Iron Line** +3 health; **🕊 Sanctuary** every support
+auras): **🔥 Full Assault** +2 attack and blows can't be dodged
+(`trueStrike`); **🧱 Iron Line** a 5 shield on every unit each round
+(`IRON_LINE_SHIELD`, shown on the shield bar); **🕊 Sanctuary** every support
 ability counts twice (Herald rally and its Mastery health, Medic mend). The
 `endure` trait (front survives a lethal blow on 1) is still in combat but unused. The round
 banner announces it. While picking, a **synergy meter** leads the pick label
@@ -489,14 +491,23 @@ hatched for another, hollow for empty) and "N more", "swap N" or the
 synergy's name in gold once it's on. It shows once two units share a class.
 Offer cards of that class get a glowing class badge. Completing it while
 picking gets a banner with the bonus, the knighting sound and sparkles on
-every unit; breaking it (a replace) gets a quiet banner. Only pick-to-pick
+every unit; breaking it (a replace) gets a quiet banner. Banners with a second
+line (`sub`, the synergy's effect) stay up ~3 s instead of 1.7; emoji in a
+banner are wrapped (`withEmoji`) since the gradient text turns them to blobs. Only pick-to-pick
 changes count, since the board also changes as units fall in battle. Normal leans toward a class once 3 share it
 (`SYNERGY_NUDGE`); Hard finds synergies through its search.
 
-Tuning: head to head (same row on vs off, one round vs random rows) Assault
-is worth +6-7 points; Sanctuary (doubling) +5 at level 2 and +28 at level 6,
-which brings a levelled all-Support row from 27% to about even. Doubling plus
-endure together was +50. At match level (`pnpm sim 10000 --aug=random`) Iron Line
+Tuning: `pnpm synergy [trials] [--level=N]` (scripts/synergy.ts) plays a
+one-class row with its synergy on vs off, one round against random rows at
+the same level, and prints what it's worth. 2026-10-15, levels 2 / 5 / 8:
+Assault (+2 attack, true strike) +28 / +18 / +18; Iron Line (5 shield) +40 /
++33 / +28; Sanctuary +35 / +48 / +57 (an all-Support row is weak without it:
+44% / 28% / 12%). Before: Assault at +1 attack +22 / +18 / +18, felt weak
+because true strike only matters against Skirmishers; Iron Line at +3 health
++27 / +24 / +15, fading as health grows. Tried and dropped: +1 attack with
+Charge for all, with Overflow for all, and plain +2 attack (fades to +12 at
+level 8). A permanent +1 health per round won was the other Iron Line idea.
+At match level (`pnpm sim 10000 --aug=random`) Iron Line
 holders win 49% (45% at +2, 56% at +4); synergies fire in ~4% of AI rows
 (Defense 3.8%, Attack 0.8%, Support never: the AI doesn't build five
 supports), so real-player telemetry will be the better measure.

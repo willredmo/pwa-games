@@ -170,8 +170,8 @@ export const ARCHETYPES: Record<Archetype, { icon: string; name: string }> = {
  * each round, badged, itemised and deterministic online.
  */
 export const SYNERGIES: Record<Archetype, { name: string; icon: string; text: string }> = {
-  attack: { name: "Full Assault", icon: "🔥", text: "Every unit gains +1 attack, and its blows can't be dodged." },
-  defense: { name: "Iron Line", icon: "🧱", text: "Every unit gains +3 health." },
+  attack: { name: "Full Assault", icon: "🔥", text: "Every unit gains +2 attack, and its blows can't be dodged." },
+  defense: { name: "Iron Line", icon: "🧱", text: "Every unit starts each round with a 5 shield." },
   support: {
     name: "Sanctuary",
     icon: "🕊",

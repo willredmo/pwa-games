@@ -143,6 +143,8 @@ export function createAugmentState(): AugmentState {
 const has = (u: Unit, cls: string) => u.classes.includes(cls);
 /** Most attack Berserker's rally can grant: with full rows Berserkers die every round. */
 export const RALLY_CAP = 2;
+/** Shield every unit in an Iron Line row starts each round with. */
+export const IRON_LINE_SHIELD = 5;
 const countClass = (units: Unit[], cls: string) =>
   units.filter((u) => has(u, cls)).length;
 
@@ -850,10 +852,13 @@ export function applyAugments(
       let hp = 0;
       const gained: UnitTraits = {};
       if (synergy === "attack") {
-        atk = 1;
+        atk = 2;
         t.trueStrike = gained.trueStrike = true;
       } else if (synergy === "defense") {
-        hp = 3;
+        // A shield, not health: it soaks the first blows each round and shows
+        // as the shield bar, so the line visibly holds.
+        t.shield = (t.shield ?? 0) + IRON_LINE_SHIELD;
+        gained.shield = IRON_LINE_SHIELD;
       } else {
         // Sanctuary: every support ability counts twice. `gained` holds the
         // extra, so the info card itemises what the synergy added.
