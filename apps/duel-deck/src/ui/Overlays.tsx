@@ -633,6 +633,40 @@ export function UnitsView({ onClose }: { onClose: () => void }) {
           <h2>Units</h2>
           <button className="close-btn" onClick={onClose} aria-label="Close">✕</button>
         </div>
+        {/* Classes first: they decide which units belong together. */}
+        <section className="class-guide" aria-label="Classes">
+          <p className="class-guide__intro">
+            Every unit has a class. Fill <strong>every slot</strong> of your row with one class (5 units, or 6 with
+            Reinforcements) and the whole row gets that class's bonus each round.
+          </p>
+          <div className="class-guide__list">
+            {(["attack", "defense", "support"] as const).map((a) => {
+              const members = UNIT_KEYS.filter((k) => UNITS[k].archetype === a);
+              return (
+                <div key={a} className={`class-card class-card--${a}`}>
+                  <div className="class-card__head">
+                    <span className="class-card__icon" aria-hidden="true">{ARCHETYPES[a].icon}</span>
+                    <h3>{ARCHETYPES[a].name}</h3>
+                  </div>
+                  <div className="class-card__units">
+                    {members.map((k) => (
+                      <span key={k} className="class-card__unit">
+                        <UnitPortrait unitKey={k} side="player" size={28} />
+                        {UNITS[k].name}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="class-card__bonus">
+                    <strong>
+                      {SYNERGIES[a].icon} {SYNERGIES[a].name}:
+                    </strong>{" "}
+                    {SYNERGIES[a].text}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </section>
         <div className="unit-codex">
           {UNIT_KEYS.map((key, i) => {
             const u = UNITS[key];
