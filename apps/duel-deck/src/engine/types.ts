@@ -112,6 +112,8 @@ export interface UnitTraits {
   lastBreath?: boolean;
   /** Overflow carries in full (Cleave upgrade), instead of half capped at 3. */
   cleaveFull?: boolean;
+  /** A unit its Overflow kills passes the rest on in turn (a mastered Berserker). */
+  cleaveChain?: boolean;
   /** The first N hits it takes each round are dodged entirely (Skirmisher). */
   dodges?: number;
   /** Damage it strikes back with when it dodges (Skirmisher's riposte). */
@@ -145,8 +147,8 @@ export interface UnitTraits {
   rallyHp?: number;
   /** From behind the front: the front starts the round with a shield of this much (Warden's Barrier). */
   barrier?: number;
-  /** A mastered Warden: the unit behind the front gets the same shield. */
-  barrierBehind?: boolean;
+  /** How many units behind the front Barrier also covers (a mastered Warden, Aegis). */
+  barrierReach?: number;
   /** Damage absorbed before health this round (set on the front by Barrier). */
   shield?: number;
   /** From behind the front: gives half its health to the front, times this (Acolyte's Lifebond; Sanctuary doubles). */

@@ -67,6 +67,11 @@ export interface AugmentDef {
   /** Pool HP restored each round this side wins (see `settleRound`). */
   healOnWin?: number;
   /**
+   * Upgrades never offered while this one is held, because they can't do
+   * anything alongside it (Ascendant's single unit has no allies or row).
+   */
+  excludes?: string[];
+  /**
    * Unit types this augment is built around when that isn't visible in its
    * effect — Berserker's rally buffs everyone but is triggered by Berserkers.
    * Overrides the derived set in `unitsAffectedBy`.
@@ -177,7 +182,7 @@ export const AUGMENTS: AugmentDef[] = [
   },
   {
     id: "iron-will",
-    icon: "🧱",
+    icon: "🪖",
     name: "Iron will",
     description: "+4 health and +1 attack to all Bulwarks.",
     category: "class",
@@ -185,7 +190,7 @@ export const AUGMENTS: AugmentDef[] = [
   },
   {
     id: "precision-strikes",
-    icon: "🎯",
+    icon: "🔪",
     name: "Precision strikes",
     description: "+2 attack and +1 health to all Strikers.",
     category: "class",
@@ -195,7 +200,7 @@ export const AUGMENTS: AugmentDef[] = [
   // --- Global ---
   {
     id: "battle-fury",
-    icon: "🔥",
+    icon: "😤",
     name: "Battle fury",
     description: "+1 attack to every unit on your board.",
     category: "global",
@@ -572,13 +577,16 @@ export const AUGMENTS: AugmentDef[] = [
     // any type merge into it (else it would only grow on the rare matching
     // card) and lifts the cap. Capacity 1 overrides Reinforcements.
     id: "ascendant",
-    icon: "👑",
+    icon: "🌟",
     name: "Ascendant",
     description:
       "Your row holds one unit: your highest-level unit stays and the rest leave. It has no level cap, and every unit you pick merges into it.",
     category: "strategy",
     rarity: "epic",
     mods: { capacity: 1, uncapped: true },
+    // One unit: no extra slots, no unit types to mix, no allies to fall or to
+    // count, no Knight-and-others, and the champion always fights.
+    excludes: ["reinforcements", "mixed-formation", "united-front", "last-light", "knights-oath", "veteran"],
     effect: () => ({ atk: 1, hp: 3 }),
   },
   {
@@ -657,10 +665,10 @@ export const AUGMENTS: AugmentDef[] = [
     id: "aegis",
     icon: "🔮",
     name: "Aegis",
-    description: "Wardens' Barrier shields 1 more and also covers the unit behind the front.",
+    description: "Wardens' Barrier also covers one more unit behind the front (stacks with a level 10 Warden's).",
     category: "combat",
     rarity: "rare",
-    traits: (u) => (has(u, "warden") ? { barrier: 1, barrierBehind: true } : {}),
+    traits: (u) => (has(u, "warden") ? { barrierReach: 1 } : {}),
   },
   {
     id: "devotion",
@@ -724,8 +732,10 @@ export function offerAugments(state: AugmentState, n: number, tier = 1): Augment
     .filter((a): a is AugmentDef => !!a)
     .slice(0, n);
   const frozenIds = new Set(frozen.map((a) => a.id));
+  const excluded = new Set(state.active.flatMap((id) => getAugment(id)?.excludes ?? []));
   const pool = AUGMENTS.filter(
-    (a) => !state.active.includes(a.id) && !frozenIds.has(a.id) && RARITY_UNLOCK[rarityOf(a)] <= tier,
+    (a) =>
+      !state.active.includes(a.id) && !frozenIds.has(a.id) && !excluded.has(a.id) && RARITY_UNLOCK[rarityOf(a)] <= tier,
   );
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));

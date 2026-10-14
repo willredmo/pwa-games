@@ -35,12 +35,14 @@ export const GAME = "duel-deck";
 /**
  * The rules version both devices must share. Each device runs the round itself,
  * so two builds with different combat rules would silently disagree. Bump it
- * with every change to what esolveRound/efreshForRound compute (unit
+ * with every change to what 
+esolveRound/
+efreshForRound compute (unit
  * stats, abilities, upgrades, caps). Rooms carry it (proto); a join with a
  * different one is refused, and the lobby asks the outdated side to update.
  * Rooms from before it existed have none, which reads as 1.
  */
-export const PROTOCOL = 3;
+export const PROTOCOL = 4;
 
 export type Player = "p1" | "p2";
 export const otherPlayer = (p: Player): Player => (p === "p1" ? "p2" : "p1");

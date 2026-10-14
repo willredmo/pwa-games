@@ -10,6 +10,16 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.3.3",
+    date: "Oct 14, 2026",
+    notes: [
+      "Aegis now stacks with a level 10 Warden: each one extends the shield to one more unit behind the front.",
+      "Level 10 Berserker: Overflow now chains (an enemy it kills passes the rest on), so the Cleave upgrade still helps it.",
+      "After taking Ascendant, you are no longer offered upgrades a single unit can't use.",
+      "New icons for Battle fury, Iron will, Precision strikes and Ascendant, so no two badges look alike.",
+    ],
+  },
+  {
     version: "1.3.2",
     date: "Oct 14, 2026",
     notes: [

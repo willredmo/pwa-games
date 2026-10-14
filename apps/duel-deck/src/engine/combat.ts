@@ -183,9 +183,11 @@ function strike(
   if (shieldLeft !== undefined) ev.shieldLeft = shieldLeft;
   events.push(ev);
 
-  // Cleave: only a main blow carries overkill on (not thorns / last breath / cleave itself).
+  // Cleave: only a main blow carries overkill on (not thorns / last breath),
+  // and an Overflow blow only when it chains (a mastered Berserker).
   const isMain = !tag || tag === "first-strike" || tag === "executioner" || tag === "charge";
-  if (isMain && attacker.traits?.cleave && hpBefore > 0 && target.hp < 0) {
+  const chains = tag === "cleave" && !!attacker.traits?.cleaveChain;
+  if ((isMain || chains) && attacker.traits?.cleave && hpBefore > 0 && target.hp < 0) {
     // Overflow: half the overkill carries on, at most CLEAVE_MAX — the whole of
     // it made overflow a near-lock — unless the Cleave upgrade lifts the limit.
     const excess = attacker.traits.cleaveFull
@@ -461,12 +463,12 @@ function openingBuffs(board: Board): BattleEvent[] {
           front.hp += hp;
           events.push({ type: "buff", unit: front.id, source: u.id, atk: rally, hp, label: "Rally" });
         }
-        // Warden's Barrier: a shield on the front (and, mastered or with
-        // Aegis, the unit behind it). `traits` is shared with the caller's
+        // Warden's Barrier: a shield on the front, and on `barrierReach`
+        // units behind it (a mastered Warden 1, Aegis +1). `traits` is shared with the caller's
         // board (cloneBoard is shallow there), so it's replaced, not mutated.
         const barrier = u.traits?.barrier ?? 0;
         if (barrier > 0) {
-          const shielded = u.traits?.barrierBehind && queue[1] ? [front, queue[1]] : [front];
+          const shielded = [front, ...queue.slice(1, 1 + (u.traits?.barrierReach ?? 0))];
           for (const s of shielded) {
             s.traits = { ...s.traits, shield: (s.traits?.shield ?? 0) + barrier };
             events.push({ type: "buff", unit: s.id, source: u.id, atk: 0, hp: 0, shield: barrier, label: "Barrier" });

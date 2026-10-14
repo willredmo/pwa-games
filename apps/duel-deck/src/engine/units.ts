@@ -63,7 +63,7 @@ export const UNITS: Record<string, UnitStats> = {
     archetype: "attack",
     role: "Highest attack, very fragile",
     ability: { name: "Overflow", trigger: "On kill", text: "Half the damage beyond a kill (up to 3) carries into the next enemy.", scaling: "Carry-over cap +1 per level" },
-    mastery: "Overflow carries all the excess damage, with no cap.",
+    mastery: "Overflow chains: an enemy its Overflow kills passes the rest on to the next.",
   },
   // The first unit that wants to stand at the back: it never fights well, but
   // from behind the front it lifts whoever is fighting.
@@ -291,7 +291,7 @@ export function innateTraits(key: string, merges = 0): UnitTraits {
     case "bulwark":
       return { growOnSurvive: master ? { atk: 1, hp: 1 + Math.floor(m / 2) } : { hp: 1 + Math.floor(m / 2) } };
     case "berserker":
-      return master ? { cleave: true, cleaveFull: true } : { cleave: true, cleaveCap: 3 + m };
+      return master ? { cleave: true, cleaveCap: 3 + m, cleaveChain: true } : { cleave: true, cleaveCap: 3 + m };
     case "lancer":
       return master ? { pierce: 1 + Math.floor(m / 2), pierceDeeper: 1 } : { pierce: 1 + Math.floor(m / 2) };
     case "medic":
@@ -306,7 +306,7 @@ export function innateTraits(key: string, merges = 0): UnitTraits {
       // Read by applyAugments, which only credits Wardens behind the front.
       // 3 + 1 every 2 levels measured 41% (sim, --aug=random); 4 + 1 a level 52%.
       const barrier = 4 + m;
-      return master ? { barrier, barrierBehind: true } : { barrier };
+      return master ? { barrier, barrierReach: 1 } : { barrier };
     }
     case "acolyte":
       // `lifebond` multiplies the gift (Sanctuary doubles it); the Acolyte

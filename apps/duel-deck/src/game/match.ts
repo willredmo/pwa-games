@@ -472,7 +472,7 @@ const AUGMENT_SCORE: Record<string, number> = {
   triage: 46,
   stimulant: 46,
   "thick-barrier": 45,
-  aegis: 45,
+  aegis: 48,
   devotion: 47,
   blessing: 49,
   counterstrike: 47,

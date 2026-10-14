@@ -17,6 +17,7 @@ function describeTraits(t: UnitTraits): string[] {
         ? "all its overkill hits the next enemy"
         : `half its overkill (max ${t.cleaveCap ?? 3}) hits the next enemy`,
     );
+  if (t.cleave && t.cleaveChain) out.push("an enemy its overkill kills passes the rest on");
   if (t.dodges) out.push(t.dodges === 1 ? "dodges the first hit each round" : `dodges the first ${t.dodges} hits each round`);
   if (t.riposte) out.push(`strikes back for ${t.riposte} when it dodges`);
   if (t.openingBonus)
@@ -43,7 +44,7 @@ function describeTraits(t: UnitTraits): string[] {
       `from behind the front: heals your front unit ${t.mend}♥ after each exchange (${3 + (t.mendMore ?? 0)} times a round)${t.mendAtk ? `, each time +${t.mendAtk}⚔` : ""}`,
     );
   if (t.rally) out.push(`from behind the front: your front unit gets +${t.rally}⚔${t.rallyHp ? ` +${t.rallyHp}♥` : ""}`);
-  if (t.barrier) out.push(`from behind the front: your front unit starts with a ${t.barrier}-damage shield${t.barrierBehind ? " (and the unit behind it)" : ""}`);
+  if (t.barrier) out.push(`from behind the front: your front unit starts with a ${t.barrier}-damage shield${t.barrierReach ? ` (and the ${t.barrierReach === 1 ? "unit" : `${t.barrierReach} units`} behind it)` : ""}`);
   if (t.shield) out.push(`shield: the first ${t.shield} damage it takes this round is absorbed`);
   if (t.lifebond)
     out.push(`from behind the front: gives half its health to your front unit${t.lifebond > 1 ? ` (x${t.lifebond})` : ""}${t.lifebondAtk ? `, plus +${t.lifebondAtk}⚔` : ""}`);

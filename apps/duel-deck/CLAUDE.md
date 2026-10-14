@@ -390,7 +390,8 @@ At the cap a unit's ability takes its **Mastery** form, a branch in
 (`UnitStats.mastery` is the text): Guard's Bodyguard covers every ally;
 Striker charges each new enemy (`chargeEach`: Charge keyed per target);
 Skirmisher dodges twice; Bulwark's Fortify adds +1 attack; Berserker's
-Overflow is uncapped (`cleaveFull`); Herald's rally adds as much health
+Overflow chains (`cleaveChain`: an enemy its Overflow kills passes the rest
+on; it was uncapped overflow until 2026-10-14, the same as the Cleave upgrade); Herald's rally adds as much health
 (`rallyHp`); Lancer impales two deep (`pierceDeeper` 1, units beyond the
 first); Medic mends 5 times (`mendMore` 2, mends beyond the usual 3); Knight's armour is 2. The badge reads gold "MAX"
 (`levelLabel`); `LEVEL_TIERS` became 1/2/5/8/10/11+, red being past the cap.
@@ -450,14 +451,25 @@ them. Added 2026-10-14, each leaning on the unit's ability: Long reach (Impale
 +3), Skewer (rare, Impale one deeper), War horn (Rally +3), Banner of hope
 (rare, Rally also gives that much health), Triage (Mend +2 and once more),
 Stimulant (rare, each Mend also +2 attack on the front, a labelled buff in
-`mendHeals`), Thick barrier (Barrier +4), Aegis (rare, Barrier +1 and covers
+`mendHeals`), Thick barrier (Barrier +4), Aegis (rare, Barrier covers one more
 the unit behind the front), Devotion (Acolytes +4 health), Blessing (rare,
 Lifebond also +3 attack), Counterstrike (Riposte +3) and Choir (rare, Support
 units +1/+3). The rares echo Masteries but stack with them (hence
 `pierceDeeper`/`mendMore` as extras over the default rather than absolute
 values). Sim (12k, `--aug=random`): 45-49%, after buffing the first draft
 (43.8-49.4%); the AI rarely fields supports, so like the other unit upgrades
-they under-read. `PROTOCOL` 3.
+they under-read.
+
+**No upgrade may duplicate a Mastery or be dead on arrival** (review
+2026-10-14). Aegis and Cleave used to be exactly a mastered Warden's and
+Berserker's ability, so they did nothing for those units: Barrier's reach is
+now a count (`barrierReach`) that Aegis adds to, and Berserker's Mastery became
+chaining. Ascendant `excludes` the upgrades a one-unit row can't use
+(Reinforcements, Mixed formation, United front, Last light, Knight's oath,
+Veteran), so `offerAugments` stops dealing them once it's held. Upgrade icons
+must also differ from the board's non-upgrade badges (🔥🧱🕊 synergies, 🎯
+Drill, 📯🔰💞 supports): Battle fury, Iron will, Precision strikes and
+Ascendant were moved off clashing icons. `PROTOCOL` 4.
 ### Classes and full-row synergies
 Every unit has a class (`UnitStats.archetype`, separate from `classes`, the tags
 upgrades target): **Attack** Striker, Berserker, Lancer, Skirmisher;
