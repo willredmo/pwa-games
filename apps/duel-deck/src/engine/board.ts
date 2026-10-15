@@ -1,4 +1,4 @@
-import { KNIGHTING_BONUS, KNIGHT_AT, SQUIRE_STEP, UNITS, mergesInto } from "./units";
+import { KNIGHTING_BONUS, KNIGHT_AT, MAX_MERGES, SQUIRE_STEP, UNITS, canAbsorb } from "./units";
 import type { Board, Side, Unit } from "./types";
 
 // Board construction and slot access. Generic over `lanes` and `depth`.
@@ -39,9 +39,15 @@ export function makeUnit(key: string, side: Side): Unit {
   };
 }
 
+/** Most merges a unit on side may hold: MAX_MERGES, unless Ascendant lifts it. */
+export function mergeCapFor(board: Board, side: Side): number {
+  return board.mods?.[side]?.uncapped ? Infinity : MAX_MERGES;
+}
+
 /**
  * Whether an offered unit may merge into the unit at this slot. Like merges
- * with like (a Guard only folds into a Guard), plus Squires into Knights.
+ * with like (a Guard only folds into a Guard), plus Squires into Knights, and
+ * never past the level cap.
  */
 export function canMerge(
   board: Board,
@@ -52,7 +58,7 @@ export function canMerge(
 ): boolean {
   if (lane < 0 || lane >= board.lanes || spot < 0 || spot >= board.depth) return false;
   const unit = board.slots[side][lane][spot];
-  return !!unit && !!UNITS[key] && mergesInto(unit.key, key);
+  return !!unit && !!UNITS[key] && canAbsorb(unit.key, unit.merges, key, 1, mergeCapFor(board, side));
 }
 
 /**
@@ -163,7 +169,8 @@ export function mergePlaced(
   const target = list[to];
   // Squire into Knight, never the reverse: a Knight folded into a Squire would
   // throw away its knighthood.
-  if (!mergesInto(target.key, source.key)) return false;
+  // Levels add, so two level-6 units can't fold into a level 12.
+  if (!canAbsorb(target.key, target.merges, source.key, source.merges + 1, mergeCapFor(board, side))) return false;
   const gain = unitMergeGain(source, ratio, target.merges);
   target.baseAtk += gain.atk;
   target.baseMaxHp += gain.hp;

@@ -26,12 +26,22 @@ export type Sfx =
   | "round-win"
   | "round-loss"
   | "victory"
-  | "defeat";
+  | "defeat"
+  | "explode"      // the losing row blows up
+  | "emote";       // the opponent sent an emote
 
 let ctx: AudioContext | null = null;
+/** Every sound connects here. On/off is this gain; it feeds the dry path and the reverb. */
 let master: GainNode | null = null;
 let enabled = true;
 let noise: AudioBuffer | null = null;
+/**
+ * Pitch multiplier for the sound being played (see `sfx`): combat sounds get a
+ * small random detune each time, so repeated hits don't sound like one clip.
+ */
+let pitch = 1;
+/** How much of each sound goes to the room reverb (0 = dry). */
+const REVERB_SEND = 0.14;
 
 export function setSoundEnabled(on: boolean): void {
   enabled = on;
@@ -47,7 +57,25 @@ export function unlockSound(): void {
     ctx = new AudioContext();
     master = ctx.createGain();
     master.gain.value = enabled ? 1 : 0;
-    master.connect(ctx.destination);
+    // Master chain: a compressor evens the levels out, so quiet sounds (a
+    // unit being placed) aren't lost and a big clash doesn't clip; a short,
+    // quiet room reverb takes the dry, "inside the speaker" edge off. The
+    // impulse is generated, so there's still no audio file.
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -22;
+    comp.knee.value = 18;
+    comp.ratio.value = 3.5;
+    comp.attack.value = 0.004;
+    comp.release.value = 0.18;
+    const out = ctx.createGain();
+    out.gain.value = 1.35; // make-up gain after compression
+    master.connect(comp);
+    const verb = ctx.createConvolver();
+    verb.buffer = roomImpulse(ctx, 0.9);
+    const send = ctx.createGain();
+    send.gain.value = REVERB_SEND;
+    master.connect(send).connect(verb).connect(comp);
+    comp.connect(out).connect(ctx.destination);
     // A short decaying noise burst, reused for every percussive sound.
     noise = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.25), ctx.sampleRate);
     const d = noise.getChannelData(0);
@@ -55,6 +83,17 @@ export function unlockSound(): void {
   } catch {
     ctx = null; // no Web Audio (or blocked) — the game is silent, nothing else
   }
+}
+
+/** A small room's impulse response: stereo noise decaying over `seconds`. */
+function roomImpulse(ac: AudioContext, seconds: number): AudioBuffer {
+  const len = Math.floor(ac.sampleRate * seconds);
+  const buf = ac.createBuffer(2, len, ac.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+  }
+  return buf;
 }
 
 /** A filtered burst of the noise buffer: impacts, clangs, whooshes. */
@@ -65,6 +104,8 @@ function burst(opts: {
   decay: number;
   type?: BiquadFilterType;
   at?: number;
+  /** Sweep the filter to this frequency over the burst (whooshes, poofs). */
+  to?: number;
 }): void {
   if (!ctx || !master || !noise) return;
   const t = (opts.at ?? 0) + ctx.currentTime;
@@ -72,7 +113,8 @@ function burst(opts: {
   src.buffer = noise;
   const filter = ctx.createBiquadFilter();
   filter.type = opts.type ?? "bandpass";
-  filter.frequency.value = opts.freq;
+  filter.frequency.setValueAtTime(opts.freq * pitch, t);
+  if (opts.to !== undefined) filter.frequency.exponentialRampToValueAtTime(Math.max(20, opts.to * pitch), t + opts.decay);
   filter.Q.value = opts.q;
   const g = ctx.createGain();
   g.gain.setValueAtTime(opts.gain, t);
@@ -95,8 +137,8 @@ function tone(opts: {
   const t = (opts.at ?? 0) + ctx.currentTime;
   const o = ctx.createOscillator();
   o.type = opts.type ?? "triangle";
-  o.frequency.setValueAtTime(opts.freq, t);
-  if (opts.to !== undefined) o.frequency.exponentialRampToValueAtTime(Math.max(1, opts.to), t + opts.dur);
+  o.frequency.setValueAtTime(opts.freq * pitch, t);
+  if (opts.to !== undefined) o.frequency.exponentialRampToValueAtTime(Math.max(1, opts.to * pitch), t + opts.dur);
   const g = ctx.createGain();
   // A tiny attack, so a square/saw doesn't click on its first sample.
   g.gain.setValueAtTime(0, t);
@@ -115,13 +157,29 @@ function phrase(notes: { freq: number; at: number; dur?: number; gain?: number; 
 }
 
 /**
+ * A struck bell: a sine with an inharmonic partial (×2.76, like a real bell's
+ * first overtone) and a long ring. Reads as a clear "ding" over battle noise.
+ */
+function bell(freq: number, at: number, gain = 0.1, dur = 0.7): void {
+  tone({ freq, gain, dur, type: "sine", at });
+  tone({ freq: freq * 2.76, gain: gain * 0.35, dur: dur * 0.5, type: "sine", at });
+  tone({ freq: freq * 2, gain: gain * 0.25, dur: dur * 0.7, type: "triangle", at });
+}
+
+const VARIED = new Set<Sfx>(["hit", "big-hit", "death", "dodge", "block", "place", "explode"]);
+
+/**
  * Play an event. `strength` (0–1, default 0.5) scales the ones that have a
  * sense of size — a 2-damage poke and a 20-damage execution are the same
  * event but shouldn't be the same sound.
  */
-export function sfx(kind: Sfx, strength = 0.5): void {
+export function sfx(kind: Sfx, strength = 0.5, rate = 1): void {
   if (!enabled || !ctx) return;
   const s = Math.max(0, Math.min(1, strength));
+  // Combat and handling sounds vary a little in pitch (±4%) each time; musical
+  // cues (wins, upgrades, knighting) stay in tune.
+  // `rate` lowers or raises the whole sound (the slow-motion win blast plays at 0.6).
+  pitch = rate * (VARIED.has(kind) ? 1 + (Math.random() - 0.5) * 0.08 : 1);
   switch (kind) {
     case "hit":
       // Sword on shield: a bright metallic tick over a dull body thud.
@@ -134,9 +192,11 @@ export function sfx(kind: Sfx, strength = 0.5): void {
       tone({ freq: 160, to: 70, gain: 0.14, dur: 0.22, type: "sawtooth" });
       break;
     case "death":
-      // Falling pitch and a body-drop thud under it.
-      tone({ freq: 300, to: 70, gain: 0.13, dur: 0.42, type: "sawtooth" });
-      burst({ freq: 100, q: 0.6, gain: 0.22, decay: 0.3, type: "lowpass", at: 0.1 });
+      // "Poof" (chosen 2026-10-13 over a bonk, a shatter and the old falling
+      // groan): a cartoon vanish that suits the round, cute characters.
+      burst({ freq: 2200, to: 260, q: 1.1, gain: 0.28, decay: 0.32 });
+      tone({ freq: 520, to: 180, gain: 0.08, dur: 0.22, type: "sine" });
+      burst({ freq: 140, q: 0.7, gain: 0.22, decay: 0.18, type: "lowpass", at: 0.05 });
       break;
     case "dodge":
       // A whoosh of air: noise swept high, nothing pitched.
@@ -160,7 +220,11 @@ export function sfx(kind: Sfx, strength = 0.5): void {
       tone({ freq: 440, to: 880, gain: 0.07, dur: 0.22 });
       break;
     case "place":
-      burst({ freq: 420, q: 1.2, gain: 0.12, decay: 0.09, type: "lowpass" });
+      // A wooden 'tok' as the unit lands: a low knock plus a short pitched click.
+      // (A bare lowpass puff at 0.12 was too quiet to hear over music or a room.)
+      burst({ freq: 380, q: 1.4, gain: 0.34, decay: 0.12, type: "lowpass" });
+      tone({ freq: 240, to: 150, gain: 0.14, dur: 0.09, type: "triangle" });
+      burst({ freq: 2600, q: 2, gain: 0.08, decay: 0.03 });
       break;
     case "merge":
       // Two notes resolving into one, an octave up.
@@ -188,10 +252,10 @@ export function sfx(kind: Sfx, strength = 0.5): void {
       ]);
       break;
     case "round-win":
-      phrase([
-        { freq: 523, at: 0, dur: 0.16, gain: 0.07 },
-        { freq: 784, at: 0.1, dur: 0.28, gain: 0.08 },
-      ]);
+      // Two bell strikes a fifth apart (chosen over a fanfare and coins): no
+      // other cue uses bells, so winning a round is unmistakable.
+      bell(784, 0, 0.11, 0.6);
+      bell(1175, 0.13, 0.12, 0.9);
       break;
     case "round-loss":
       phrase([
@@ -206,6 +270,18 @@ export function sfx(kind: Sfx, strength = 0.5): void {
         { freq: 784, at: 0.28, dur: 0.2, gain: 0.08 },
         { freq: 1047, at: 0.42, dur: 0.6, gain: 0.1 },
       ]);
+      break;
+    case "emote":
+      // A soft pop: quiet, so it never talks over the battle.
+      tone({ freq: 880, to: 1320, gain: 0.05, dur: 0.09, type: "sine" });
+      break;
+    case "explode":
+      // A crack, a long low rumble and a falling thump: the noise buffer is
+      // only 0.25s, so the rumble is a few overlapping lowpassed bursts.
+      burst({ freq: 2600, q: 0.5, gain: 0.3, decay: 0.12, type: "highpass" });
+      tone({ freq: 110, to: 32, gain: 0.32, dur: 0.9, type: "sine" });
+      tone({ freq: 70, to: 28, gain: 0.18, dur: 1.1, type: "triangle", at: 0.05 });
+      for (let i = 0; i < 5; i++) burst({ freq: 260 - i * 30, q: 0.6, gain: 0.32 - i * 0.05, decay: 0.3, type: "lowpass", at: i * 0.12 });
       break;
     case "defeat":
       phrase([

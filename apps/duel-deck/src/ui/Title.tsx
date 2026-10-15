@@ -17,7 +17,14 @@ export interface TitleProps {
   onPlay: () => void;
   onResume: () => void;
   onHelp: () => void;
-  onUnits: () => void;
+  onCodex: () => void;
+  onNotes: () => void;
+  /** Patch notes for this version haven't been opened yet: show a dot. */
+  newNotes: boolean;
+  /** Start the first-match tutorial. */
+  onTutorial: () => void;
+  /** Lead with the tutorial: nothing saved and it's never been finished or skipped. */
+  suggestTutorial: boolean;
   /** An online duel this device can rejoin after a reload. */
   rejoinCode: string | null;
   notice: string | null;
@@ -47,6 +54,12 @@ export function Title(props: TitleProps) {
           </button>
         )}
 
+        {props.suggestTutorial && (
+          <button className="primary-btn primary-btn--wide title__tutorial" onClick={props.onTutorial}>
+            🎓 New here? Play the tutorial <small>A guided first match, about 3 minutes</small>
+          </button>
+        )}
+
         <h2 className="title__label">{saved ? "New match" : "Play"}</h2>
         <div className="title__options">
           {DIFFICULTIES.map((d, i) => {
@@ -72,7 +85,7 @@ export function Title(props: TitleProps) {
           })}
         </div>
         <button
-          className={`${saved ? "ghost-btn" : "primary-btn"} primary-btn--wide`}
+          className={`${saved || props.suggestTutorial ? "ghost-btn" : "primary-btn"} primary-btn--wide`}
           onClick={props.onPlay}
         >
           {saved ? `New match vs ${DIFFICULTY_LABEL[difficulty]}` : `Play vs ${DIFFICULTY_LABEL[difficulty]}`}
@@ -94,8 +107,12 @@ export function Title(props: TitleProps) {
         {props.notice && <p className="title__notice" role="status">{props.notice}</p>}
 
         <div className="title__links">
+          <button className="link-btn" onClick={props.onTutorial}>Tutorial</button>
           <button className="link-btn" onClick={props.onHelp}>How to play</button>
-          <button className="link-btn" onClick={props.onUnits}>Units</button>
+          <button className="link-btn" onClick={props.onCodex}>Codex</button>
+          <button className="link-btn" onClick={props.onNotes}>
+            What's new{props.newNotes && <span className="link-btn__dot" aria-label="(new)" />}
+          </button>
           <button
             className="link-btn"
             onClick={() => props.onSound(!props.sound)}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   capacityOf,
   cloneBoard,
+  mergeCapFor,
   emptySpotCount,
   findUnitCell,
   insertUnit,
@@ -17,8 +18,8 @@ import {
   writeLane,
 } from "../engine/board";
 import { resolveRound } from "../engine/combat";
-import { KNIGHTING_BONUS, UNITS, levelOf, mergesInto } from "../engine/units";
-import type { AttackEvent, BattleEvent, Board, RoundResult, Side, Tick, Unit } from "../engine/types";
+import { ARCHETYPES, KNIGHTING_BONUS, MAX_LEVEL, SYNERGIES, SYNERGY_MIN, UNITS, canAbsorb, isMastered, levelOf, mergesInto, synergyOf } from "../engine/units";
+import type { Archetype, AttackEvent, BattleEvent, Board, RoundResult, Side, Tick, Unit } from "../engine/types";
 import {
   AUGMENT_EVERY,
   augmentOfferCount,
@@ -29,6 +30,8 @@ import {
   START_HP,
   aiCommit,
   aiTakeAugment,
+  drillFor,
+  rowMaxed,
   type Difficulty,
   isAugmentRound,
   knightAt,
@@ -42,10 +45,12 @@ import {
 import {
   AUGMENTS,
   createAugmentState,
+  frozenAugments,
   getAugment,
   mergeRatioFor,
   offerAugments,
   takeAugment,
+  toggleFrozenAugment,
   transferGrant,
   type AugmentDef,
   type AugmentState,
@@ -53,12 +58,18 @@ import {
 import { settleRound } from "../game/roundEnd";
 
 /** Badge glyph for an augment id — "✦" if an id ever outlives its definition. */
-const auraIcon = (id: string) => getAugment(id)?.icon ?? (id === "herald" ? "📯" : "✦");
+const auraIcon = (id: string) =>
+  getAugment(id)?.icon ??
+  (id === "herald" ? "📯" : id === "warden" ? "🔰" : id === "acolyte" ? "💞" : id === "drill" ? "🎯" : id.startsWith("syn-") ? (SYNERGIES[id.slice(4) as Archetype]?.icon ?? "✦") : "✦");
 import { cellCenter, draw, pixelToCell, type Cell, type TargetKind } from "../board/render";
 import { POSE_MS, prefersReducedMotion, type Pose, type PoseState } from "../board/anim";
 import { FxLayer, type FxKind } from "../board/fx";
 import { HpBar } from "./HpBar";
+import { EmoteBar } from "./EmoteBar";
+import { Tutorial } from "./Tutorial";
+import { HP_BAR_BLAST_MS, HpBarBlast } from "./HpBarBlast";
 import { RoundBanner, type BannerTone } from "./RoundBanner";
+import { PatchNotes } from "./PatchNotes";
 import { UnitPortrait } from "./UnitPortrait";
 import { OfferInfo, UnitInfo } from "./UnitInfo";
 import {
@@ -67,9 +78,10 @@ import {
   ConfirmPanel,
   HelpPanel,
   ResultPanel,
-  UnitsView,
+  CodexView,
 } from "./Overlays";
-import { emptyStats, recordRound, type MatchStats } from "../game/stats";
+import { emptyStats, mvpOf, recordRound, type MatchStats } from "../game/stats";
+import { MatchLog, rowLog, type PickLog } from "../game/telemetry";
 import { SPEEDS, clearMatch, saveMatch, type SavedMatch, type Speed } from "../game/save";
 import { sfx } from "../game/sound";
 import {
@@ -105,6 +117,8 @@ const BIG_HIT = 7;
  * the name and the numbers can be read before the battle moves on.
  */
 const ABILITY_MS = 1100;
+/** One supporting unit's start-of-round buff (each gets its own beat). */
+const OPENING_BEAT_MS = 800;
 /** After the main blows, before the first side hit (Overflow, Thorns…) plays. */
 const EXTRA_GAP_MS = 450;
 /** Overflow's shockwave travel: its damage lands on the second target on arrival. */
@@ -132,6 +146,20 @@ interface FeedItem {
 
 /** Touch has no hover: holding this long on a unit or offer card opens its info card. */
 const LONG_PRESS_MS = 450;
+/**
+ * The tutorial's first two offers, so the lesson always has what it needs:
+ * round 1 deals Strikers and Guards, round 2 deals both again, so whatever
+ * the player took, a merge is on offer when the merge step comes up.
+ */
+const TUTORIAL_OFFERS: Record<number, string[]> = {
+  1: ["striker", "guard", "berserker", "striker", "guard"],
+  2: ["striker", "guard", "berserker", "medic", "bulwark"],
+};
+/** Losing the match: wait for the last fall to read, then the blast plays this long before the result screen. */
+const EXPLOSION_DELAY_MS = 350;
+const EXPLOSION_MS = 1700;
+/** Winning the match: a beat after the last blow, the enemy's HP bar blows up (see HpBarBlast). */
+const BAR_BLAST_DELAY_MS = 300;
 
 /**
  * "waiting" is online only: your row is committed and locked, and the round
@@ -146,6 +174,8 @@ interface UndoEntry {
   /** Taking a frozen card unfreezes it, so undo must put that back. */
   frozen: number[];
   picksLeft: number;
+  /** The round's telemetry picks, so an undone pick isn't logged. */
+  picks: PickLog[];
   /**
    * Merges move augment grants (Last Stand) between unit ids by mutating the
    * augment state, so the grants are snapshotted too — restoring only the
@@ -192,18 +222,49 @@ function applyEvent(board: Board, ev: BattleEvent): void {
   const cell = id ? findUnitCell(board, id) : null;
   const u = cell ? board.slots[cell.side][cell.lane][cell.spot] : null;
   if (!u) return;
-  if (ev.type === "attack") u.hp -= ev.damage;
+  if (ev.type === "attack") {
+    u.hp -= ev.damage;
+    if (ev.shieldLeft !== undefined) u.shieldLeft = ev.shieldLeft;
+  }
   else if (ev.type === "heal") u.hp += ev.amount;
   else if (ev.type === "buff") {
     u.atk += ev.atk;
     u.maxHp += ev.hp;
     u.hp += ev.hp;
+    // A fresh traits object: cloneBoard shares it with the board it copied.
+    if (ev.shield) u.traits = { ...u.traits, shield: (u.traits?.shield ?? 0) + ev.shield };
   }
 }
 
-function buildFrames(committed: Board, ticks: Tick[]): Frame[] {
+/** A stat change as playback labels it: "+2⚔ +3♥", "+4🔰", or "−4♥" for a loss. */
+const statText = (atk: number, hp: number, shield = 0) =>
+  [
+    atk ? `${atk > 0 ? "+" : "−"}${Math.abs(atk)}⚔` : "",
+    hp ? `${hp > 0 ? "+" : "−"}${Math.abs(hp)}♥` : "",
+    shield ? `+${shield}🔰` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+function buildFrames(committed: Board, ticks: Tick[], opening: BattleEvent[] = []): Frame[] {
   const frames: Frame[] = [];
   let prev = committed;
+  // Start-of-round support (Rally, Lifebond, Barrier) plays before anyone
+  // moves, one supporting unit at a time, so each gift is seen landing rather
+  // than all at once. A unit's own events (an Acolyte's −N♥ and the front's
+  // +N♥, a mastered Warden's two shields) share its beat.
+  const bySource: BattleEvent[][] = [];
+  for (const ev of opening) {
+    const src = ev.type === "buff" ? ev.source : null;
+    const last = bySource[bySource.length - 1];
+    const lastSrc = last?.[0]?.type === "buff" ? last[0].source : null;
+    if (last && src && src === lastSrc) last.push(ev);
+    else bySource.push([ev]);
+  }
+  for (const events of bySource) {
+    frames.push({ kind: "ability", board: prev, events, duration: OPENING_BEAT_MS });
+    prev = applyEvents(prev, events);
+  }
   for (const tick of ticks) {
     // Charge gets its own beat before any lunge — ahead of a first strike too,
     // since a Striker's first swing can be both.
@@ -263,16 +324,20 @@ export interface GameProps {
   onExit: () => void;
   /** Set for an online match: the opponent is a person, not `aiCommit`. */
   online?: Session;
+  /** The first-match tutorial: coach card, set first offers, never saved or logged. */
+  tutorial?: boolean;
 }
 
-export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, sound, onSound, battleLog, onBattleLog, onExit, online }: GameProps) {
+export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, sound, onSound, battleLog, onBattleLog, onExit, online, tutorial }: GameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   /** The match being resumed, if any; resuming always lands in the pick phase. */
   const [saved] = useState(() => resume);
   const [board, setBoard] = useState<Board>(() => saved?.board ?? newBoard());
   const [round, setRound] = useState(saved?.round ?? 1);
-  const [offer, setOffer] = useState<string[]>(() => saved?.offer ?? rollOffer(OFFER_COUNT, saved?.player));
+  const [offer, setOffer] = useState<string[]>(
+    () => saved?.offer ?? (tutorial ? TUTORIAL_OFFERS[1].slice() : rollOffer(OFFER_COUNT, saved?.player)),
+  );
   const [picksLeft, setPicksLeft] = useState(PICK_COUNT);
   /** Click-selected and awaiting a destination click. Mirrors `drag`. */
   const [selected, setSelected] = useState<Grab | null>(null);
@@ -296,12 +361,29 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     // An online match lives in the room, not in localStorage: half of it is
     // the opponent's, so a local restore would put the two devices out of
     // step. Reloading rejoins through the room instead.
-    if (!online) saveMatch(s);
+    // The tutorial isn't saved either: it mustn't replace a real match in progress.
+    if (!online && !tutorial) saveMatch(s);
   };
+  /** Balance telemetry for this match (game/telemetry.ts). */
+  const [matchLog] = useState(() =>
+    tutorial ? MatchLog.none() : online ? MatchLog.online(online.code, online.me) : MatchLog.cpu(!!saved, saved?.difficulty ?? startDifficulty),
+  );
+  /**
+   * This round's log so far: the cards as dealt, each pick, and rerolls spent.
+   * The picks are snapshotted for undo along with the board.
+   */
+  const roundLog = useRef<{ offer: string[]; picks: PickLog[]; rr: number; augRr: number }>({
+    offer: offer.slice(),
+    picks: [],
+    rr: 0,
+    augRr: 0,
+  });
+  /** The win's slow-motion HP-bar explosion is playing (and the bar stays gone). */
+  const [barBlast, setBarBlast] = useState(false);
   const [phase, setPhase] = useState<Phase>(saved?.augmentPending ? "augment" : "pick");
   const [result, setResult] = useState<RoundResult | null>(null);
   const [frames, setFrames] = useState<Frame[]>([]);
-  const [banner, setBanner] = useState<{ message: string | null; tone: BannerTone; nonce: number }>({
+  const [banner, setBanner] = useState<{ message: string | null; tone: BannerTone; nonce: number; sub?: string | null }>({
     message: null,
     tone: "neutral",
     nonce: 0,
@@ -317,6 +399,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     return () => mq.removeEventListener("change", on);
   }, []);
   const [showUnits, setShowUnits] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
   /** Battle was pressed with picks still unspent; waiting on "battle anyway?". */
   const [confirmCommit, setConfirmCommit] = useState(false);
   const [showAugments, setShowAugments] = useState(false);
@@ -334,7 +417,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       ? offerAugments(saved.player, augmentOfferCount(saved.player), upgradeTier(saved.round))
       : [],
   );
-  const [lastRound, setLastRound] = useState<string | null>(null);
+  /** The last round's one-line summary, in full and in a phone-width form. */
+  const [lastRound, setLastRound] = useState<{ long: string; short: string } | null>(null);
   /** Unit-offer rerolls left this round (Scout adds one). */
   const [unitRerolls, setUnitRerolls] = useState(() =>
     unitRerollsFor(saved?.player ?? createAugmentState()),
@@ -417,8 +501,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   if (!fxRef.current) fxRef.current = new FxLayer();
   const viewRef = useRef<Parameters<typeof draw>[1] | null>(null);
 
-  const showBanner = useCallback((message: string, tone: BannerTone) => {
-    setBanner((b) => ({ message, tone, nonce: b.nonce + 1 }));
+  const showBanner = useCallback((message: string, tone: BannerTone, sub: string | null = null) => {
+    setBanner((b) => ({ message, tone, nonce: b.nonce + 1, sub }));
   }, []);
 
   /** Scale a duration by playback speed, and halve it under reduced motion. */
@@ -447,6 +531,32 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     const c = canvas && cellCenter(canvas, b, to);
     if (a && c) {
       fxRef.current.add({ kind, x: a.x, y: a.y, size: a.size, side: from.side, tx: c.x, ty: c.y }, performance.now());
+    }
+  };
+
+  /**
+   * The match is lost: every unit on your row bursts, then the whole row goes
+   * up in one blast from its middle. Vibrates where the browser allows it
+   * (Android; iOS Safari has no vibration API, so it's simply skipped).
+   */
+  const explodeRow = (b: Board) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const cap = capacityOf(b, PLAYER);
+    const first = cellCenter(canvas, b, { side: PLAYER, lane: 0, spot: 0 });
+    const last = cellCenter(canvas, b, { side: PLAYER, lane: 0, spot: Math.max(0, cap - 1) });
+    if (!first || !last) return;
+    const now = performance.now();
+    sideUnits(b, PLAYER).forEach((u, i) => {
+      const cell = findUnitCell(b, u.id);
+      if (cell) window.setTimeout(() => fxAt(b, cell, "death"), i * 55);
+    });
+    fxRef.current.add({ kind: "explosion", x: (first.x + last.x) / 2, y: (first.y + last.y) / 2, size: first.size, side: PLAYER }, now);
+    sfx("explode");
+    try {
+      if (sound) navigator.vibrate?.([60, 40, 140]);
+    } catch {
+      /* not supported */
     }
   };
 
@@ -504,6 +614,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
    * is told is always exactly what will happen.
    */
   type DropAction = "place" | "merge" | "replace" | "reorder" | "invalid";
+  /** Ascendant: one unit, no cap, and every card merges into it whatever its type. */
+  const ascendant = mergeCapFor(board, PLAYER) === Infinity;
   const dropActionFor = useCallback(
     (cell: Cell | null, key: string | null): DropAction => {
       if (!cell || !key || cell.side !== PLAYER) return "invalid";
@@ -521,10 +633,16 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       // Without room, a twin merges and anything else is replaced. Every click
       // on your row therefore does something, rather than silently switching
       // the selection to the unit that was clicked.
-      if (mergesInto(unit.key, key)) return !boardFull && cell.zone === "right" ? "place" : "merge";
+      if (mergesInto(unit.key, key) || ascendant) {
+        // A twin at its level cap can't take more: with room the card inserts
+        // beside it; with the row full there's nothing to do here (replacing a
+        // maxed unit with its own type would only throw its levels away).
+        if (!canAbsorb(unit.key, unit.merges, key, 1, mergeCapFor(board, PLAYER))) return boardFull ? "invalid" : "place";
+        return !boardFull && cell.zone === "right" ? "place" : "merge";
+      }
       return boardFull ? "replace" : "place";
     },
-    [board, boardFull],
+    [board, boardFull, ascendant],
   );
 
   /**
@@ -540,7 +658,11 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       const target = board.slots.player[cell.lane][cell.spot];
       if (!target || target.id === d.unitId) return "invalid";
       // Twins: the left half (the character) merges, the right half just moves.
-      if (mergesInto(target.key, d.key)) return cell.zone === "right" ? "reorder" : "merge";
+      if (mergesInto(target.key, d.key) || ascendant) {
+        const source = board.slots.player[d.lane][d.from];
+        const fits = !!source && canAbsorb(target.key, target.merges, source.key, source.merges + 1, mergeCapFor(board, PLAYER));
+        return fits && cell.zone !== "right" ? "merge" : "reorder";
+      }
       return "reorder";
     },
     [board],
@@ -594,7 +716,11 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       const k = actionFor(c, grab);
       if (k === "invalid") continue;
       const occupant = board.slots.player[c.lane][c.spot];
-      const twin = !!occupant && mergesInto(occupant.key, grab.key);
+      // A twin only offers the merge while it's under the cap.
+      const grabbed = grab.kind === "unit" ? board.slots.player[grab.lane][grab.from] : null;
+      const twin =
+        !!occupant &&
+        canAbsorb(occupant.key, occupant.merges, grab.key, grabbed ? grabbed.merges + 1 : 1, mergeCapFor(board, PLAYER));
       targetKinds[`${c.lane},${c.spot}`] =
         grab.kind === "unit"
           ? twin
@@ -632,7 +758,31 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     if (kind === "place" && target) return `↧ INSERT ${UNITS[grab.key].name} at #${dropCell.spot + 1}`;
     if (kind === "place") return `＋ ADD ${UNITS[grab.key].name}`;
     if (kind === "reorder") return `MOVE TO #${dropCell.spot + 1}`;
+    if (target && mergesInto(target.key, grab.key) && !ascendant) return `MAX LEVEL ${MAX_LEVEL}`;
     return null;
+  })();
+
+  /**
+   * Progress toward a full-row synergy, for the meter on the pick label: the
+   * class the row is closest to (the one most of it shares; ties go to the
+   * front unit's), each slot as a pip, and what's left to do.
+   */
+  const synergyGoal = ((): SynergyGoal | null => {
+    const units = sideUnits(board, PLAYER);
+    const cap = capacityOf(board, PLAYER);
+    if (cap < SYNERGY_MIN || units.length === 0) return null;
+    const done = synergyOf(units, cap);
+    const counts = new Map<Archetype, number>();
+    for (const u of units) counts.set(UNITS[u.key].archetype, (counts.get(UNITS[u.key].archetype) ?? 0) + 1);
+    const front = UNITS[units[0].key].archetype;
+    const cls = done ?? [...counts].sort((a, b) => b[1] - a[1] || (a[0] === front ? -1 : b[0] === front ? 1 : 0))[0][0];
+    const have = counts.get(cls) ?? 0;
+    if (!done && have < 2) return null;
+    const pips = Array.from({ length: cap }, (_, i): SynergyPip => {
+      const u = units[i];
+      return !u ? "empty" : UNITS[u.key].archetype === cls ? "match" : "other";
+    });
+    return { cls, done: !!done, have, cap, swap: units.length - have, pips };
   })();
 
   /** Merges a Squire still needs to be knighted, by its own side's threshold. */
@@ -653,6 +803,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     draggingId: drag?.kind === "unit" ? drag.unitId : null,
     selectedId: !drag && selected?.kind === "unit" ? selected.unitId : null,
     auraIcon,
+    classIcon: (u: Unit) => ARCHETYPES[UNITS[u.key]?.archetype]?.icon,
     promoteIn: squireToGo,
     battle: phase === "battle",
   };
@@ -703,12 +854,16 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
 
   const startRound = useCallback(
     (base: Board, roundNum: number) => {
+      // Drill lasts one round.
+      playerAug.current.drill = 0;
+      enemyAug.current.drill = 0;
       const next = refreshed(base);
       scoutRef.current = next;
       // Frozen cards keep their slot; the rest are dealt fresh.
       const keep = frozenRef.current;
       const prevOffer = offerRef.current;
-      const nextOffer = rollOffer(OFFER_COUNT, playerAug.current).map((k, i) => (keep.includes(i) && prevOffer[i] ? prevOffer[i] : k));
+      const dealt = tutorial && TUTORIAL_OFFERS[roundNum] ? TUTORIAL_OFFERS[roundNum].slice() : rollOffer(OFFER_COUNT, playerAug.current);
+      const nextOffer = dealt.map((k, i) => (keep.includes(i) && prevOffer[i] ? prevOffer[i] : k));
       // Fallen units respawn with the same ids, so a held `dying` pose (its last
       // frame is fully faded) would leave them invisible. Replay their entrance.
       const now = performance.now();
@@ -737,6 +892,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         stats: statsRef.current,
         frozen: keep,
       });
+      roundLog.current = { offer: nextOffer.slice(), picks: [], rr: 0, augRr: 0 };
       setAugOffers(augs);
       setAugRerolls(AUGMENT_REROLLS);
       setUnitRerolls(unitRerollsFor(playerAug.current));
@@ -750,7 +906,10 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       setResult(null);
       setFrames([]);
       setPeeking(false);
-      showBanner(augs.length > 0 ? `Round ${roundNum} · Upgrade!` : `Round ${roundNum}`, "neutral");
+      // A full row of one class announces its synergy with the round.
+      const syn = synergyOf(sideUnits(next, PLAYER), capacityOf(next, PLAYER));
+      const synNote = syn ? ` · ${SYNERGIES[syn].icon} ${SYNERGIES[syn].name}!` : "";
+      showBanner(augs.length > 0 ? `Round ${roundNum} · Upgrade!${synNote}` : `Round ${roundNum}${synNote}`, "neutral");
       setPhase(augs.length > 0 ? "augment" : "pick");
     },
     [refreshed, showBanner],
@@ -776,7 +935,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     committedRef.current = committed;
     setBoard(committed);
     setResult(res);
-    setFrames(buildFrames(committed, res.ticks));
+    setFrames(buildFrames(committed, res.ticks, res.opening));
     setSelected(null);
     setPhase("battle");
   }, []);
@@ -802,7 +961,10 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   );
 
   const commit = useCallback(
-    (current: Board) => {
+    (current: Board, unusedPicks = 0) => {
+      // Drill: a maxed row turns its unspent picks into attack for this round.
+      // On the augment state, so it travels with an online commit.
+      playerAug.current.drill = drillFor(current, PLAYER, unusedPicks);
       if (online) {
         // Lock the row in and publish it. The round can't be built until the
         // opponent's arrives, so there is nothing to show but the wait.
@@ -821,11 +983,12 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         return;
       }
       const committed = cloneBoard(current);
-      aiCommit(committed, ENEMY, enemyAug.current, {
+      const aiPicked = aiCommit(committed, ENEMY, enemyAug.current, {
         difficulty: difficultyRef.current,
         oppAug: playerAug.current,
         scout: scoutRef.current ?? current,
       });
+      enemyAug.current.drill = drillFor(committed, ENEMY, PICK_COUNT - aiPicked.length);
       refreshForRound(committed, playerAug.current, enemyAug.current);
       playRound(committed);
     },
@@ -833,7 +996,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   );
 
   /** Commit the picks. Upgrades are chosen at the start of the round, so this always goes to battle. */
-  const finishPicks = useCallback((current: Board) => commit(current), [commit]);
+  const finishPicks = (current: Board) => commit(current, picksLeft);
 
   // --- Online: the room ----------------------------------------------------
 
@@ -890,6 +1053,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     usedOffers,
     frozen,
     picksLeft,
+    picks: roundLog.current.picks.slice(),
     grants: JSON.parse(JSON.stringify(playerAug.current.grants)),
   });
   const pushUndo = () => {
@@ -907,6 +1071,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     setUsedOffers(prev.usedOffers);
     setFrozen(prev.frozen);
     setPicksLeft(prev.picksLeft);
+    roundLog.current.picks = prev.picks;
     setSelected(null);
   };
 
@@ -934,6 +1099,39 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     sfx("knight");
   };
 
+  // Completing (or breaking) a full row of one class while picking gets its
+  // own moment, so a synergy is never reached by accident and missed. Only
+  // between pick-phase states: the board also changes as units fall in battle.
+  const synergyNow = synergyGoal?.done ? synergyGoal.cls : null;
+  const synergySeen = useRef({ phase, syn: synergyNow });
+  useEffect(() => {
+    const prev = synergySeen.current;
+    synergySeen.current = { phase, syn: synergyNow };
+    if (phase !== "pick" || prev.phase !== "pick" || prev.syn === synergyNow) return;
+    if (synergyNow) {
+      const syn = SYNERGIES[synergyNow];
+      showBanner(`${syn.icon} ${syn.name}!`, "win", syn.text);
+      sfx("knight");
+      for (const u of sideUnits(board, PLAYER)) {
+        const cell = findUnitCell(board, u.id);
+        if (cell) fxAt(board, cell, "bounty");
+      }
+    } else if (prev.syn) {
+      showBanner(`${SYNERGIES[prev.syn].icon} ${SYNERGIES[prev.syn].name} lost`, "neutral", "Your row isn't all one class any more");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, synergyNow]);
+
+  /** A unit just reached the level cap: its ability takes its Mastery form. */
+  const announceMastery = (b: Board, cell: Cell, name: string) => {
+    showBanner(`★ ${name} mastered!`, "win");
+    fxAt(b, cell, "bounty");
+    sfx("knight");
+  };
+  /** Whether a merge carried a unit from below the cap to it (or past it: Ascendant). */
+  const justMastered = (before: Unit | null | undefined, after: Unit | null | undefined) =>
+    !!before && !!after && !isMastered(before.merges) && isMastered(after.merges);
+
   /** Place a new unit from the offer into the queue at `cell`. */
   const placeFromOffer = useCallback(
     (offerIndex: number, cell: Cell) => {
@@ -954,12 +1152,14 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       refreshForRound(next, playerAug.current, enemyAug.current);
       const landed = next.slots.player[cell.lane][cell.spot];
       if (landed) {
+        roundLog.current.picks.push({ k: key, a: action === "merge" ? "m" : action === "replace" ? "r" : "p", l: levelOf(landed.merges) });
         if (action === "merge") {
           setPose(landed.id, "merge", POSE_MS.merge);
           fxAt(next, cell, "merge");
           sfx("merge");
           const before = board.slots.player[cell.lane][cell.spot];
           if (before?.key === "squire" && landed.key === "knight") announceKnight(next, cell);
+          else if (justMastered(before, landed)) announceMastery(next, cell, landed.name);
         } else {
           if (action === "replace") fxAt(next, cell, "replace");
           setPose(landed.id, "spawn", POSE_MS.spawn);
@@ -995,15 +1195,17 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         if (targetId) {
           transferGrant(playerAug.current, g.unitId, targetId);
           const wasSquire = board.slots.player[cell.lane][cell.spot]?.key === "squire";
+          const before = board.slots.player[cell.lane][cell.spot];
           refreshForRound(next, playerAug.current, enemyAug.current);
           const at = findUnitCell(next, targetId);
           if (at) {
             setPose(targetId, "merge", POSE_MS.merge);
             fxAt(next, at, "merge");
             sfx("merge");
-            if (wasSquire && next.slots.player[at.lane][at.spot]?.key === "knight") {
+            const after = next.slots.player[at.lane][at.spot];
+            if (wasSquire && after?.key === "knight") {
               announceKnight(next, at);
-            }
+            } else if (justMastered(before, after)) announceMastery(next, at, after!.name);
           }
         }
       } else {
@@ -1255,6 +1457,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     const fresh = rollOffer(OFFER_COUNT, playerAug.current);
     setOffer(offer.map((k, i) => (usedOffers.includes(i) || frozen.includes(i) ? k : fresh[i])));
     setUnitRerolls(unitRerolls - 1);
+    roundLog.current.rr++;
     setRerollN((n) => n + 1);
     setHistory([]);
     setSelected(null);
@@ -1269,13 +1472,13 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   };
 
   /**
-   * Freeze an upgrade to be offered first at the next choice (one at a time:
-   * freezing another moves it). Lives on the player's augment state, which is
-   * saved with the match.
+   * Freeze an upgrade to be offered first at the next choice (up to
+   * MAX_FROZEN_AUGMENTS; the panel disables the rest once that's reached).
+   * Lives on the player's augment state, which is saved with the match.
    */
   const toggleFreezeAug = (id: string) => {
     const st = playerAug.current;
-    st.frozen = st.frozen === id ? undefined : id;
+    if (!toggleFrozenAugment(st, id)) return;
     setAugOffers((o) => [...o]); // re-render the panel
     if (lastSave.current) save({ ...lastSave.current });
   };
@@ -1285,6 +1488,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     if (phase !== "augment" || augRerolls <= 0) return;
     setAugOffers(offerAugments(playerAug.current, augmentOfferCount(playerAug.current), upgradeTier(round)));
     setAugRerolls(augRerolls - 1);
+    roundLog.current.augRr++;
   };
 
   const onPickAugment = (id: string) => {
@@ -1297,7 +1501,14 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     // Against the CPU, it upgrades now too. Online, the opponent is choosing
     // at the same time on their own device; their pick reaches us with their
     // commit, so there's nothing to do here but take ours.
+    const enemyHad = enemyAug.current.active.length;
     if (!online) aiTakeAugment(next, ENEMY, enemyAug.current, round, difficultyRef.current);
+    matchLog.augment(round, {
+      o: augOffers.map((a) => a.id),
+      t: id,
+      rr: roundLog.current.augRr,
+      ...(enemyAug.current.active.length > enemyHad ? { e: enemyAug.current.active[enemyAug.current.active.length - 1] } : {}),
+    });
     refreshForRound(next, playerAug.current, enemyAug.current);
     // The upgrade is locked in: re-save without the pending flag, so a reload
     // now resumes in this round's picks rather than offering it again.
@@ -1348,6 +1559,26 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       const healed = settleRound(result, PLAYER, playerAug.current, committed);
       const enemyHealed = settleRound(result, ENEMY, enemyAug.current, committed);
       recordRound(statsRef.current, result, committed, PLAYER, healed);
+      const log = roundLog.current;
+      matchLog.round(round, {
+        offer: log.offer,
+        picks: log.picks,
+        rr: log.rr,
+        row: rowLog(sideUnits(committed, PLAYER)),
+        foe: rowLog(sideUnits(committed, ENEMY)),
+        won: result.roundWinner === PLAYER ? 1 : result.roundWinner ? -1 : 0,
+        hp: [result.board.hp.player, result.board.hp.enemy],
+      });
+      if (result.matchWinner) {
+        matchLog.end({
+          won: result.matchWinner === PLAYER ? 1 : -1,
+          rounds: round,
+          hp: [result.board.hp.player, result.board.hp.enemy],
+          aug: [...playerAug.current.active],
+          foeAug: [...enemyAug.current.active],
+          ...(mvpOf(statsRef.current) ? { mvp: mvpOf(statsRef.current)!.key } : {}),
+        });
+      }
       // The HP bars read the shown board, which still holds the pre-round
       // pools — show the hit as the banner lands. (On the final round there is
       // no next round to carry it, so the loser's bar stayed above zero.)
@@ -1361,14 +1592,20 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       // Round damage is the winner's survivors' attack, so name the survivors.
       const left = result.survivors?.ids.length ?? 0;
       const standing = `${left} unit${left === 1 ? "" : "s"} left standing`;
-      setLastRound(
+      setLastRound({
+        short:
+          `${winner ? `${winner === PLAYER ? "You" : "Enemy"} held · ${left} left` : "Both rows wiped"}` +
+          (winner ? ` · ${winner === PLAYER ? "Enemy" : "You"} −${result.hpLoss} HP` : "") +
+          (healed > 0 ? ` · +${healed} healed` : ""),
+        long:
         `${winner ? `${winner === PLAYER ? "You" : "Enemy"} held the row with ${standing}` : "Both rows wiped"}` +
           ` · dealt ${dealt.player} / took ${dealt.enemy}` +
           (winner ? ` · ${winner === PLAYER ? "Enemy" : "You"} lost ${result.hpLoss} HP` : " · no HP lost") +
           (healed > 0 ? ` · you healed ${healed} (Field medic)` : "") +
           (enemyHealed > 0 ? ` · enemy healed ${enemyHealed}` : "") +
+          (result.ascendantHit ? ` · 🌟 champions struck the pools for ${result.ascendantHit}` : "") +
           bounty,
-      );
+      });
       if (winner === PLAYER) showBanner(`You hold the row! ${left} left · −${result.hpLoss}${bounty}`, "win");
       else if (winner === ENEMY) showBanner(`Wiped out! ${left} left · −${result.hpLoss}${bounty}`, "lose");
       else showBanner(`Both rows fall${bounty}`, "draw");
@@ -1376,10 +1613,18 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       // gets nothing, since neither sting would be true.
       if (winner === PLAYER) sfx("round-win");
       else if (winner === ENEMY) sfx("round-loss");
+      // Losing the match blows your row up before the result screen; winning
+      // blows up the enemy's HP bar, in slow motion. Neither follows the battle
+      // speed: they happen once, at the very end.
+      const boom = result.matchWinner === ENEMY;
+      const blast = result.matchWinner === PLAYER;
+      if (blast) window.setTimeout(() => setBarBlast(true), BAR_BLAST_DELAY_MS);
+      if (boom) later(EXPLOSION_DELAY_MS, () => explodeRow(committed));
       // Let the result banner land before the next round deals.
       timer = window.setTimeout(() => {
         if (result.matchWinner) {
-          clearMatch();
+          // Online and tutorial matches were never saved; clearing would drop a real one.
+          if (!online && !tutorial) clearMatch();
           sfx(result.matchWinner === PLAYER ? "victory" : "defeat");
           setPhase("over");
         } else {
@@ -1389,7 +1634,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           respawned.hp = { ...result.board.hp };
           startRound(respawned, round + 1);
         }
-      }, scaled(RESULT_MS));
+      }, scaled(RESULT_MS) + (boom ? scaled(EXPLOSION_DELAY_MS) + EXPLOSION_MS : 0) + (blast ? BAR_BLAST_DELAY_MS + HP_BAR_BLAST_MS : 0));
     };
 
     /** Both front units lunge at each other. */
@@ -1446,7 +1691,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         const key = src.unit.key;
         if (!named.has(ev.source)) {
           named.add(ev.source);
-          const gain = [ev.atk > 0 ? `+${ev.atk}⚔` : "", ev.hp > 0 ? `+${ev.hp}♥` : ""].filter(Boolean).join(" ");
+          const gain = statText(ev.atk, ev.hp, ev.shield);
           const name = ev.label ?? (key === "guard" ? "Bodyguard" : key === "squire" ? "Pass the torch" : "Last rally");
           const scope = !ev.label && key === "knight" ? " all" : "";
           if (key === "knight" || ev.label) fxAt(f.board, src.cell, "rally");
@@ -1454,21 +1699,22 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         }
         // Allies receive one after another, so a Last rally can be followed.
         const at = 300 + n++ * 140;
-        // A self-buff (Last light) has nothing to travel: it lands at once.
-        const self = !!ev.label;
+        // A self-buff (Last light, an Acolyte giving its health away) has
+        // nothing to travel: it lands at once. Others fly from the source.
+        const self = ev.source === ev.unit;
+        const travels = !self && (key === "guard" || key === "squire" || key === "herald" || key === "acolyte" || key === "warden" || key === "medic");
         later(at, () => {
-          if (self) return;
-          if (key === "guard") fxBetween(f.board, src.cell, cell, "bodyguard");
-          else if (key === "squire") fxBetween(f.board, src.cell, cell, "torch");
+          if (!travels) return;
+          if (key === "guard" || key === "acolyte" || key === "warden") fxBetween(f.board, src.cell, cell, "bodyguard");
+          else fxBetween(f.board, src.cell, cell, "torch");
         });
-        const lands = at + (key === "knight" || self ? 0 : 520);
+        const lands = at + (travels ? 520 : 0);
         last = Math.max(last, lands);
         later(lands, () => {
           apply(ev);
-          if (ev.hp > 0) fxAt(f.board, cell, "heal");
+          if (ev.hp > 0 || ev.shield) fxAt(f.board, cell, "heal");
           if (ev.atk > 0) fxAt(f.board, cell, "merge");
-          const gain = [ev.atk > 0 ? `+${ev.atk}⚔` : "", ev.hp > 0 ? `+${ev.hp}♥` : ""].filter(Boolean).join(" ");
-          fxAt(f.board, cell, "stat-gain", { text: gain });
+          fxAt(f.board, cell, "stat-gain", { text: statText(ev.atk, ev.hp, ev.shield) });
         });
       }
       // Leave the last gain on screen long enough to read before moving on.
@@ -1665,7 +1911,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
    * every piece of match state here; dropping the component can't miss one.
    */
   const newMatch = () => {
-    clearMatch();
+    if (!online && !tutorial) clearMatch();
     onExit();
   };
 
@@ -1787,7 +2033,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         )}
       </header>
 
-      <HpBar side={ENEMY} label="Enemy" hp={Math.max(0, board.hp.enemy)} max={START_HP} />
+      <HpBar side={ENEMY} label="Enemy" hp={Math.max(0, board.hp.enemy)} max={START_HP} blown={barBlast} />
 
       <div className="app__stage">
         <canvas
@@ -1799,7 +2045,20 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           onClick={onBoardClick}
           onContextMenu={(e) => e.preventDefault()}
         />
-        <RoundBanner message={banner.message} tone={banner.tone} nonce={banner.nonce} />
+        <RoundBanner message={banner.message} tone={banner.tone} nonce={banner.nonce} sub={banner.sub} />
+        {online && phase !== "over" && <EmoteBar session={online} />}
+        {barBlast && <HpBarBlast selector=".hpbar--enemy" side="enemy" />}
+        {tutorial && phase !== "over" && (
+          <Tutorial
+            state={{
+              phase,
+              round,
+              picksLeft,
+              units: sideUnits(board, PLAYER).length,
+              topLevel: Math.max(0, ...sideUnits(board, PLAYER).map((u) => levelOf(u.merges))),
+            }}
+          />
+        )}
         {phase === "augment" && (
           <AugmentPanel
             round={round}
@@ -1809,7 +2068,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
             onPeek={() => setPeeking((p) => !p)}
             rerollsLeft={augRerolls}
             onReroll={rerollAugments}
-            frozenId={playerAug.current.frozen}
+            frozenIds={frozenAugments(playerAug.current)}
             onFreeze={toggleFreezeAug}
           />
         )}
@@ -1827,9 +2086,13 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         {showMenu && (
           <MenuPanel
             onClose={() => setShowMenu(false)}
-            onUnits={() => {
+            onCodex={() => {
               setShowMenu(false);
               setShowUnits(true);
+            }}
+            onNotes={() => {
+              setShowMenu(false);
+              setShowNotes(true);
             }}
             onHelp={() => {
               setShowMenu(false);
@@ -1851,7 +2114,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           />
         )}
         {showHelp && <HelpPanel onClose={() => setShowHelp(false)} />}
-        {showUnits && <UnitsView onClose={() => setShowUnits(false)} />}
+        {showUnits && <CodexView onClose={() => setShowUnits(false)} />}
+        {showNotes && <PatchNotes onClose={() => setShowNotes(false)} />}
         {confirmCommit && phase === "pick" && (
           <ConfirmPanel
             title="Battle with picks left?"
@@ -1878,7 +2142,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
 
       {/* Always rendered: the board fills the space left over, so rows that came
           and went would resize it between phases. */}
-      <p className="app__log">{lastRound ?? ""}</p>
+      <p className="app__log" title={lastRound?.long}>{lastRound && <LongShort long={lastRound.long} short={lastRound.short} />}</p>
 
       {/* The board's chrome. Wrapped so a wide screen can stand it beside
           the board instead of under it, which is the only way the board
@@ -1888,7 +2152,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         <button
           className="primary-btn"
           // Unspent picks are almost always a misclick, not a plan — ask first.
-          onClick={() => (picksLeft > 0 ? setConfirmCommit(true) : finishPicks(board))}
+          // (A maxed row's unspent picks aren't a misclick: they're Drill.)
+          onClick={() => (picksLeft > 0 && !rowMaxed(board, PLAYER) ? setConfirmCommit(true) : finishPicks(board))}
           disabled={phase !== "pick"}
         >
           ⚔ Battle
@@ -1920,11 +2185,17 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           key={picksLeft}
           className={`pick-label${picksLeft > 0 ? " pick-label--open" : " pick-label--done"}`}
         >
-          {picksLeft > 0
-            ? `Pick ${picksLeft}${boardFull ? " · row full" : ""}`
-            : unitRerolls > 0
-              ? "✓ Picks done · ❄ freeze for next round"
-              : "✓ Picks done — arrange your row, then battle"}
+          {synergyGoal && <SynergyMeter goal={synergyGoal} />}
+          {/* Phones get the short form: the label shares one line with Reroll. */}
+          {picksLeft > 0 && rowMaxed(board, PLAYER) ? (
+            <LongShort long={`Row maxed · unused picks → 🎯 Drill +${picksLeft}⚔`} short={`🎯 Drill +${picksLeft}⚔ if unused`} />
+          ) : picksLeft > 0 ? (
+            <LongShort long={`Pick ${picksLeft}${boardFull ? " · row full" : ""}`} short={`Pick ${picksLeft}${boardFull ? " · full" : ""}`} />
+          ) : unitRerolls > 0 ? (
+            <LongShort long="✓ Picks done · ❄ freeze for next round" short="✓ Done · ❄ to keep" />
+          ) : (
+            <LongShort long="✓ Picks done — arrange your row, then battle" short="✓ Done · arrange, battle" />
+          )}
         </p>
         {(picksLeft > 0 || unitRerolls > 0) && (
           <button
@@ -1937,7 +2208,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
                 : "Picks done: reroll to find cards worth freezing for next round"
             }
           >
-            🎲 Reroll ({unitRerolls})
+            🎲<span className="hud__long"> Reroll</span> ({unitRerolls})
           </button>
         )}
       </div>
@@ -1982,6 +2253,16 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
                   if (!spent) setSelected(isSelected ? null : { kind: "offer", index: i, key });
                 }}
               >
+                <span
+                  className={`card__class card__class--${u.archetype}${synergyGoal && !synergyGoal.done && synergyGoal.cls === u.archetype ? " card__class--goal" : ""}`}
+                  title={
+                    synergyGoal && !synergyGoal.done && synergyGoal.cls === u.archetype
+                      ? `${ARCHETYPES[u.archetype].name} class: counts toward ${SYNERGIES[u.archetype].name}`
+                      : `${ARCHETYPES[u.archetype].name} class`
+                  }
+                >
+                  {ARCHETYPES[u.archetype].icon}
+                </span>
                 <UnitPortrait unitKey={key} side="player" size={compact ? 44 : 58} />
                 <span className="card__name">{u.name}</span>
                 {taken ? (
@@ -2102,5 +2383,55 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         </div>
       )}
     </div>
+  );
+}
+
+type SynergyPip = "match" | "other" | "empty";
+interface SynergyGoal {
+  cls: Archetype;
+  done: boolean;
+  /** Units of `cls` on the row. */
+  have: number;
+  cap: number;
+  /** Units of another class, which would have to be replaced. */
+  swap: number;
+  pips: SynergyPip[];
+}
+
+/**
+ * How close the row is to a full-row synergy: one pip per slot (filled for the
+ * class, crossed for another class, hollow for empty) and what's left.
+ */
+function SynergyMeter({ goal }: { goal: SynergyGoal }) {
+  const syn = SYNERGIES[goal.cls];
+  const cls = ARCHETYPES[goal.cls].name;
+  const need = goal.cap - goal.have;
+  const short = goal.done ? `${syn.name}!` : goal.swap > 0 ? `swap ${goal.swap}` : `${need} more`;
+  const title = goal.done
+    ? `${syn.name} is on: ${syn.text}`
+    : `${syn.name}: fill every slot with ${cls} units. ${goal.have}/${goal.cap}${
+        goal.swap > 0 ? `; replace ${goal.swap} unit${goal.swap > 1 ? "s" : ""} of another class` : `; ${need} more to go`
+      }. ${syn.text}`;
+  return (
+    <span className={`syn-meter syn-meter--${goal.cls}${goal.done ? " syn-meter--done" : ""}`} title={title} aria-label={title}>
+      <span aria-hidden="true">{syn.icon}</span>
+      <span className="syn-meter__pips" aria-hidden="true">
+        {goal.pips.map((p, i) => (
+          <span key={i} className={`syn-pip syn-pip--${p}`} />
+        ))}
+      </span>
+      <span className="syn-meter__text">{short}</span>
+      <span className="syn-meter__sep" aria-hidden="true">·</span>
+    </span>
+  );
+}
+
+/** Text with a shorter form for phones (`hud__long` / `hud__short`). */
+function LongShort({ long, short }: { long: string; short: string }) {
+  return (
+    <>
+      <span className="hud__long">{long}</span>
+      <span className="hud__short">{short}</span>
+    </>
   );
 }

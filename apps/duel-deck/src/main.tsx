@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { Soundboard } from "./ui/Soundboard";
 import "./index.css";
 
 // No pinch zoom. iOS Safari ignores `user-scalable=no` in the viewport meta,
@@ -18,8 +19,7 @@ document.addEventListener(
   { passive: false },
 );
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+// Dev only: ?sounds opens a page to review every sound effect.
+const soundboard = import.meta.env.DEV && new URLSearchParams(location.search).has("sounds");
+
+createRoot(document.getElementById("root")!).render(<StrictMode>{soundboard ? <Soundboard /> : <App />}</StrictMode>);

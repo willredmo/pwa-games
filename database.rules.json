@@ -2,8 +2,72 @@
   "rules": {
     ".read": false,
     ".write": false,
-    "rooms": {
-      "knock-hockey": {
+    "telemetry": {
+      "duel-deck": {
+        "$day": {
+          ".validate": "$day.matches(/^20[0-9][0-9]-[01][0-9]-[0-3][0-9]$/)",
+          "$match": {
+            ".validate": "$match.length <= 40",
+            "meta": {
+              ".write": "!data.exists()",
+              ".validate": "newData.hasChildren(['v', 'mode', 'diff', 'at', 'c'])",
+              "v": { ".validate": "newData.isString() && newData.val().length <= 16" },
+              "mode": { ".validate": "newData.val() === 'cpu' || newData.val() === 'online'" },
+              "diff": { ".validate": "newData.isString() && newData.val().length <= 8" },
+              "at": { ".validate": "newData.isNumber()" },
+              "c": { ".validate": "newData.isString() && newData.val().length <= 40" },
+              "$other": { ".validate": false }
+            },
+            "rounds": {
+              "$n": {
+                ".write": "!data.exists()",
+                ".validate": "$n.length <= 3 && newData.hasChildren(['won', 'hp'])",
+                "offer": { "$i": { ".validate": "$i.length <= 1 && newData.isString() && newData.val().length <= 16" } },
+                "picks": {
+                  "$i": {
+                    ".validate": "$i.length <= 1 && newData.hasChildren(['k', 'a', 'l'])",
+                    "k": { ".validate": "newData.isString() && newData.val().length <= 16" },
+                    "a": { ".validate": "newData.val() === 'p' || newData.val() === 'm' || newData.val() === 'r'" },
+                    "l": { ".validate": "newData.isNumber()" },
+                    "$other": { ".validate": false }
+                  }
+                },
+                "rr": { ".validate": "newData.isNumber()" },
+                "row": { "$i": { ".validate": "$i.length <= 1 && newData.isString() && newData.val().length <= 20" } },
+                "foe": { "$i": { ".validate": "$i.length <= 1 && newData.isString() && newData.val().length <= 20" } },
+                "won": { ".validate": "newData.isNumber()" },
+                "hp": { "$i": { ".validate": "($i === '0' || $i === '1') && newData.isNumber()" } },
+                "$other": { ".validate": false }
+              }
+            },
+            "augs": {
+              "$n": {
+                ".write": "!data.exists()",
+                ".validate": "$n.length <= 3 && newData.hasChildren(['t'])",
+                "o": { "$i": { ".validate": "$i.length <= 1 && newData.isString() && newData.val().length <= 32" } },
+                "t": { ".validate": "newData.isString() && newData.val().length <= 32" },
+                "e": { ".validate": "newData.isString() && newData.val().length <= 32" },
+                "rr": { ".validate": "newData.isNumber()" },
+                "$other": { ".validate": false }
+              }
+            },
+            "end": {
+              ".write": "!data.exists()",
+              ".validate": "newData.hasChildren(['won', 'rounds'])",
+              "won": { ".validate": "newData.isNumber()" },
+              "rounds": { ".validate": "newData.isNumber()" },
+              "hp": { "$i": { ".validate": "($i === '0' || $i === '1') && newData.isNumber()" } },
+              "aug": { "$i": { ".validate": "$i.length <= 2 && newData.isString() && newData.val().length <= 32" } },
+              "foeAug": { "$i": { ".validate": "$i.length <= 2 && newData.isString() && newData.val().length <= 32" } },
+              "mvp": { ".validate": "newData.isString() && newData.val().length <= 16" },
+              "$other": { ".validate": false }
+            },
+            "$other": { ".validate": false }
+          }
+        }
+      }
+    },
+    "rooms": {      "knock-hockey": {
         "$code": {
           ".read": "$code.length === 5",
           ".write": "$code.length === 5",
@@ -75,18 +139,11 @@
           ".read": "$code.length === 5",
           ".write": "$code.length === 5",
           ".validate": "newData.hasChildren(['host', 'createdAt'])",
-          "host": {
-            ".validate": "newData.isString() && newData.val().length <= 40 && (!data.exists() || data.val() === newData.val())"
-          },
-          "guest": {
-            ".validate": "newData.isString() && newData.val().length <= 40"
-          },
-          "createdAt": {
-            ".validate": "newData.isNumber() && (!data.exists() || data.val() === newData.val())"
-          },
-          "startedAt": {
-            ".validate": "newData.isNumber()"
-          },
+          "host": { ".validate": "newData.isString() && newData.val().length <= 40 && (!data.exists() || data.val() === newData.val())" },
+          "guest": { ".validate": "newData.isString() && newData.val().length <= 40" },
+          "createdAt": { ".validate": "newData.isNumber() && (!data.exists() || data.val() === newData.val())" },
+          "startedAt": { ".validate": "newData.isNumber()" },
+          "proto": { ".validate": "newData.isNumber()" },
           "presence": {
             "p1": {
               ".validate": "newData.isBoolean()"
@@ -137,12 +194,13 @@
               }
             }
           },
-          "left": {
-            ".validate": "newData.isString()"
+          "emotes": {
+            "p1": { ".validate": "newData.hasChildren(['i', 'n']) && newData.child('i').isNumber() && newData.child('i').val() >= 0 && newData.child('i').val() <= 7 && newData.child('n').isNumber()" },
+            "p2": { ".validate": "newData.hasChildren(['i', 'n']) && newData.child('i').isNumber() && newData.child('i').val() >= 0 && newData.child('i').val() <= 7 && newData.child('n').isNumber()" },
+            "$other": { ".validate": false }
           },
-          "$other": {
-            ".validate": false
-          }
+          "left": { ".validate": "newData.isString()" },
+          "$other": { ".validate": false }
         }
       }
     }

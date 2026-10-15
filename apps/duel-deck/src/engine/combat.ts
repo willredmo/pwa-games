@@ -54,6 +54,8 @@ interface RoundState {
   lit: Map<string, number>;
   /** Mends each Medic has spent this round (capped at MEND_USES). */
   mends: Map<string, number>;
+  /** Units whose Sanctuary has already saved them this round. */
+  endured: Set<string>;
 }
 
 /** Everything one tick's blows read and write. */
@@ -137,7 +139,7 @@ function strike(
   // Evasion: the first hit a dodger takes each round misses outright. Thorns
   // and overflow don't follow a miss.
   const used = round.dodged.get(target.id) ?? 0;
-  if ((target.traits?.dodges ?? 0) > used && raw > 0) {
+  if ((target.traits?.dodges ?? 0) > used && raw > 0 && !attacker.traits?.trueStrike) {
     round.dodged.set(target.id, used + 1);
     events.push({ type: "attack", lane, attacker: attacker.id, target: target.id, damage: 0, tag: "dodge", blocked: raw });
     // Riposte: a merged dodger answers the miss. Played back like thorns.
@@ -147,7 +149,24 @@ function strike(
     }
     return;
   }
-  const damage = reduced(raw, target, ctx.board);
+  let damage = reduced(raw, target, ctx.board);
+  // Barrier (Warden): a shield soaks damage before health, until it's used up.
+  // Counted as blocked, so playback shows it like armour.
+  // What's left lives on the unit (`shieldLeft`), so tick snapshots and the
+  // event carry it to the board's shield bar.
+  const shield = target.shieldLeft ?? target.traits?.shield ?? 0;
+  let shieldLeft: number | undefined;
+  if (shield > 0 && damage > 0) {
+    const soak = Math.min(shield, damage);
+    damage -= soak;
+    shieldLeft = shield - soak;
+    target.shieldLeft = shieldLeft;
+  }
+  // Sanctuary: the first blow each round that would kill it leaves it on 1.
+  if (target.traits?.endure && target.hp > 0 && target.hp - damage <= 0 && !round.endured.has(target.id)) {
+    round.endured.add(target.id);
+    damage = target.hp - 1;
+  }
   const blocked = raw - damage;
   const hpBefore = target.hp;
   target.hp -= damage;
@@ -161,11 +180,14 @@ function strike(
   if (tag) ev.tag = tag;
   if (blocked > 0) ev.blocked = blocked;
   if (opening > 0) ev.opening = opening;
+  if (shieldLeft !== undefined) ev.shieldLeft = shieldLeft;
   events.push(ev);
 
-  // Cleave: only a main blow carries overkill on (not thorns / last breath / cleave itself).
+  // Cleave: only a main blow carries overkill on (not thorns / last breath),
+  // and an Overflow blow only when it chains (a mastered Berserker).
   const isMain = !tag || tag === "first-strike" || tag === "executioner" || tag === "charge";
-  if (isMain && attacker.traits?.cleave && hpBefore > 0 && target.hp < 0) {
+  const chains = tag === "cleave" && !!attacker.traits?.cleaveChain;
+  if ((isMain || chains) && attacker.traits?.cleave && hpBefore > 0 && target.hp < 0) {
     // Overflow: half the overkill carries on, at most CLEAVE_MAX — the whole of
     // it made overflow a near-lock — unless the Cleave upgrade lifts the limit.
     const excess = attacker.traits.cleaveFull
@@ -182,9 +204,16 @@ function strike(
   // above, so a miss doesn't impale.
   const pierce = attacker.traits?.pierce ?? 0;
   if (isMain && pierce > 0) {
+    // A mastered Lancer (or Skewer) reaches deeper: each impaled unit passes it on.
+    const depth = 1 + (attacker.traits?.pierceDeeper ?? 0);
     ctx.after.push(() => {
-      const next = nextBehind(ctx.board, target, lane);
-      if (next) strike(ctx, lane, attacker, next, pierce, "pierce");
+      let behind: Unit = target;
+      for (let d = 0; d < depth; d++) {
+        const next = nextBehind(ctx.board, behind, lane);
+        if (!next) break;
+        strike(ctx, lane, attacker, next, pierce, "pierce");
+        behind = next;
+      }
     });
   }
 
@@ -201,8 +230,11 @@ function frontBlow(ctx: TickCtx, lane: number, attacker: Unit, target: Unit, fir
   const hurt = bonus > 0 && (ctx.startHp.get(target.id) ?? target.hp) * 2 < target.maxHp;
   // Charge: the first attack this unit makes each round hits harder.
   const opening = attacker.traits?.openingBonus ?? 0;
-  const charging = opening > 0 && !ctx.round.opened.has(attacker.id);
+  // A mastered Striker charges each new enemy: the first blow per target.
+  const chargeKey = attacker.traits?.chargeEach ? `${attacker.id}>${target.id}` : attacker.id;
+  const charging = opening > 0 && !ctx.round.opened.has(chargeKey);
   ctx.round.opened.add(attacker.id);
+  ctx.round.opened.add(chargeKey);
   const tag: AttackTag | undefined = firstStrike
     ? "first-strike"
     : charging
@@ -346,12 +378,18 @@ function mendHeals(ctx: TickCtx): void {
         const mend = u.traits?.mend ?? 0;
         if (u === front || u.hp <= 0 || mend <= 0) continue;
         const used = ctx.round.mends.get(u.id) ?? 0;
-        if (used >= MEND_USES) continue;
+        if (used >= MEND_USES + (u.traits?.mendMore ?? 0)) continue;
         const gain = Math.min(mend, front.maxHp - front.hp);
         if (gain <= 0) continue;
         ctx.round.mends.set(u.id, used + 1);
         front.hp += gain;
         events.push({ type: "heal", unit: front.id, amount: gain, source: u.id });
+        // Stimulant: the heal comes with a jolt of attack for the round.
+        const jolt = u.traits?.mendAtk ?? 0;
+        if (jolt > 0) {
+          front.atk += jolt;
+          events.push({ type: "buff", unit: front.id, source: u.id, atk: jolt, hp: 0, label: "Stimulant" });
+        }
       }
     }
   }
@@ -402,6 +440,58 @@ function mendHeals(ctx: TickCtx): void {
   return ctx.attempted;
 }
 
+/**
+ * Start-of-round support: Herald's Rally and Acolyte's Lifebond. Applied as
+ * the round opens rather than baked into the pre-round stats (they used to be,
+ * in applyAugments), so while picking every unit shows its own numbers and the
+ * gift plays out as a beat before the first blow. Returns the buff events,
+ * which playback shows; the board is changed in place.
+ */
+function openingBuffs(board: Board): BattleEvent[] {
+  const events: BattleEvent[] = [];
+  for (const side of SIDES) {
+    for (let lane = 0; lane < board.lanes; lane++) {
+      const queue = occupants(board, side, lane);
+      const front = queue[0];
+      if (!front) continue;
+      for (const u of queue.slice(1)) {
+        const rally = u.traits?.rally ?? 0;
+        if (rally > 0) {
+          const hp = u.traits?.rallyHp ?? 0;
+          front.atk += rally;
+          front.maxHp += hp;
+          front.hp += hp;
+          events.push({ type: "buff", unit: front.id, source: u.id, atk: rally, hp, label: "Rally" });
+        }
+        // Warden's Barrier: a shield on the front, and on `barrierReach`
+        // units behind it (a mastered Warden 1, Aegis +1). `traits` is shared with the caller's
+        // board (cloneBoard is shallow there), so it's replaced, not mutated.
+        const barrier = u.traits?.barrier ?? 0;
+        if (barrier > 0) {
+          const shielded = [front, ...queue.slice(1, 1 + (u.traits?.barrierReach ?? 0))];
+          for (const s of shielded) {
+            s.traits = { ...s.traits, shield: (s.traits?.shield ?? 0) + barrier };
+            events.push({ type: "buff", unit: s.id, source: u.id, atk: 0, hp: 0, shield: barrier, label: "Barrier" });
+          }
+        }
+        const mult = u.traits?.lifebond ?? 0;
+        const gift = mult > 0 ? Math.floor(u.maxHp / 2) : 0;
+        if (gift > 0) {
+          u.maxHp -= gift;
+          u.hp = Math.min(u.hp, u.maxHp);
+          const atk = u.traits?.lifebondAtk ?? 0;
+          front.atk += atk;
+          front.maxHp += gift * mult;
+          front.hp += gift * mult;
+          events.push({ type: "buff", unit: u.id, source: u.id, atk: 0, hp: -gift, label: "Lifebond" });
+          events.push({ type: "buff", unit: front.id, source: u.id, atk, hp: gift * mult, label: "Lifebond" });
+        }
+      }
+    }
+  }
+  return events;
+}
+
 export function resolveRound(input: Board, opts?: { tickCap?: number }): RoundResult {
   const board = cloneBoard(input);
   const tickCap = opts?.tickCap ?? DEFAULT_TICK_CAP;
@@ -415,8 +505,10 @@ export function resolveRound(input: Board, opts?: { tickCap?: number }): RoundRe
     fallen: { player: 0, enemy: 0 },
     lit: new Map(),
     mends: new Map(),
+    endured: new Set(),
   };
   const { damageDealt, kills } = round;
+  const opening = openingBuffs(board);
 
   for (let t = 0; t < tickCap; t++) {
     const lanes = contestedLanes(board);
@@ -448,6 +540,21 @@ export function resolveRound(input: Board, opts?: { tickCap?: number }): RoundRe
     board.hp[loser] = Math.max(0, board.hp[loser] - hpLoss);
   }
 
+  // Ascendant: when both rows fall together, a side's lone champion still hits
+  // the enemy pool for its attack. Without it two champions trade mutual kills
+  // forever (draws deal nothing) and the match never ends.
+  let ascendantHit = 0;
+  if (!roundWinner && playerLeft === 0 && enemyLeft === 0) {
+    for (const side of SIDES) {
+      if (!input.mods?.[side]?.uncapped) continue;
+      const champ = sideUnits(input, side)[0];
+      const hit = Math.max(0, champ?.atk ?? 0);
+      const foe = otherSide(side);
+      board.hp[foe] = Math.max(0, board.hp[foe] - hit);
+      ascendantHit += hit;
+    }
+  }
+
   let matchWinner: Side | null = null;
   if (board.hp.player <= 0 && board.hp.enemy <= 0) {
     matchWinner = board.hp.player >= board.hp.enemy ? "player" : "enemy";
@@ -463,6 +570,8 @@ export function resolveRound(input: Board, opts?: { tickCap?: number }): RoundRe
     survivors: { ids: survivors.map((u) => u.id), damage: survivorDamage },
     kills,
     ...(bounty > 0 ? { bounty } : {}),
+    ...(ascendantHit > 0 ? { ascendantHit } : {}),
+    ...(opening.length > 0 ? { opening } : {}),
     matchWinner,
   };
 }

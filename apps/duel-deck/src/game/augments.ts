@@ -1,5 +1,5 @@
-import type { AuraDetail, SideMods, Side, Unit, UnitTraits } from "../engine/types";
-import { KNIGHT_LEVEL, UNITS, UNIT_KEYS, innateTraits } from "../engine/units";
+import type { Archetype, AuraDetail, SideMods, Side, Unit, UnitTraits } from "../engine/types";
+import { KNIGHT_LEVEL, SYNERGIES, UNITS, UNIT_KEYS, innateTraits } from "../engine/units";
 
 // Persistent upgrades ("augments") — the tracker doc's separate offer track.
 //
@@ -67,6 +67,11 @@ export interface AugmentDef {
   /** Pool HP restored each round this side wins (see `settleRound`). */
   healOnWin?: number;
   /**
+   * Upgrades never offered while this one is held, because they can't do
+   * anything alongside it (Ascendant's single unit has no allies or row).
+   */
+  excludes?: string[];
+  /**
    * Unit types this augment is built around when that isn't visible in its
    * effect — Berserker's rally buffs everyone but is triggered by Berserkers.
    * Overrides the derived set in `unitsAffectedBy`.
@@ -84,10 +89,42 @@ export interface AugmentState {
   /** One-time grants baked onto specific units (e.g. Last Stand). */
   grants: Record<string, Grant>; // unitId -> delta
   /**
-   * An upgrade frozen at a previous choice: offered first at the next one
-   * (if still not held), and kept frozen until taken or unfrozen. Player-only.
+   * Upgrades frozen at a previous choice (up to MAX_FROZEN_AUGMENTS): offered
+   * first at the next one (if still not held), and kept frozen until taken or
+   * unfrozen. Player-only. A plain string in saves from before multi-freeze;
+   * read it through rozenAugments.
    */
-  frozen?: string;
+  frozen?: string[] | string;
+  /**
+   * Drill: attack every unit gets this round, one per pick left unspent while
+   * the whole row is at its level cap (`drillFor` in match.ts). Set at commit,
+   * cleared when the next round starts, and sent with the online commit.
+   */
+  drill?: number;
+}
+
+/** Most upgrades frozen at once: all of a 3-card hand would skip the rarity ladder. */
+export const MAX_FROZEN_AUGMENTS = 2;
+
+/** The frozen upgrade ids, whatever shape the save stored them in. */
+export function frozenAugments(state: AugmentState): string[] {
+  const f = state.frozen;
+  return !f ? [] : typeof f === "string" ? [f] : f;
+}
+
+/**
+ * Freeze or unfreeze id. Returns false (and changes nothing) when freezing
+ * would go past MAX_FROZEN_AUGMENTS.
+ */
+export function toggleFrozenAugment(state: AugmentState, id: string): boolean {
+  const cur = frozenAugments(state);
+  if (cur.includes(id)) {
+    state.frozen = cur.filter((x) => x !== id);
+    return true;
+  }
+  if (cur.length >= MAX_FROZEN_AUGMENTS) return false;
+  state.frozen = [...cur, id];
+  return true;
 }
 
 /**
@@ -106,6 +143,8 @@ export function createAugmentState(): AugmentState {
 const has = (u: Unit, cls: string) => u.classes.includes(cls);
 /** Most attack Berserker's rally can grant: with full rows Berserkers die every round. */
 export const RALLY_CAP = 2;
+/** Shield every unit in an Iron Line row starts each round with. */
+export const IRON_LINE_SHIELD = 5;
 const countClass = (units: Unit[], cls: string) =>
   units.filter((u) => has(u, cls)).length;
 
@@ -145,7 +184,7 @@ export const AUGMENTS: AugmentDef[] = [
   },
   {
     id: "iron-will",
-    icon: "🧱",
+    icon: "🪖",
     name: "Iron will",
     description: "+4 health and +1 attack to all Bulwarks.",
     category: "class",
@@ -153,7 +192,7 @@ export const AUGMENTS: AugmentDef[] = [
   },
   {
     id: "precision-strikes",
-    icon: "🎯",
+    icon: "🔪",
     name: "Precision strikes",
     description: "+2 attack and +1 health to all Strikers.",
     category: "class",
@@ -163,7 +202,7 @@ export const AUGMENTS: AugmentDef[] = [
   // --- Global ---
   {
     id: "battle-fury",
-    icon: "🔥",
+    icon: "😤",
     name: "Battle fury",
     description: "+1 attack to every unit on your board.",
     category: "global",
@@ -535,6 +574,24 @@ export const AUGMENTS: AugmentDef[] = [
     rarity: "epic",
   },
   {
+    // The one-unit build: everything goes into a single unit with no level
+    // cap. `refreshForRound` trims the row to its best unit; `uncapped` lets
+    // any type merge into it (else it would only grow on the rare matching
+    // card) and lifts the cap. Capacity 1 overrides Reinforcements.
+    id: "ascendant",
+    icon: "🌟",
+    name: "Ascendant",
+    description:
+      "Your row holds one unit: your highest-level unit stays and the rest leave. It has no level cap, and every unit you pick merges into it.",
+    category: "strategy",
+    rarity: "epic",
+    mods: { capacity: 1, uncapped: true },
+    // One unit: no extra slots, no unit types to mix, no allies to fall or to
+    // count, no Knight-and-others, and the champion always fights.
+    excludes: ["reinforcements", "mixed-formation", "united-front", "last-light", "knights-oath", "veteran"],
+    effect: () => ({ atk: 1, hp: 3 }),
+  },
+  {
     id: "living-fortress",
     icon: "⛰️",
     name: "Living fortress",
@@ -542,6 +599,112 @@ export const AUGMENTS: AugmentDef[] = [
     description: "Bulwarks' Fortify works even if the Bulwark falls, so every Bulwark hardens every round.",
     category: "class",
     rarity: "epic",
+  },
+  // --- Third wave: an upgrade or two for every unit (2026-10-14) ---
+  // Lancer, the four supports and the Skirmisher had none built around them.
+  // Each one leans on the unit's own ability; the rares echo its Mastery, so
+  // a mastered unit stacks with them rather than wasting the pick.
+  {
+    id: "long-reach",
+    icon: "🎣",
+    name: "Long reach",
+    description: "Lancers' Impale deals +3 damage.",
+    category: "class",
+    traits: (u) => (has(u, "lancer") ? { pierce: 3 } : {}),
+  },
+  {
+    id: "skewer",
+    icon: "🍢",
+    name: "Skewer",
+    description: "Lancers' Impale reaches one unit deeper.",
+    category: "combat",
+    rarity: "rare",
+    traits: (u) => (has(u, "lancer") ? { pierceDeeper: 1 } : {}),
+  },
+  {
+    id: "war-horn",
+    icon: "🎺",
+    name: "War horn",
+    description: "Heralds' Rally gives +3 more attack.",
+    category: "class",
+    traits: (u) => (has(u, "herald") ? { rally: 3 } : {}),
+  },
+  {
+    id: "banner-of-hope",
+    icon: "🏳️",
+    name: "Banner of hope",
+    description: "Heralds' Rally also gives the front unit that much health.",
+    category: "class",
+    rarity: "rare",
+    traits: (u) => (has(u, "herald") ? { rallyHp: innateTraits(u.key, u.merges).rally ?? 0 } : {}),
+  },
+  {
+    id: "triage",
+    icon: "🩺",
+    name: "Triage",
+    description: "Medics' Mend heals 2 more, and once more each round.",
+    category: "class",
+    traits: (u) => (has(u, "medic") ? { mend: 2, mendMore: 1 } : {}),
+  },
+  {
+    id: "stimulant",
+    icon: "💉",
+    name: "Stimulant",
+    description: "Each time a Medic mends, the front unit also gains +2 attack for the round.",
+    category: "combat",
+    rarity: "rare",
+    traits: (u) => (has(u, "medic") ? { mendAtk: 2 } : {}),
+  },
+  {
+    id: "thick-barrier",
+    icon: "🧊",
+    name: "Thick barrier",
+    description: "Wardens' Barrier shields 4 more.",
+    category: "class",
+    traits: (u) => (has(u, "warden") ? { barrier: 4 } : {}),
+  },
+  {
+    id: "aegis",
+    icon: "🔮",
+    name: "Aegis",
+    description: "Wardens' Barrier also covers one more unit behind the front (stacks with a level 10 Warden's).",
+    category: "combat",
+    rarity: "rare",
+    traits: (u) => (has(u, "warden") ? { barrierReach: 1 } : {}),
+  },
+  {
+    id: "devotion",
+    icon: "🙏",
+    name: "Devotion",
+    description: "+4 health to all Acolytes, so Lifebond gives more.",
+    category: "class",
+    effect: (u) => (has(u, "acolyte") ? { hp: 4 } : {}),
+  },
+  {
+    id: "blessing",
+    icon: "😇",
+    name: "Blessing",
+    description: "Acolytes' Lifebond also gives the front unit +3 attack.",
+    category: "class",
+    rarity: "rare",
+    traits: (u) => (has(u, "acolyte") ? { lifebondAtk: 3 } : {}),
+  },
+  {
+    id: "counterstrike",
+    icon: "🤺",
+    name: "Counterstrike",
+    description: "Skirmishers' Riposte deals +3 damage.",
+    category: "combat",
+    traits: (u) => (has(u, "skirmisher") ? { riposte: 3 } : {}),
+  },
+  {
+    id: "choir",
+    icon: "🎶",
+    name: "Choir",
+    description: "+1 attack and +3 health to all Support units (Herald, Medic, Warden, Acolyte).",
+    category: "class",
+    rarity: "rare",
+    effect: (u) => (has(u, "support") ? { atk: 1, hp: 3 } : {}),
   },
 ];
 
@@ -563,11 +726,18 @@ export const rarityOf = (a: AugmentDef): Rarity => a.rarity ?? "common";
  * least one card of it, so the second and third upgrade rounds feel different.
  */
 export function offerAugments(state: AugmentState, n: number, tier = 1): AugmentDef[] {
-  // A frozen upgrade leads the offer (whatever its rarity: it was offered once
-  // already) and is kept out of the random draw.
-  const frozen = state.frozen && !state.active.includes(state.frozen) ? getAugment(state.frozen) : undefined;
+  // Frozen upgrades lead the offer (whatever their rarity: each was offered
+  // once already) and are kept out of the random draw.
+  const frozen = frozenAugments(state)
+    .filter((id) => !state.active.includes(id))
+    .map(getAugment)
+    .filter((a): a is AugmentDef => !!a)
+    .slice(0, n);
+  const frozenIds = new Set(frozen.map((a) => a.id));
+  const excluded = new Set(state.active.flatMap((id) => getAugment(id)?.excludes ?? []));
   const pool = AUGMENTS.filter(
-    (a) => !state.active.includes(a.id) && a.id !== frozen?.id && RARITY_UNLOCK[rarityOf(a)] <= tier,
+    (a) =>
+      !state.active.includes(a.id) && !frozenIds.has(a.id) && !excluded.has(a.id) && RARITY_UNLOCK[rarityOf(a)] <= tier,
   );
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -578,8 +748,8 @@ export function offerAugments(state: AugmentState, n: number, tier = 1): Augment
     const i = pool.findIndex((a) => rarityOf(a) === fresh);
     if (i > 0) pool.unshift(...pool.splice(i, 1));
   }
-  const drawn = pool.slice(0, Math.max(0, Math.min(n - (frozen ? 1 : 0), pool.length)));
-  return frozen ? [frozen, ...drawn] : drawn;
+  const drawn = pool.slice(0, Math.max(0, Math.min(n - frozen.length, pool.length)));
+  return [...frozen, ...drawn];
 }
 
 /** Take an augment. Returns the max-HP cost to apply to the player's pool. */
@@ -591,7 +761,7 @@ export function takeAugment(
   const def = getAugment(id);
   if (!def || state.active.includes(id)) return 0;
   state.active.push(id);
-  if (state.frozen === id) state.frozen = undefined;
+  if (frozenAugments(state).includes(id)) state.frozen = frozenAugments(state).filter((x) => x !== id);
   def.onPick?.(state, units);
   return def.hpCost ?? 0;
 }
@@ -607,6 +777,8 @@ export function applyAugments(
   ownHp: number,
   enemyUnitCount: number,
   capacity = 5,
+  /** This side's full-row synergy this round (`synergyOf`), if any. */
+  synergy: Archetype | null = null,
 ): void {
   const ctx: AugmentContext = {
     units,
@@ -661,19 +833,72 @@ export function applyAugments(
     unit.auras = auras;
     unit.traits = traits;
     unit.auraDetails = details;
+    delete unit.shieldLeft; // a fresh round, a fresh shield
   });
 
-  // Herald's Rally: every rallying unit behind the front lifts the front's
-  // attack for the round. After the loop, so it lands on augmented stats.
-  const front = units[0];
-  if (front) {
-    const rally = units.slice(1).reduce((sum, u) => sum + (u.traits?.rally ?? 0), 0);
-    if (rally > 0) {
-      front.atk += rally;
-      if (!front.auras.includes("herald")) front.auras.push("herald");
-      front.auraDetails = [...(front.auraDetails ?? []), { id: "herald", label: "📯 Herald's rally", atk: rally, hp: 0 }];
+  // Full-row synergy: a row of one class, badged and itemised like an augment.
+  // Tuned two ways. Head to head (same row, synergy on vs off, one round vs
+  // random rows): Assault +6-7 points; Sanctuary (support doubled) +5 at level
+  // 2 and +28 at level 6, lifting a levelled all-Support row from 27% to 55%
+  // (doubling plus a front that survives a lethal blow was +50). At match level
+  // (`pnpm sim --aug=random`) Iron Line holders won 45% at +2 health, 49% at
+  // +3, 56% at +4: all-Defense rows deal little damage, so it needs the most.
+  if (synergy) {
+    const syn = SYNERGIES[synergy];
+    const id = `syn-${synergy}`;
+    units.forEach((u) => {
+      const t = u.traits ?? (u.traits = {});
+      let atk = 0;
+      let hp = 0;
+      const gained: UnitTraits = {};
+      if (synergy === "attack") {
+        // Overflow for everyone: overkill carries on to the next enemy (half,
+        // up to 3). Berserkers keep their own, bigger Overflow.
+        atk = 2;
+        if (!t.cleave) {
+          t.cleave = gained.cleave = true;
+          t.cleaveCap = 3;
+        }
+      } else if (synergy === "defense") {
+        // A shield, not health: it soaks the first blows each round and shows
+        // as the shield bar, so the line visibly holds.
+        t.shield = (t.shield ?? 0) + IRON_LINE_SHIELD;
+        gained.shield = IRON_LINE_SHIELD;
+      } else {
+        // Sanctuary: every support ability counts twice. `gained` holds the
+        // extra, so the info card itemises what the synergy added.
+        if (t.rally) gained.rally = t.rally;
+        if (t.rallyHp) gained.rallyHp = t.rallyHp;
+        if (t.mend) gained.mend = t.mend;
+        if (t.barrier) gained.barrier = t.barrier;
+        if (t.lifebond) gained.lifebond = t.lifebond;
+        if (t.barrier) t.barrier *= 2;
+        if (t.lifebond) t.lifebond *= 2;
+        if (t.rally) t.rally *= 2;
+        if (t.rallyHp) t.rallyHp *= 2;
+        if (t.mend) t.mend *= 2;
+      }
+      u.atk += atk;
+      u.maxHp += hp;
+      u.hp = u.maxHp;
+      if (!u.auras.includes(id)) u.auras.push(id);
+      u.auraDetails = [...(u.auraDetails ?? []), { id, label: `${syn.icon} ${syn.name}`, atk, hp, traits: gained }];
+    });
+  }
+
+  // Drill: a maxed row's unspent picks, as attack for this round only.
+  const drill = state.drill ?? 0;
+  if (drill > 0) {
+    for (const u of units) {
+      u.atk += drill;
+      if (!u.auras.includes("drill")) u.auras.push("drill");
+      u.auraDetails = [...(u.auraDetails ?? []), { id: "drill", label: "🎯 Drill", atk: drill, hp: 0 }];
     }
   }
+
+  // Herald's Rally, Acolyte's Lifebond and Warden's Barrier happen in combat
+  // as the round opens (`openingBuffs` in combat.ts), so the board shows
+  // every unit at its own stats while picking.
 }
 
 /** Merge `t` into `into`: booleans OR, numbers add, lifesteal takes the max. */
@@ -744,7 +969,10 @@ export function sideModsFor(state: AugmentState): SideMods {
     if (m.capacity) out.capacity = Math.max(out.capacity ?? 0, m.capacity);
     if (m.lastLight) out.lastLight = (out.lastLight ?? 0) + m.lastLight;
     if (m.holdout) out.holdout = (out.holdout ?? 0) + m.holdout;
+    if (m.uncapped) out.uncapped = true;
   }
+  // Ascendant's single slot wins over Reinforcements' extra one.
+  if (out.uncapped) out.capacity = 1;
   return out;
 }
 

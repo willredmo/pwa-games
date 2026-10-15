@@ -8,7 +8,14 @@ export function otherSide(side: Side): Side {
   return side === "player" ? "enemy" : "player";
 }
 
-export type Shape = "circle" | "square" | "triangle" | "diamond" | "hexagon" | "shield" | "star" | "kite" | "cross";
+export type Shape = "circle" | "square" | "triangle" | "diamond" | "hexagon" | "shield" | "star" | "kite" | "cross" | "octagon" | "drop";
+
+/**
+ * A unit's class. A row whose every slot holds one class gets that class's
+ * synergy (`SYNERGIES` in engine/units.ts). Separate from `classes`, which are
+ * the tags upgrades target.
+ */
+export type Archetype = "attack" | "defense" | "support";
 
 /** A unit definition (the pool-level template). */
 export interface UnitStats {
@@ -18,11 +25,15 @@ export interface UnitStats {
   shape: Shape;
   /** Tags that augments target, e.g. "striker", "tank". */
   classes: string[];
+  /** Attack, Defense or Support: what full-row synergies count. */
+  archetype: Archetype;
   role: string;
   /** Keywords the unit always has, before any augment (its ability, armour). */
   traits?: UnitTraits;
   /** Its innate ability, as shown to the player. */
   ability?: UnitAbility;
+  /** What the ability becomes at MAX_LEVEL, as shown to the player. */
+  mastery?: string;
   /** False for units that never appear in the offer (the Knight is earned). */
   offered?: boolean;
 }
@@ -66,6 +77,11 @@ export interface Unit {
    * stats. Drives the hover breakdown, so it always matches the real numbers.
    */
   auraDetails?: AuraDetail[];
+  /**
+   * Shield left this round (Warden's Barrier), once a hit has dented it. Absent
+   * means untouched: the full `traits.shield`. Cleared by `applyAugments`.
+   */
+  shieldLeft?: number;
 }
 
 /** One augment's contribution to one unit. */
@@ -96,6 +112,8 @@ export interface UnitTraits {
   lastBreath?: boolean;
   /** Overflow carries in full (Cleave upgrade), instead of half capped at 3. */
   cleaveFull?: boolean;
+  /** A unit its Overflow kills passes the rest on in turn (a mastered Berserker). */
+  cleaveChain?: boolean;
   /** The first N hits it takes each round are dodged entirely (Skirmisher). */
   dodges?: number;
   /** Damage it strikes back with when it dodges (Skirmisher's riposte). */
@@ -117,6 +135,30 @@ export interface UnitTraits {
   pierce?: number;
   /** After each exchange, if this unit isn't the front, it heals the front for this much (Medic's Mend). */
   mend?: number;
+  /** Mends per round beyond the usual 3 (a mastered Medic, Triage). */
+  mendMore?: number;
+  /** Each Mend also gives the front this much attack for the round (Stimulant). */
+  mendAtk?: number;
+  /** Charge fires on the first blow against each new enemy (a mastered Striker). */
+  chargeEach?: boolean;
+  /** Impale reaches this many more units behind the first (a mastered Lancer, Skewer). */
+  pierceDeeper?: number;
+  /** Rally also gives the front this much health (a mastered Herald). */
+  rallyHp?: number;
+  /** From behind the front: the front starts the round with a shield of this much (Warden's Barrier). */
+  barrier?: number;
+  /** How many units behind the front Barrier also covers (a mastered Warden, Aegis). */
+  barrierReach?: number;
+  /** Damage absorbed before health this round (set on the front by Barrier). */
+  shield?: number;
+  /** From behind the front: gives half its health to the front, times this (Acolyte's Lifebond; Sanctuary doubles). */
+  lifebond?: number;
+  /** A mastered Acolyte: the front also gains this much attack. */
+  lifebondAtk?: number;
+  /** Its blows can't be dodged (Full Assault). */
+  trueStrike?: boolean;
+  /** The first blow each round that would kill it leaves it on 1 health instead (Sanctuary). */
+  endure?: boolean;
 }
 
 /** A unit's innate ability, for display. Mechanics live in its `traits`. */
@@ -139,6 +181,8 @@ export interface SideMods {
   lastLight?: number;
   /** Holdout: extra damage reduction for the side's last unit standing. */
   holdout?: number;
+  /** Ascendant: this side's units have no level cap. */
+  uncapped?: boolean;
 }
 
 /**
@@ -170,6 +214,8 @@ export interface AttackEvent {
   blocked?: number;
   /** Charge bonus included in `damage` (set even when tagged first-strike). */
   opening?: number;
+  /** The target's shield after this blow, when a shield soaked some of it. */
+  shieldLeft?: number;
 }
 /** A death-triggered buff landing on an ally, for the rest of the round. */
 export interface BuffEvent {
@@ -181,6 +227,8 @@ export interface BuffEvent {
   label?: string;
   atk: number;
   hp: number;
+  /** Shield it gains for the round (Warden's Barrier). */
+  shield?: number;
 }
 export interface HealEvent {
   type: "heal";
@@ -220,6 +268,10 @@ export interface RoundResult {
   kills?: Record<Side, number>;
   /** Bounty included in hpLoss, for display. */
   bounty?: number;
+  /** Ascendant: pool damage dealt by champions in a mutual wipe (both pools may take some). */
+  ascendantHit?: number;
+  /** Start-of-round support buffs (Rally, Lifebond, Barrier), applied before the first tick. */
+  opening?: BattleEvent[];
   /** Set once a player's HP pool hits 0. */
   matchWinner: Side | null;
 }

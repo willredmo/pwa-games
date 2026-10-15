@@ -1,5 +1,7 @@
 import {
+  capacityOf,
   createBoard,
+  mergeCapFor,
   ensureDepth,
   promoteToKnight,
   firstEmptySpot,
@@ -13,8 +15,8 @@ import {
   cloneBoard,
 } from "../engine/board";
 import { resolveRound } from "../engine/combat";
-import { KNIGHT_AT, OFFER_KEYS, UNITS, mergesInto } from "../engine/units";
-import type { Board, Side, Unit } from "../engine/types";
+import { KNIGHT_AT, OFFER_KEYS, UNITS, canAbsorb, synergyOf } from "../engine/units";
+import type { Archetype, Board, Side, Unit } from "../engine/types";
 import {
   SABOTAGE_ATK,
   applyAugments,
@@ -77,6 +79,26 @@ export function unitRerollsFor(state: AugmentState): number {
 
 export function isAugmentRound(round: number): boolean {
   return round % AUGMENT_EVERY === 0;
+}
+
+/**
+ * Whether `side`'s row is complete: every slot filled, every unit at its level
+ * cap. Picks can't grow it then (only replace), so unspent ones become Drill.
+ */
+export function rowMaxed(board: Board, side: Side): boolean {
+  const cap = mergeCapFor(board, side);
+  if (!Number.isFinite(cap)) return false;
+  const units = sideUnits(board, side);
+  return units.length > 0 && units.length >= capacityOf(board, side) && units.every((u) => u.merges >= cap);
+}
+
+/**
+ * Drill for a commit: one attack per unspent pick, for this round only, once
+ * the row is maxed. Not permanent stats (that would just remove the cap) and
+ * not healing (two maxed rows could stall forever): it ends matches faster.
+ */
+export function drillFor(board: Board, side: Side, unusedPicks: number): number {
+  return rowMaxed(board, side) ? Math.max(0, unusedPicks) : 0;
 }
 
 export function newBoard(): Board {
@@ -220,7 +242,7 @@ function concentrate(board: Board, side: Side, key: string, state: AugmentState)
   let best: { lane: number; spot: number; merges: number } | null = null;
   for (let lane = 0; lane < board.lanes; lane++) {
     board.slots[side][lane].forEach((u, spot) => {
-      if (u && mergesInto(u.key, key) && (!best || u.merges > best.merges)) best = { lane, spot, merges: u.merges };
+      if (u && canAbsorb(u.key, u.merges, key, 1, mergeCapFor(board, side)) && (!best || u.merges > best.merges)) best = { lane, spot, merges: u.merges };
     });
   }
   const b = best as { lane: number; spot: number } | null;
@@ -333,16 +355,17 @@ export function aiCommit(
   // Same rerolls as the player: spend them on an offer that's useless to a full
   // row (nothing it can merge into).
   for (let left = state ? unitRerollsFor(state) : UNIT_REROLLS; left > 0; left--) {
-    const have = sideUnits(board, side).map((u) => u.key);
-    const usable = offer.some((k) => have.some((h) => mergesInto(h, k)));
+    const cap = mergeCapFor(board, side);
+    const usable = offer.some((k) => sideUnits(board, side).some((u) => canAbsorb(u.key, u.merges, k, 1, cap)));
     if (usable || firstEmptySpot(board, side)) break;
     offer = rollOffer(OFFER_COUNT, state);
   }
   const available = offer.map((_, i) => i);
   const picked: string[] = [];
-  const owned = () => new Set(sideUnits(board, side).map((u) => u.key));
   while (picked.length < PICK_COUNT && available.length > 0) {
-    const mine = owned();
+    // Units it could still merge into: same type, under the level cap.
+    const cap = mergeCapFor(board, side);
+    const mine = sideUnits(board, side);
     // A Squire's printed ATK (2) undersells it, so every AI values it as a
     // mid-tier pick; Squire augments only nudge that. (A big nudge made holding
     // one switch the AI to an all-in merge plan, which the sim then credited to
@@ -350,17 +373,23 @@ export function aiCommit(
     const squireBuild =
       !!state && SQUIRE_AUGMENTS.some((id) => hasAugment(state, id));
     const fit = augmentFit(state);
+    const lean = classLean(board, side);
     const value = (i: number) => {
       const key = offer[i];
       // Owning a type only matters once the row is full and picks merge.
-      const owns = !firstEmptySpot(board, side) && [...mine].some((k) => mergesInto(k, key));
+      const owns = !firstEmptySpot(board, side) && mine.some((u) => canAbsorb(u.key, u.merges, key, 1, cap));
       // Survivors deal the round's damage, so a unit's health matters as well
       // as its attack — an attack-only score over-picked glass cannons.
       const base =
         key === "squire"
           ? SQUIRE_PICK_VALUE + (squireBuild ? NUDGE : 0)
           : (AI_UNIT_VALUE[key] ?? 5);
-      return (owns ? 100 : 0) + base + (key === "squire" ? 0 : (fit.get(key) ?? 0));
+      return (
+        (owns ? 100 : 0) +
+        base +
+        (key === "squire" ? 0 : (fit.get(key) ?? 0)) +
+        (lean && UNITS[key]?.archetype === lean ? SYNERGY_NUDGE : 0)
+      );
     };
     available.sort((a, b) => value(b) - value(a));
     // Best-valued offer that can actually be used, so a full row doesn't waste picks.
@@ -432,6 +461,22 @@ const AUGMENT_SCORE: Record<string, number> = {
   "last-light": 50,
   holdout: 46,
   tactician: 48,
+  // Sim 2026-10-13 (12k, --aug=random): 47%.
+  ascendant: 47,
+  // Third wave (sim 2026-10-14, 12k, --aug=random): 45-49%. The AI rarely fields
+  // supports, so these under-read like the other unit upgrades.
+  "long-reach": 49,
+  skewer: 48,
+  "war-horn": 46,
+  "banner-of-hope": 47,
+  triage: 46,
+  stimulant: 46,
+  "thick-barrier": 45,
+  aegis: 48,
+  devotion: 47,
+  blessing: 49,
+  counterstrike: 47,
+  choir: 48,
 };
 
 /**
@@ -538,6 +583,9 @@ const AI_UNIT_VALUE: Record<string, number> = {
   herald: 5.4,
   lancer: 5.6,
   medic: 5.3,
+  // New, not yet measured with the "always take X" sim; on a par with Medic.
+  warden: 5.3,
+  acolyte: 5.2,
   guard: 6,
   berserker: 5.8,
   bulwark: 5.5,
@@ -576,6 +624,25 @@ function augmentFit(state?: AugmentState): Map<string, number> {
   return fit;
 }
 
+/**
+ * Normal's pull toward a full-row synergy: once SYNERGY_LEAN_AT units share a
+ * class, offers of that class score this much more (same idea as FIT_BONUS).
+ * Hard needs no nudge: its search scores rows with the synergy applied.
+ */
+const SYNERGY_NUDGE = 1.5;
+const SYNERGY_LEAN_AT = 3;
+function classLean(board: Board, side: Side): Archetype | null {
+  const counts = new Map<Archetype, number>();
+  for (const u of sideUnits(board, side)) {
+    const a = UNITS[u.key]?.archetype;
+    if (a) counts.set(a, (counts.get(a) ?? 0) + 1);
+  }
+  let best: Archetype | null = null;
+  let n = 0;
+  for (const [a, k] of counts) if (k > n) [best, n] = [a, k];
+  return n >= SYNERGY_LEAN_AT ? best : null;
+}
+
 /** Augments that make Squires worth starting (the AI leans in when it has one). */
 const SQUIRE_AUGMENTS = ["squires-drill", "early-knighthood", "knights-oath"];
 
@@ -605,6 +672,9 @@ export function refreshForRound(
     return { ...mods, capacity: mods.capacity ?? DEPTH };
   };
   board.mods = { player: withCapacity(playerAug), enemy: withCapacity(enemyAug) };
+  // Ascendant: the row is one unit. Taking it trims the row to its best unit
+  // here, where every path (the app, the AI, the sim, online) passes.
+  for (const side of [PLAYER, ENEMY]) if (board.mods[side]!.uncapped) keepChampion(board, side);
   // Knighting happens here because every merge path (offer, placed unit, AI)
   // is followed by a refresh — one place to check, so none can skip it.
   promoteSquires(board, PLAYER, playerAug);
@@ -612,12 +682,29 @@ export function refreshForRound(
   ensureDepth(board, Math.max(board.mods.player!.capacity!, board.mods.enemy!.capacity!));
   const p = sideUnits(board, PLAYER);
   const e = sideUnits(board, ENEMY);
-  applyAugments(p, playerAug, board.hp.player, e.length, board.mods.player!.capacity!);
-  applyAugments(e, enemyAug, board.hp.enemy, p.length, board.mods.enemy!.capacity!);
+  const pCap = board.mods.player!.capacity!;
+  const eCap = board.mods.enemy!.capacity!;
+  applyAugments(p, playerAug, board.hp.player, e.length, pCap, synergyOf(p, pCap));
+  applyAugments(e, enemyAug, board.hp.enemy, p.length, eCap, synergyOf(e, eCap));
   // Sabotage reaches across: each side's holds the other's front down. After
   // both sides are computed, since it acts on the opponent's finished stats.
   if (hasAugment(playerAug, "sabotage")) sabotage(e[0]);
   if (hasAugment(enemyAug, "sabotage")) sabotage(p[0]);
+}
+
+/**
+ * Keep only `side`'s best unit: highest level, then biggest base stats, then
+ * front-most. Deterministic, so both devices of an online match agree.
+ */
+export function keepChampion(board: Board, side: Side): void {
+  const units = sideUnits(board, side);
+  if (units.length <= 1) return;
+  const best = units.reduce((a, b) =>
+    b.merges > a.merges || (b.merges === a.merges && b.baseAtk + b.baseMaxHp > a.baseAtk + a.baseMaxHp) ? b : a,
+  );
+  for (let lane = 0; lane < board.lanes; lane++) {
+    writeLane(board, side, lane, lane === 0 ? [best] : []);
+  }
 }
 
 /** Sabotage's hit on one front unit, badged and itemised like any augment. */

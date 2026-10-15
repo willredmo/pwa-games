@@ -193,6 +193,11 @@ the board, and not over the hint, which carries the replace warning. It is
   partly selection (a Knight means the plan already paid off), up from ~60%.
 - **Character size**: `CHAR_SIZE` 0.58 of the slot height (was 0.78) so body
   and legs fit inside the row; centre `CHAR_X` and text column `TEXT_X` moved in.
+  A slot's contents stop growing at `UNIT_MAX_H` (52px): rows still fill a big
+  screen, but `drawUnit` draws its contents in a space scaled by `contentScale`,
+  so characters and stats stay readable-sized instead of filling 80px rows.
+  Phones (rowH ~42) are unaffected. Each unit's name is led by its class glyph
+  (`classIcon` in `RenderState`).
 - **MVP tally** (`game/stats.ts`): every tally's `key`/`name`/`merges` is
   refreshed from the roster each round, so a knighted Squire is credited as a
   Knight and the result screen shows the MVP's level in its tier colour.
@@ -218,10 +223,12 @@ the board, and not over the hint, which carries the replace warning. It is
 - **Freeze**: offer cards can be frozen (❄ beside each card). A frozen slot
   survives rerolls and carries into the next round's offer in the same slot,
   until taken (which unfreezes it; undo restores it) or unfrozen. Saved with
-  the match (`SavedMatch.frozen`), re-saved on each toggle via `lastSave`. One
-  upgrade can be frozen per choice (`AugmentState.frozen`): `offerAugments`
-  deals it first at the next choice, whatever the tier, until taken. Player
-  only; the AI doesn't freeze.
+  the match (`SavedMatch.frozen`), re-saved on each toggle via `lastSave`. Up
+  to two upgrades can be frozen (`MAX_FROZEN_AUGMENTS`, `AugmentState.frozen`,
+  read via `frozenAugments` since old saves hold a single string):
+  `offerAugments` deals them first at the next choice, whatever the tier, until
+  taken. The third ❄ is disabled; all three would let a player bank a whole hand
+  and skip the rarity ladder. Player only; the AI doesn't freeze.
 - **AI fit** (`augmentFit` in match.ts): Normal's unit picks add `FIT_BONUS`
   (1) per held augment built around a type, so it fields the units its
   augments need. Skirmisher and Striker upgrades still sit at 44-46%: those
@@ -268,6 +275,33 @@ the board, and not over the hint, which carries the replace warning. It is
 - **Side panels** (`ui/SidePanels.tsx`, ≥1100px wide only): your upgrades and
   match tallies on the left, the enemy's upgrades and difficulty on the right.
 
+### Losing explodes your row
+When the match is lost (`matchWinner === ENEMY`, so online too), every unit on
+your row bursts and then one blast goes off from the middle of the row
+(`explodeRow` in Game.tsx, fx kind `"explosion"` in board/fx.ts, `sfx("explode")`):
+white flash, a fireball of layered radial gradients that cools from white to
+red, two shockwave rings, side-coloured debris, sparks, then smoke and rising
+embers. The result screen waits `EXPLOSION_DELAY_MS` + `EXPLOSION_MS` longer,
+and its own embers carry on from there. Built to look the same everywhere:
+plain Canvas 2D only (no `ctx.filter`, which Safari ignores; blur is faked with
+gradients), particles integrated by frame time so 120 Hz phones don't run it
+fast, ~130 particles. Shake is the fx layer's canvas translate, not a CSS
+transform. Android vibrates (`navigator.vibrate`, only with sound on); iOS has
+no vibration API, so it's skipped. Reduced motion keeps the flash and fireball
+and drops the shake and most debris. A hidden browser pane doesn't run rAF, so
+it was checked by stepping an `FxLayer` by hand onto a test canvas.
+### Winning blows up the enemy's HP bar; the end screen celebrates and mopes
+When you win the match, a beat after the last blow the enemy's HP bar explodes
+in slow motion (`ui/HpBarBlast.tsx`): the same `"explosion"` fx as a loss plus
+smaller bursts along the bar, on a full-screen canvas whose fx clock runs at
+`SLOW` (0.4) of real time, the boom pitched down (`sfx(..., rate 0.6)`), the
+bar hidden in the flash (`HpBar blown`). It ignores the battle speed: it
+happens once, at the very end. The result screen waits `HP_BAR_BLAST_MS`.
+
+On the result screen the winning side's units dance and the losing side's are
+sad (`pose: "sad"` in characters.ts: slumped, slow sway, droopy eyes with the
+inner brows raised, a frown and a tear rolling down), in the unit table's
+portraits and the MVP's. Both poses play under reduced motion at half strength.
 ### Augment badges are derived, never stored
 Each augment carries a unique `icon`, and every unit shows the icons of the
 augments currently changing its numbers (`Unit.auras`, augment ids in pick
@@ -328,7 +362,7 @@ and their descriptions say so.
 Every unit has an innate ability (`UnitStats.ability` for display;
 `innateTraits(key, merges)` for the mechanics, seeded into `unit.traits` before
 augments each round). Abilities grow with merges (`ability.scaling`), and that
-one function feeds combat, the hover breakdown and the Units screen alike.
+one function feeds combat, the hover breakdown and the Codex alike.
 Evasion stays at one dodge — a second made merged Skirmishers near-untouchable
 (63–84%) — so its merges add a riposte instead. Abilities: Guard
 Bodyguard and Squire Pass the torch (`deathBuff` on the unit behind), Knight
@@ -340,6 +374,154 @@ units were tuned with a round-robin of single-unit builds (every one within
 ~44–56% of the others). The stalemate guard counts swings, not landed damage,
 so two dodging fronts don't end a round as a draw.
 
+### Level cap, Mastery and Drill
+Units stop at **level 10** (`MAX_LEVEL`, `MAX_MERGES` = 9 in `engine/units.ts`).
+`canAbsorb` is the one rule (like with like, within the cap), used by
+`canMerge`/`mergePlaced` in board.ts (so the AI and every merge path obey it),
+by the drop rules in Game.tsx and by the AI's pick values. Placed-onto-placed
+merges add levels, so two level-6 units can't fold into a 12. A maxed twin
+can't take a card: with room the drop inserts beside it, with a full row it's
+not a target at all (replacing a maxed unit with its own type would only throw
+its levels away); the board label reads "MAX LEVEL 10". `mergeCapFor` returns
+Infinity for a side whose mods say `uncapped` (Ascendant).
+
+At the cap a unit's ability takes its **Mastery** form, a branch in
+`innateTraits`, so combat, the info card and the Codex share it
+(`UnitStats.mastery` is the text): Guard's Bodyguard covers every ally;
+Striker charges each new enemy (`chargeEach`: Charge keyed per target);
+Skirmisher dodges twice; Bulwark's Fortify adds +1 attack; Berserker's
+Overflow chains (`cleaveChain`: an enemy its Overflow kills passes the rest
+on; it was uncapped overflow until 2026-10-14, the same as the Cleave upgrade); Herald's rally adds as much health
+(`rallyHp`); Lancer impales two deep (`pierceDeeper` 1, units beyond the
+first); Medic mends 5 times (`mendMore` 2, mends beyond the usual 3); Knight's armour is 2. The badge reads gold "MAX"
+(`levelLabel`); `LEVEL_TIERS` became 1/2/5/8/10/11+, red being past the cap.
+Reaching it gets a banner and the knighting sound.
+
+**Drill:** once every slot holds a maxed unit (`rowMaxed` in match.ts), picks
+can only replace, so each pick left unspent at Battle gives every unit +1
+attack for that round (`drillFor` → `AugmentState.drill`, applied in
+`applyAugments`, cleared at the next round, sent with the online commit). Not
+permanent stats (that would undo the cap) and not healing (two maxed rows could
+stall). The Battle button skips the "picks left?" confirm then.
+
+Sim after the cap (`pnpm sim 12000 --aug=random`, 2026-10-13): units 44-59%
+(Knight 59%, Skirmisher 58%; Squire 44% as an unknighted Squire at match end),
+upgrades 43-60% (Bloodpact, Champion, Legion top; Squire upgrades fell to
+44-45%), median match 21 rounds, median unit level 7 and most rows' best unit
+at 10, Drill in 0.7% of rounds.
+### Ascendant (epic): one unit, no cap
+Taking it trims your row to one unit (`keepChampion` in `refreshForRound`:
+highest level, then biggest base stats, then front-most; deterministic for
+online), and its mods are `capacity: 1` (beating Reinforcements) and
+`uncapped`. Uncapped means `mergeCapFor` is Infinity and `canAbsorb` lets
+**any** type merge into the champion, since with one slot it would otherwise
+only grow on the rare matching card. Merges use the card's own gain (half its
+stats; a Squire card its escalation step). The badge goes red past 10.
+Two champions kept killing each other in the same blow, and a draw deals
+nothing, so mirror matches ran to the 300-round sim cap: now, when both rows
+fall together, an Ascendant side's champion still hits the enemy pool for its
+attack (`RoundResult.ascendantHit`). Sim (12k, `--aug=random`): holder 47%,
+0 cap hits, longest match 53 rounds.
+### Warden and Acolyte (support, third wave)
+- **Warden** (octagon, 1/6), **Barrier**: from behind the front, the front
+  starts the round with a shield of 4 (+1 a level) that soaks damage before
+  health (`shield`, spent in `strike` and counted as blocked). Mastery shields
+  the unit behind the front too. A shield never adds health, so unlike
+  uncapped healing it can't stall a round. Sim (10k, `--aug=random`): 3 + 1
+  every 2 levels was 41%, 4 + 1 a level 52%.
+- **Acolyte** (teardrop, 1/8), **Lifebond**: from behind the front, it gives
+  up half its health and the front gains it for the round (`lifebond` is the
+  multiplier on the gift; it still only loses half). Mastery adds +2 attack to
+  the front. Sim 50%.
+- Sanctuary doubles them (barrier, and the gift) along with rally and mend.
+- **Shield bar:** a shielded unit shows `🔰N` after its stats and a blue bar
+  under its HP bar (`COLORS.shield`). Combat records what's left on the unit
+  (`shieldLeft`, cleared each round by `applyAugments`) and on the hit event,
+  so playback drains it blow by blow.
+- **Rally, Lifebond and Barrier happen as the round opens,** not in the
+  pre-round stats: `openingBuffs` in combat.ts applies them and returns buff
+  events (`RoundResult.opening`; Barrier's carry `shield`), which playback
+  shows as their own beat before the first blow (the Acolyte's `−N♥`, the
+  front's gain, `+N🔰`). While picking, every unit shows its own, unbuffed
+  numbers. Playback gives each supporting unit its own beat
+  (`OPENING_BEAT_MS`), one after another. `openingBuffs` replaces a unit's `traits` rather than mutating it:
+  `resolveRound`'s clone shares traits objects with the caller's board.
+### Third-wave upgrades (one or two for every unit)
+Lancer, the four supports and the Skirmisher had no upgrades built around
+them. Added 2026-10-14, each leaning on the unit's ability: Long reach (Impale
++3), Skewer (rare, Impale one deeper), War horn (Rally +3), Banner of hope
+(rare, Rally also gives that much health), Triage (Mend +2 and once more),
+Stimulant (rare, each Mend also +2 attack on the front, a labelled buff in
+`mendHeals`), Thick barrier (Barrier +4), Aegis (rare, Barrier covers one more
+the unit behind the front), Devotion (Acolytes +4 health), Blessing (rare,
+Lifebond also +3 attack), Counterstrike (Riposte +3) and Choir (rare, Support
+units +1/+3). The rares echo Masteries but stack with them (hence
+`pierceDeeper`/`mendMore` as extras over the default rather than absolute
+values). Sim (12k, `--aug=random`): 45-49%, after buffing the first draft
+(43.8-49.4%); the AI rarely fields supports, so like the other unit upgrades
+they under-read.
+
+**No upgrade may duplicate a Mastery or be dead on arrival** (review
+2026-10-14). Aegis and Cleave used to be exactly a mastered Warden's and
+Berserker's ability, so they did nothing for those units: Barrier's reach is
+now a count (`barrierReach`) that Aegis adds to, and Berserker's Mastery became
+chaining. Ascendant `excludes` the upgrades a one-unit row can't use
+(Reinforcements, Mixed formation, United front, Last light, Knight's oath,
+Veteran), so `offerAugments` stops dealing them once it's held. Upgrade icons
+must also differ from the board's non-upgrade badges (🔥🧱🕊 synergies, 🎯
+Drill, 📯🔰💞 supports): Battle fury, Iron will, Precision strikes and
+Ascendant were moved off clashing icons. `PROTOCOL` 4.
+### Classes and full-row synergies
+Every unit has a class (`UnitStats.archetype`, separate from `classes`, the tags
+upgrades target): **Attack** Striker, Berserker, Lancer, Skirmisher;
+**Defense** Guard, Bulwark, Squire, Knight; **Support** Herald, Medic, Warden, Acolyte. Shown on
+offer cards (top corner), info cards and the Codex. When every slot of
+a row (5, or 6 with Reinforcements; never a 1-unit Ascendant row,
+`SYNERGY_MIN`) holds one class, `synergyOf` picks its synergy and
+`applyAugments` applies it for the round, badged and itemised (`syn-<class>`
+auras): **🔥 Full Assault** +2 attack and Overflow for every unit (half the
+overkill, up to 3; Berserkers keep their own); **🧱 Iron Line** a 5 shield on every unit each round
+(`IRON_LINE_SHIELD`, shown on the shield bar); **🕊 Sanctuary** every support
+ability counts twice (Herald rally and its Mastery health, Medic mend). The
+`endure` trait (front survives a lethal blow on 1) is still in combat but unused. The round
+banner announces it. While picking, a **synergy meter** leads the pick label
+(`SynergyMeter` in Game.tsx): the class the row is closest to (most units;
+ties go to the front unit's class), one pip per slot (filled for that class,
+hatched for another, hollow for empty) and "N more", "swap N" or the
+synergy's name in gold once it's on. It shows once two units share a class.
+Offer cards of that class get a glowing class badge. Completing it while
+picking gets a banner with the bonus, the knighting sound and sparkles on
+every unit; breaking it (a replace) gets a quiet banner. Banners with a second
+line (`sub`, the synergy's effect) stay up ~3 s instead of 1.7; emoji in a
+banner are wrapped (`withEmoji`) since the gradient text turns them to blobs. Only pick-to-pick
+changes count, since the board also changes as units fall in battle. Normal leans toward a class once 3 share it
+(`SYNERGY_NUDGE`); Hard finds synergies through its search.
+
+Tuning: `pnpm synergy [trials] [--level=N]` (scripts/synergy.ts) plays a
+one-class row with its synergy on vs off, one round against random rows at
+the same level, and prints what it's worth. 2026-10-15, levels 2 / 5 / 8:
+Assault (+2 attack, Overflow for all) +30 / +20 / +18; Iron Line (5 shield) +40 /
++33 / +28; Sanctuary +35 / +48 / +57 (an all-Support row is weak without it:
+44% / 28% / 12%). Before: Assault at +1 attack +22 / +18 / +18, felt weak
+because true strike only matters against Skirmishers; Iron Line at +3 health
++27 / +24 / +15, fading as health grows. True strike was dropped (it only
+matters against Skirmishers; the trait is still in combat, unused, like
+`endure`). Tried and dropped: +2 attack with true strike (+28 / +18 / +18),
+with Charge +2 for all (+29 / +18 / +17), plain +2 attack (fades to +12 at
+level 8), and First strike for all (99% on: far too strong). A permanent +1 health per round won was the other Iron Line idea.
+At match level (`pnpm sim 10000 --aug=random`) Iron Line
+holders win 49% (45% at +2, 56% at +4); synergies fire in ~4% of AI rows
+(Defense 3.8%, Attack 0.8%, Support never: the AI doesn't build five
+supports), so real-player telemetry will be the better measure.
+### Codex (ui/Overlays.tsx `CodexView`)
+The reference screen, from the title screen and ☰ (it was "Units"; renamed so
+it can hold more than units). Two tabs: **Units**, with the three classes and
+their full-row bonuses at the top and the units grouped under their class, and
+**Upgrades**, every augment by category. They link both ways: a unit in a
+class card jumps to its entry, a unit's upgrade chips jump to the upgrade, and
+an upgrade's unit chips jump back (`unitsAffectedBy`; upgrades touching every
+unit or none list no units). The target scrolls under the sticky header
+(`scroll-margin-top`) and flashes gold. ☰ also has What's new.
 ### Squire → Knight
 The late-game unit. Player-facing rule: **a Squire is knighted at level 7**
 (`KNIGHT_LEVEL`; level 6 with Early knighthood). Internally that is `KNIGHT_AT`
@@ -405,7 +587,10 @@ on arrival (`OVERFLOW_TRAVEL_MS`). The clash holds until the sequence is done.
 dealt and taken, kills, falls, rounds fielded, last round seen; `foes` holds
 the enemy's), shown on the result screen's unit ledger with Your / Enemy tabs.
 Units that left the row (merged away, replaced) stay listed, faded. `ResultPanel` shows them full-window over a
-continuous backdrop (confetti rain and rays for a win, embers for a loss),
+continuous backdrop (confetti rain and rays for a win, embers for a loss;
+`ui/ResultBackdrop.tsx`, a canvas: the CSS version, a 160vmax masked
+conic-gradient and keyframes reading per-piece custom properties, didn't play
+on iOS),
 with an MVP (most damage) and the upgrades taken.
 
 ### AI difficulty
@@ -476,6 +661,24 @@ devices exchanging commits through a JSON round-trip that strips empty values
 the way the database does, and fails on any disagreement. It currently reports
 0 desyncs over ~2800 rounds.
 
+**Versions must match.** Since each device computes the round, two builds with
+different rules would desync silently. Two guards: the lobby checks
+`/version.json` before hosting or joining (`newerDeploy` in pwa.ts) and, if a
+newer deploy exists, shows "Update needed" with Update now (`updateNow` asks
+the service worker for the new build and waits for it, since a plain reload
+would serve the cached old one); and rooms carry `proto` (`PROTOCOL` in
+room.ts, absent = 1), so a join across protocols is refused with "update"
+or "ask your opponent to update". **Bump `PROTOCOL` with every change to what
+the engine or `refreshForRound` computes.** Deploy the database rules before
+hosting: the rules reject unknown room fields, so a build that writes `proto`
+can't host against older rules.
+**Emotes** (`ui/EmoteBar.tsx`): a 💬 button at the board's bottom-right in
+online matches opens 8 fixed emoji (`EMOTES` in room.ts; the last is 🤝 GG).
+Each player writes only `emotes/<p>` = `{ i, n }`: the index, so the rules can
+require 0-7 and no text can be sent, and a rising `n` so a repeat still shows.
+The watcher ignores whatever was there when it subscribed. One a second, no
+per-round cap (decided 2026-10-13); bubbles over each side's half fade after 2.5 s with a soft pop. The tray
+has "Mute opponent" (`duel-deck:mute-emotes`, this device).
 Other notes: an online match is **not** saved to `localStorage` (half of it is
 the opponent's; `save()` is a no-op online) — a reload rejoins via the room, and
 `duel-deck:online` holds the code and side. Waiting on the other player is a
@@ -486,8 +689,33 @@ title and host again. Rules live in `database.rules.json` at the repo root and
 must be deployed (`firebase deploy --only database`) before online works at all;
 without the `duel-deck` block every write is a 401.
 
+### Telemetry (game/telemetry.ts, scripts/telemetry.ts)
+Balance data from real players, always on and not shown in the UI. Each match
+writes to `telemetry/duel-deck/<UTC day>/<match id>/` in the Realtime Database:
+`meta` at the start, `rounds/<n>` after every round (cards as dealt, each pick
+as place/merge/replace with the level it reached, rerolls, both rows as
+`key:level`, the round result, HP), `augs/<n>` at each upgrade choice (offered,
+taken, rerolls, and the CPU's pick) and `end`. Per round rather than once at
+the end so abandoned matches and killed iOS PWAs still count. The id is kept in
+`duel-deck:log` so a resumed save keeps writing to the same match; online it's
+derived from the room code and side. Off under `vite dev` unless the URL has
+`?telemetry=1`; the sims never import it.
+
+The database rules make every telemetry path create-only (`!data.exists()`),
+shape-checked, and unreadable by clients. `pnpm telemetry [--days=N] [--v=x.y.z]
+[--mode=cpu|online]` reads it through the Firebase CLI and prints pick rates,
+how often a pick merges, and the win rate of rows holding each unit and of each
+upgrade's holders, for players and for the CPU. Compare it with `pnpm sim`.
+
+Retention is three weeks. Grouping by day makes a prune one delete per day:
+`pnpm telemetry` prunes on every run (`--prune` only prunes), and
+`.github/workflows/telemetry-prune.yml` does it daily once the repo secret
+`FIREBASE_SERVICE_ACCOUNT` (a service-account key) is set.
 ### Sound (game/sound.ts)
-Synthesized, no audio files — oscillators and one noise buffer, like
+Synthesized, no audio files (`?sounds` on the dev server plays every one). The
+master chain is a compressor plus a short generated room reverb, and combat
+sounds vary ±4% in pitch per play; death is a cartoon \"poof\" and round won
+two bells (chosen 2026-10-13).  — oscillators and one noise buffer, like
 knock-hockey's. Call sites name the *event* (`sfx("death")`), never the
 waveform, so the palette can be retuned or swapped for samples without touching
 playback. Unlocked from the first real click (Play, or turning sound on), since
@@ -502,6 +730,21 @@ the loudest damage in the beat (`BIG_HIT` switches it to the heavier one), and
 death is delayed ~90ms so the fall reads as the consequence of the impact.
 Knighting deliberately overrides the merge sound that triggers it.
 
+### Tutorial (ui/Tutorial.tsx)
+A guided first match against Easy, offered first on the title screen until
+it's finished or skipped (`duel-deck:tutorial-done`), and always from the
+Tutorial link. A coach card walks through 12 steps; each either waits for the
+player to do the thing (place, take a second card, Battle, merge, take the
+round-3 upgrade) or has Next, and outlines what it's about (`tut-spot`). Steps
+that are only read move on by themselves once the round does (`playedOn`), so
+ignoring Next never strands it; `waitFor` only gates a step's first
+appearance (the upgrade step used to vanish once the upgrade closed). The
+first two offers are set (`TUTORIAL_OFFERS` in Game.tsx: Strikers and Guards
+twice) so a merge is always on offer. A tutorial match is never saved (it
+mustn't replace a real one, and it doesn't clear one either) and never logged
+(`MatchLog.none()`: set offers would skew the data). The card sits at the top
+while picking, since the cards are at the bottom, and at the bottom during
+battles and upgrades.
 ### Save and resume
 The match is saved to `localStorage` (`duel-deck:match`) at the start of every
 pick phase — never mid-battle — so a reload lands back at the start of the
@@ -556,7 +799,9 @@ worker is in `prompt` mode: a new deploy downloads in the background and
 `ui/UpdatePrompt.tsx` shows an Update toast (checked on launch, on returning to
 the foreground and hourly), so a build never swaps mid-battle and iOS installs
 that are never fully closed still update. Bump `version` in package.json for
-releases. The build writes `/version.json` (version + deploy time; no-cache,
+releases, and add that version's player-facing notes to `PATCH_NOTES` in
+`ui/PatchNotes.tsx` (the title screen's "What's new", dotted until opened
+on this device, `duel-deck:notes-seen`). The build writes `/version.json` (version + deploy time; no-cache,
 never precached). The ☰ menu's About section (`ui/MenuPanel.tsx`) shows this
 build's version and deploy time beside the latest deploy's, and offers Check
 for updates / Update now. Update state is shared via `src/pwa.ts`.
@@ -564,6 +809,25 @@ for updates / Update now. Update state is shared via `src/pwa.ts`.
 emulator (port 5176) to test the service worker and headers locally.
 
 ### Layout
+
+> **Rule: units have a maximum drawn size.** A unit's contents (character,
+> name, stats, badges, HP bar) are never taller than `UNIT_MAX_H` (52 CSS px,
+> in `board/render.ts`), however big the screen and its rows get. Slots may
+> grow; what's drawn in them may not.
+> - Draw anything that belongs to a unit inside `drawUnit`'s scaled block, or
+>   size it with `contentScale(h)` (the drag preview, the empty-slot number
+>   and the slot labels like + ADD / MERGE do). Never size unit art or text
+>   straight off `rowH`/`h` outside it. The same cap covers row text: slot
+>   labels and battle effects (`cellCenter`'s `size`, which every fx scales by).
+> - Don't raise `UNIT_MAX_H` or `CHAR_SIZE` without checking a tablet
+>   (768×1024, rowH ~84) and a wide desktop as well as a phone.
+> - The same goes for unit portraits in the DOM (offer cards, info cards, the
+>   result screen): give them a fixed or `min()`-capped size, never one that
+>   scales with the viewport.
+>
+> Why: everything used to scale with the row height, so big screens showed
+> giant characters and 37px stat text.
+
 The app is exactly one screen (`height: 100dvh`, no page scroll): the board's
 stage is `flex: 1` and takes whatever height the chrome leaves, and the canvas
 reads its client size each frame. The rows that come and go between phases (round

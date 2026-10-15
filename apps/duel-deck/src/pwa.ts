@@ -72,6 +72,44 @@ export async function fetchLatestDeploy(): Promise<DeployInfo | null> {
   }
 }
 
+/**
+ * Update to the newest deploy even if it hasn't finished downloading yet: the
+ * worker serves the cached build, so a plain reload would land back on the old
+ * one. Asks for the new worker and waits (up to `waitMs`) for it to install.
+ */
+export async function updateNow(waitMs = 10_000): Promise<void> {
+  start();
+  if (!needRefresh) {
+    await checkForUpdate();
+    const until = Date.now() + waitMs;
+    while (!needRefresh && Date.now() < until) await new Promise((r) => setTimeout(r, 250));
+  }
+  update();
+}
+
+/** -1, 0 or 1 comparing dotted versions ("1.10.0" > "1.9.2"). */
+export function compareVersions(a: string, b: string): number {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
+/**
+ * The newest deploy if it's newer than this build, else null. Null too when it
+ * can't be checked (offline, or ite dev with no version.json) — never block
+ * on a failed check. Also starts downloading it, so "Update now" is quick.
+ */
+export async function newerDeploy(): Promise<DeployInfo | null> {
+  const latest = await fetchLatestDeploy();
+  if (!latest || compareVersions(latest.version, THIS_BUILD.version) <= 0) return null;
+  void checkForUpdate();
+  return latest;
+}
+
 /** Whether a newer build is downloaded and waiting. */
 export function usePwaUpdate(): boolean {
   const [ready, setReady] = useState(needRefresh);

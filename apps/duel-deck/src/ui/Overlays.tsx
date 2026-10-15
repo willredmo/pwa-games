@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./overlays.css";
 import type { AugmentDef, AugmentState } from "../game/augments";
-import { AUGMENTS, RALLY_CAP, getAugment, rarityOf, unitsAffectedBy, type Rarity } from "../game/augments";
-import { KNIGHT_LEVEL, UNITS, UNIT_KEYS, levelOf } from "../engine/units";
-import { levelTier } from "../board/render";
+import { AUGMENTS, MAX_FROZEN_AUGMENTS, RALLY_CAP, getAugment, rarityOf, unitsAffectedBy, type Rarity } from "../game/augments";
+import { ARCHETYPES, KNIGHT_LEVEL, MAX_LEVEL, SYNERGIES, UNITS, UNIT_KEYS, levelOf } from "../engine/units";
+import { levelLabel, levelTier } from "../board/render";
 import { AUGMENT_EVERY, PICK_COUNT, START_HP } from "../game/match";
 import { mvpOf, roundsPlayed, type MatchStats, type UnitTally } from "../game/stats";
 import { prefersReducedMotion } from "../board/anim";
 import { UNIT_LORE } from "../game/lore";
 import { UnitPortrait } from "./UnitPortrait";
+import { ResultBackdrop } from "./ResultBackdrop";
 
 // Overlays: the augment offer track, the match-over panel, and help.
 // Presentational — match state is owned by App.
@@ -27,8 +28,8 @@ interface AugmentPanelProps {
   /** Rerolls left on this choice, and the action that spends one. */
   rerollsLeft: number;
   onReroll: () => void;
-  /** The upgrade frozen for the next choice, if any (one at a time). */
-  frozenId?: string;
+  /** Upgrades frozen for the next choice (up to MAX_FROZEN_AUGMENTS). */
+  frozenIds: string[];
   onFreeze: (id: string) => void;
 }
 
@@ -47,7 +48,6 @@ const CATEGORY_LABEL: Record<string, string> = {
   strategy: "Strategy",
 };
 
-const CONFETTI_COLORS = ["#f0b429", "#ff6b6b", "#4cc9f0", "#7bd88f", "#b26eff", "#fff6c8"];
 
 export function AugmentPanel({
   round,
@@ -57,9 +57,10 @@ export function AugmentPanel({
   onPeek,
   rerollsLeft,
   onReroll,
-  frozenId,
+  frozenIds,
   onFreeze,
 }: AugmentPanelProps) {
+  const freezeFull = frozenIds.length >= MAX_FROZEN_AUGMENTS;
   const [picked, setPicked] = useState<string | null>(null);
   const timer = useRef<number | undefined>(undefined);
   const choose = (id: string) => {
@@ -87,18 +88,20 @@ export function AugmentPanel({
             className="ghost-btn ghost-btn--sm"
             onClick={onReroll}
             disabled={rerollsLeft <= 0 || peeking || !!picked}
-            title="Draw new upgrades (a frozen one stays)"
+            title="Draw new upgrades (frozen ones stay)"
           >
             🎲 Reroll ({rerollsLeft})
           </button>
         </div>
         <div className={`cards cards--deal${picked ? " cards--picked" : ""}`}>
-          {offers.map((a, i) => (
+          {offers.map((a, i) => {
+            const isFrozen = frozenIds.includes(a.id);
+            return (
             <div className="card-row-wrap" key={a.id}>
             <button
               className={`card-row card-row--deal card-row--${a.category} card-row--${rarityOf(a)}${
                 picked ? (picked === a.id ? " card-row--chosen" : " card-row--away") : ""
-              }${frozenId === a.id ? " card-row--frozen" : ""}`}
+              }${frozenIds.includes(a.id) ? " card-row--frozen" : ""}`}
               style={{ "--i": i } as React.CSSProperties}
               onClick={() => choose(a.id)}
               tabIndex={peeking ? -1 : undefined}
@@ -116,17 +119,24 @@ export function AugmentPanel({
             </button>
             {/* Freeze: offered first at your next upgrade choice. */}
             <button
-              className={`freeze-btn freeze-btn--row${frozenId === a.id ? " freeze-btn--on" : ""}`}
+              className={`freeze-btn freeze-btn--row${isFrozen ? " freeze-btn--on" : ""}`}
               onClick={() => onFreeze(a.id)}
-              disabled={peeking || !!picked}
-              aria-pressed={frozenId === a.id}
+              disabled={peeking || !!picked || (freezeFull && !isFrozen)}
+              aria-pressed={isFrozen}
               aria-label={`Freeze ${a.name} for your next upgrade choice`}
-              title={frozenId === a.id ? "Frozen: offered first next time. Click to unfreeze" : "Freeze: offer this first at your next upgrade choice"}
+              title={
+                isFrozen
+                  ? "Frozen: offered first next time. Click to unfreeze"
+                  : freezeFull
+                    ? `${MAX_FROZEN_AUGMENTS} frozen max: unfreeze one first`
+                    : "Freeze: offer this first at your next upgrade choice"
+              }
             >
               ❄
             </button>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
@@ -417,7 +427,7 @@ function LevelChip({ merges }: { merges: number }) {
   const tier = levelTier(lv);
   return (
     <span className="result-mvp__level" style={{ background: tier.fill, color: tier.ink }}>
-      Lv{lv}
+      {levelLabel(lv)}
     </span>
   );
 }
@@ -427,7 +437,7 @@ function LevelChip({ merges }: { merges: number }) {
  * falls. Units that left the row (merged into another, or replaced) stay
  * listed, faded, so the totals add up.
  */
-function UnitLedger({ stats }: { stats: MatchStats }) {
+function UnitLedger({ stats, winner }: { stats: MatchStats; winner: "player" | "enemy" }) {
   const [tab, setTab] = useState<"player" | "enemy">("player");
   const total = roundsPlayed(stats);
   const bookFor = (s: "player" | "enemy") => (s === "player" ? stats.units : (stats.foes ?? {}));
@@ -469,7 +479,8 @@ function UnitLedger({ stats }: { stats: MatchStats }) {
               return (
                 <tr key={id} className={gone ? "ledger__row--gone" : undefined} title={gone ? "Left the row (merged or replaced)" : undefined}>
                   <td className="ledger__unit">
-                    <UnitPortrait unitKey={t.key} side={tab} size={30} merges={t.merges ?? 0} />
+                    {/* The winners dance, the losers mope. */}
+                    <UnitPortrait unitKey={t.key} side={tab} size={30} merges={t.merges ?? 0} pose={tab === winner ? "dance" : "sad"} bleed={8} />
                     <span className="ledger__name">
                       <span>
                         {t.name} <LevelChip merges={t.merges ?? 0} />
@@ -505,32 +516,6 @@ function UnitLedger({ stats }: { stats: MatchStats }) {
   );
 }
 
-/** Continuous backdrop: sunburst and confetti rain for a win, drifting embers for a loss. */
-function ResultBackdrop({ won }: { won: boolean }) {
-  const bits = useMemo(
-    () =>
-      Array.from({ length: won ? 46 : 34 }, (_, i) => ({
-        "--x": `${(Math.random() * 100).toFixed(1)}%`,
-        "--drift": `${Math.round((Math.random() - 0.5) * 160)}px`,
-        "--r": `${Math.round(360 + Math.random() * 720)}deg`,
-        "--d": `${(won ? 3.2 : 6) + Math.random() * 3}s`,
-        "--dl": `${(-Math.random() * 8).toFixed(2)}s`,
-        "--s": (0.6 + Math.random() * 0.8).toFixed(2),
-        "--c": won ? CONFETTI_COLORS[i % CONFETTI_COLORS.length] : i % 3 ? "#ff7a45" : "#ffcf6b",
-      })) as React.CSSProperties[],
-    [won],
-  );
-  return (
-    <div className={`result-fx ${won ? "result-fx--win" : "result-fx--lose"}`} aria-hidden="true">
-      <div className="result-fx__rays" />
-      <div className="result-fx__glow" />
-      {bits.map((st, i) => (
-        <i key={i} className={won ? "result-fx__confetti" : "result-fx__ember"} style={st} />
-      ))}
-    </div>
-  );
-}
-
 export function ResultPanel({ winner, round, stats, hp, upgrades, difficulty, onNewMatch }: ResultPanelProps) {
   const won = winner === "player";
   const mvp = mvpOf(stats);
@@ -561,7 +546,7 @@ export function ResultPanel({ winner, round, stats, hp, upgrades, difficulty, on
 
         {mvp && (
           <div className="result-mvp">
-            <UnitPortrait unitKey={mvp.key} side="player" size={84} merges={mvp.merges ?? 0} pose="dance" bleed={40} />
+            <UnitPortrait unitKey={mvp.key} side="player" size={84} merges={mvp.merges ?? 0} pose={won ? "dance" : "sad"} bleed={40} />
             <div>
               <span className="result-mvp__tag">★ MVP</span>
               <strong>
@@ -590,7 +575,7 @@ export function ResultPanel({ winner, round, stats, hp, upgrades, difficulty, on
           <Stat i={7} label="Best win streak" value={stats.bestStreak} sub={stats.healed > 0 ? `healed ${stats.healed} HP` : undefined} />
         </div>
 
-        <UnitLedger stats={stats} />
+        <UnitLedger stats={stats} winner={winner} />
 
         {upgrades.length > 0 && (
           <div className="result-upgrades">
@@ -612,30 +597,117 @@ export function ResultPanel({ winner, round, stats, hp, upgrades, difficulty, on
   );
 }
 
-/** Every unit: animated portrait, stats, backstory, and the upgrades built around it. */
-export function UnitsView({ onClose }: { onClose: () => void }) {
+type CodexTab = "units" | "upgrades";
+const CLASS_ORDER = ["attack", "defense", "support"] as const;
+const unitAnchor = (key: string) => `codex-unit-${key}`;
+const augAnchor = (id: string) => `codex-aug-${id}`;
+/** The upgrades built around a unit (not the ones that touch every unit). */
+const upgradesFor = (key: string) => AUGMENTS.filter((a) => !isGeneral(a.id) && (AFFECTS.get(a.id) ?? []).includes(key));
+
+/**
+ * The codex: every unit (by class, with its ability, story and upgrades) and
+ * every upgrade (with the units it's built around), cross-linked both ways.
+ */
+export function CodexView({ onClose, initialTab = "units" }: { onClose: () => void; initialTab?: CodexTab }) {
+  const [tab, setTab] = useState<CodexTab>(initialTab);
+  /** The entry to scroll to and flash once the tab it lives on has rendered. */
+  const [focus, setFocus] = useState<{ id: string; n: number } | null>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!focus) {
+      scroller.current?.scrollTo({ top: 0 });
+      return;
+    }
+    const el = document.getElementById(focus.id);
+    if (!el) return;
+    el.scrollIntoView({ block: "start", behavior: prefersReducedMotion() ? "auto" : "smooth" });
+    el.classList.remove("codex-flash");
+    void el.offsetWidth; // restart the flash when it's the same entry again
+    el.classList.add("codex-flash");
+  }, [focus, tab]);
+
+  const go = (t: CodexTab, id: string) => {
+    setTab(t);
+    setFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }));
+  };
+  const switchTab = (t: CodexTab) => {
+    setTab(t);
+    setFocus(null);
+  };
+
   return (
     // Full-window, not inside the board like the other overlays: the stories
     // need reading width.
     <div className="overlay overlay--full" onClick={onClose}>
-      <div className="panel panel--wide panel--scroll panel--codex" onClick={(e) => e.stopPropagation()}>
+      <div ref={scroller} className="panel panel--wide panel--scroll panel--codex" onClick={(e) => e.stopPropagation()}>
         <div className="panel__head panel__head--sticky">
-          <h2>Units</h2>
+          <h2>Codex</h2>
+          <div className="tabs" role="tablist">
+            {(["units", "upgrades"] as const).map((t) => (
+              <button key={t} role="tab" aria-selected={tab === t} className={`tab${tab === t ? " tab--on" : ""}`} onClick={() => switchTab(t)}>
+                {t === "units" ? `Units (${UNIT_KEYS.length})` : `Upgrades (${AUGMENTS.length})`}
+              </button>
+            ))}
+          </div>
           <button className="close-btn" onClick={onClose} aria-label="Close">✕</button>
         </div>
-        <div className="unit-codex">
-          {UNIT_KEYS.map((key, i) => {
+        {tab === "units" ? (
+          <CodexUnits onUnit={(k) => go("units", unitAnchor(k))} onAug={(id) => go("upgrades", augAnchor(id))} />
+        ) : (
+          <CodexUpgrades onUnit={(k) => go("units", unitAnchor(k))} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CodexUnits({ onUnit, onAug }: { onUnit: (key: string) => void; onAug: (id: string) => void }) {
+  let n = 0;
+  return (
+    <>
+      {/* Classes first: they decide which units belong together. */}
+      <section className="class-guide" aria-label="Classes">
+        <p className="class-guide__intro">
+          Every unit has a class. Fill <strong>every slot</strong> of your row with one class (5 units, or 6 with
+          Reinforcements) and the whole row gets that class's bonus each round. Tap a unit to jump to it.
+        </p>
+        <div className="class-guide__list">
+          {CLASS_ORDER.map((a) => (
+            <div key={a} className={`class-card class-card--${a}`}>
+              <div className="class-card__head">
+                <span className="class-card__icon" aria-hidden="true">{ARCHETYPES[a].icon}</span>
+                <h3>{ARCHETYPES[a].name}</h3>
+              </div>
+              <div className="class-card__units">
+                {UNIT_KEYS.filter((k) => UNITS[k].archetype === a).map((k) => (
+                  <button key={k} className="class-card__unit" onClick={() => onUnit(k)}>
+                    <UnitPortrait unitKey={k} side="player" size={28} />
+                    {UNITS[k].name}
+                  </button>
+                ))}
+              </div>
+              <p className="class-card__bonus">
+                <strong>
+                  {SYNERGIES[a].icon} {SYNERGIES[a].name}:
+                </strong>{" "}
+                {SYNERGIES[a].text}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+      {CLASS_ORDER.map((a) => (
+        <section key={a} className="unit-codex" aria-label={ARCHETYPES[a].name}>
+          <h3 className={`codex-class codex-class--${a}`}>
+            {ARCHETYPES[a].icon} {ARCHETYPES[a].name}
+          </h3>
+          {UNIT_KEYS.filter((k) => UNITS[k].archetype === a).map((key) => {
             const u = UNITS[key];
             const lore = UNIT_LORE[key];
-            const related = AUGMENTS.filter(
-              (a) => !isGeneral(a.id) && (AFFECTS.get(a.id) ?? []).includes(key),
-            );
+            const related = upgradesFor(key);
             return (
-              <article
-                key={key}
-                className="unit-entry"
-                style={{ "--i": i } as React.CSSProperties}
-              >
+              <article key={key} id={unitAnchor(key)} className="unit-entry codex-anchor" style={{ "--i": n++ } as React.CSSProperties}>
                 <div className="unit-entry__portrait">
                   <UnitPortrait unitKey={key} side="player" size={72} />
                 </div>
@@ -648,21 +720,26 @@ export function UnitsView({ onClose }: { onClose: () => void }) {
                     </span>
                   </header>
                   {lore && <p className="unit-entry__title">{lore.title}</p>}
-                  <p className="unit-entry__role">{u.role}</p>
+                  <p className="unit-entry__role">
+                    {u.role} · {ARCHETYPES[u.archetype].icon} {ARCHETYPES[u.archetype].name}
+                  </p>
                   {u.ability && (
                     <p className="unit-entry__ability">
                       <span className="unit-entry__ability-name">✦ {u.ability.name}</span>
                       <span className="unit-entry__ability-trigger">{u.ability.trigger}</span>
                       <span className="unit-entry__ability-text">{u.ability.text}</span>
-                      {u.ability.scaling && (
-                        <span className="unit-entry__ability-scaling">↑ {u.ability.scaling}</span>
+                      {u.ability.scaling && <span className="unit-entry__ability-scaling">↑ {u.ability.scaling}</span>}
+                      {u.mastery && (
+                        <span className="unit-entry__ability-scaling">
+                          ★ Level {MAX_LEVEL} (max): {u.mastery}
+                        </span>
                       )}
                     </p>
                   )}
                   {u.offered === false && (
                     <p className="unit-entry__earned">
-                      Never offered: a Squire is knighted when it reaches level {KNIGHT_LEVEL}. Stats shown are at
-                      the moment of knighting, before upgrades.
+                      Never offered: a Squire is knighted when it reaches level {KNIGHT_LEVEL}. Stats shown are at the
+                      moment of knighting, before upgrades.
                     </p>
                   )}
                   {lore && <p className="unit-entry__story">{lore.story}</p>}
@@ -670,9 +747,9 @@ export function UnitsView({ onClose }: { onClose: () => void }) {
                     <p className="unit-entry__augs">
                       <span className="unit-entry__augs-label">Upgrades:</span>
                       {related.map((a) => (
-                        <span key={a.id} className="unit-entry__aug" title={a.description}>
+                        <button key={a.id} className="unit-entry__aug" title={a.description} onClick={() => onAug(a.id)}>
                           {a.icon} {a.name}
-                        </span>
+                        </button>
                       ))}
                     </p>
                   )}
@@ -680,9 +757,61 @@ export function UnitsView({ onClose }: { onClose: () => void }) {
               </article>
             );
           })}
-        </div>
-      </div>
-    </div>
+        </section>
+      ))}
+    </>
+  );
+}
+
+function CodexUpgrades({ onUnit }: { onUnit: (key: string) => void }) {
+  return (
+    <>
+      <p className="panel__hint">
+        Every upgrade that can be offered. You pick one every {AUGMENT_EVERY} rounds and each can be taken once per
+        match. Rares can appear from the second pick, epics from the third.
+      </p>
+      {CATEGORY_ORDER.map((cat) => {
+        const defs = AUGMENTS.filter((a) => a.category === cat);
+        if (defs.length === 0) return null;
+        return (
+          <section key={cat}>
+            <h3>{CATEGORY_LABEL[cat]}</h3>
+            <div className="cards">
+              {defs.map((a, i) => {
+                const units = isGeneral(a.id) ? [] : (AFFECTS.get(a.id) ?? []);
+                return (
+                  <div
+                    key={a.id}
+                    id={augAnchor(a.id)}
+                    className={`card-row card-row--static card-row--${a.category} codex-anchor`}
+                    style={{ "--i": i } as React.CSSProperties}
+                  >
+                    <span className="card-row__head">
+                      <span className="card-row__name">
+                        <span className="aura-icon">{a.icon}</span> {a.name}
+                      </span>
+                      <RarityTag rarity={rarityOf(a)} />
+                    </span>
+                    <span className="card-row__desc">{a.description}</span>
+                    {units.length > 0 && (
+                      <span className="unit-entry__augs">
+                        <span className="unit-entry__augs-label">Units:</span>
+                        {units.map((k) => (
+                          <button key={k} className="unit-entry__aug codex-unit-chip" onClick={() => onUnit(k)}>
+                            <UnitPortrait unitKey={k} side="player" size={18} />
+                            {UNITS[k].name}
+                          </button>
+                        ))}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+    </>
   );
 }
 
@@ -730,47 +859,51 @@ interface HelpPanelProps {
 }
 
 export function HelpPanel({ onClose }: HelpPanelProps) {
+  // Short on purpose: the tutorial teaches by playing, the info cards (press
+  // and hold a unit) and the Units screen hold the details.
   return (
     <div className="overlay" onClick={onClose}>
       <div className="panel panel--wide panel--scroll" onClick={(e) => e.stopPropagation()}>
         <div className="panel__head panel__head--sticky">
-          <h2>Units &amp; rules</h2>
+          <h2>How to play</h2>
           <button className="close-btn" onClick={onClose} aria-label="Close">✕</button>
         </div>
 
-        <div className="cards">
-          {UNIT_KEYS.map((key, i) => {
-            const u = UNITS[key];
-            return (
-              <div key={key} className="card-row card-row--static" style={{ "--i": i } as React.CSSProperties}>
-                <span className="card-row__head">
-                  <span className="card-row__name">{u.name}</span>
-                  <span className="card-row__stats">⚔{u.atk} · ♥{u.maxHp}</span>
-                </span>
-                <span className="card-row__desc">{u.role}</span>
-              </div>
-            );
-          })}
-        </div>
-
-        <h3>How a round works</h3>
+        <h3>The goal</h3>
         <ul className="rules">
-          <li>Pick {PICK_COUNT} of {5} offered units each round. Picks are free — there's no economy. Each offer can only be taken once, so your {PICK_COUNT} picks are always different cards.</li>
-          <li>Drag an offer onto an <em>empty slot</em> to add it as a new unit, or onto <em>one of your units of the same type</em> to merge. Only like merges with like.</li>
-          <li><strong>Clicking works everywhere dragging does.</strong> Click an offer or one of your units to pick it up, then click where it should go. Click it again to put it back down. Dashed outlines show the legal destinations.</li>
-          <li>A merged unit gives <strong>half</strong> its attack and health to the target, permanently, and raises its level by one (every unit starts at <strong>Lv1</strong>). You lose stats overall versus placing it separately — what you gain is concentration: a tougher unit holding the front instead of another body behind it.</li>
-          <li>When your row is <strong>full</strong>, you can also drop an offer onto a unit of a <em>different</em> type to <strong>replace</strong> it. The old unit is discarded, along with anything merged into it — the slot outlines orange to warn you.</li>
-          <li><strong>❄ Freeze</strong> an offer card to keep it for next round (it stays in its slot through rerolls, and unfreezes when you take it). On an upgrade choice, freeze one upgrade to have it offered first at your next choice.</li>
-          <li>Move placed units to reorder the queue — only the front one fights, so position matters.</li>
-          <li>Putting a placed unit onto <em>another of the same type</em> merges the two instead: the one you moved is absorbed for half its stats and leaves the board, and the two levels add together. Free — it costs a body, not a pick.</li>
-          <li>Only the front-most unit on each side fights. Both strike at once, so a unit that dies still deals its damage.</li>
-          <li>When a front unit dies, the next in your queue steps up.</li>
-          <li>The round ends when one side's row is empty. Each of the winner's <em>surviving units</em> then hits the loser's HP for its attack — so keeping units alive matters, not just winning.</li>
-          <li>Nothing is lost: fallen units respawn at the end of the round, and everyone returns to full health. Your row only ever grows.</li>
-          <li>Every {AUGMENT_EVERY} rounds, before you pick units, you choose a persistent upgrade — a separate track from unit picks. They last this match only. The header shows when the next one is due.</li>
-          <li><strong>Long-press</strong> (or hover with a mouse) any unit or offer card to see its ability and what is changing its numbers. Units also show a small icon for each upgrade currently boosting them, so you can see where their numbers come from. Conditional upgrades (Overwhelm, Desperate measures) only show while they're actually firing. Open <strong>Upgrades</strong> to match an icon to its name — the enemy's units are badged too.</li>
-          <li>First player to 0 HP loses.</li>
-          <li><strong>Online duels.</strong> Host a duel from the main menu and share the 5-letter code (or the invite link). You both build your row at the same time — there are no turns — and the rows clash once you've both pressed Battle. You'll see "waiting for your opponent" if they're still arranging.</li>
+          <li>Build a row of up to 5 units. Bring the enemy's HP to 0 before they do the same to you.</li>
+        </ul>
+
+        <h3>Each round</h3>
+        <ul className="rules">
+          <li>Take {PICK_COUNT} of the 5 cards dealt. Drop one on an empty slot to add it, or on a unit of the <strong>same type</strong> to merge.</li>
+          <li>Press <strong>⚔ Battle</strong>. Only the two <strong>front</strong> units fight; when one falls, the next steps up.</li>
+          <li>The side still standing wins the round. Each of its survivors hits the loser's HP for its attack.</li>
+          <li>Fallen units come back next round at full health. Your row only grows.</li>
+        </ul>
+
+        <h3>Getting stronger</h3>
+        <ul className="rules">
+          <li><strong>Merging</strong> adds half the card's stats and a level. At level 10 (MAX) a unit's ability gets stronger.</li>
+          <li><strong>Upgrades</strong>: every {AUGMENT_EVERY} rounds, pick one that lasts the whole match.</li>
+          <li>
+            <strong>Classes</strong>: fill every slot with one class for a bonus each round:{" "}
+            {(["attack", "defense", "support"] as const).map((a, i) => (
+              <span key={a}>
+                {i ? ", " : ""}
+                {ARCHETYPES[a].icon} {SYNERGIES[a].name}
+              </span>
+            ))}
+            .
+          </li>
+        </ul>
+
+        <h3>Handy</h3>
+        <ul className="rules">
+          <li>Press and hold (or hover) any unit or card to see what it does.</li>
+          <li>Tap instead of dragging: tap a card or unit, then tap where it goes. Drag placed units to reorder.</li>
+          <li>🎲 Reroll swaps untaken cards. ❄ keeps a card (or up to 2 upgrades) for next time. ↶ Undo takes a move back.</li>
+          <li>With a full row, dropping on a different unit <strong>replaces</strong> it (outlined orange).</li>
         </ul>
       </div>
     </div>

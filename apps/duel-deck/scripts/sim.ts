@@ -9,10 +9,11 @@
 // score table. Use it for balance work: score-based picking means weak augments
 // are almost never taken (tiny samples) and strong ones are mostly taken next to
 // other strong ones, so their holder win rates are biased.
-import { cloneBoard, sideUnits } from "../src/engine/board";
+import { capacityOf, cloneBoard, sideUnits } from "../src/engine/board";
 import { resolveRound } from "../src/engine/combat";
+import { synergyOf } from "../src/engine/units";
 import type { Side } from "../src/engine/types";
-import { newBoard, aiCommit, type Difficulty, aiPickAugment, aiTakeAugment, isAugmentRound, refreshForRound, upgradeTier, augmentOfferCount } from "../src/game/match";
+import { newBoard, aiCommit, drillFor, PICK_COUNT, type Difficulty, aiPickAugment, aiTakeAugment, isAugmentRound, refreshForRound, upgradeTier, augmentOfferCount } from "../src/game/match";
 import { createAugmentState, offerAugments, takeAugment, AUGMENTS } from "../src/game/augments";
 import { settleRound } from "../src/game/roundEnd";
 
@@ -39,10 +40,13 @@ const other = (s: Side): Side => (s === "player" ? "enemy" : "player");
 
 const rounds: number[] = [];
 const sideWins: Record<Side, number> = { player: 0, enemy: 0 };
-let capHits = 0, totRounds = 0, totDraws = 0, zeroDmg = 0;
+let capHits = 0, totRounds = 0, totDraws = 0, zeroDmg = 0, drillRounds = 0;
 const MAXR = 10; // rounds >= MAXR bucketed together
 const byRound = Array.from({ length: MAXR + 1 }, () => ({ n: 0, draws: 0, dmg: 0 }));
 const augWin: Record<string, [number, number]> = {};
+// Full-row synergies: rounds they fired, and [won, n] for sides holding one in the final round.
+const synRounds: Record<string, number> = { attack: 0, defense: 0, support: 0 };
+const synWin: Record<string, [number, number]> = { attack: [0, 0], defense: [0, 0], support: [0, 0] };
 // Unit levels (merges + 1) on each row at match end, and each row's highest.
 const endLevels: number[] = [];
 // Per unit type: [matches won, matches] for sides fielding it at match end.
@@ -55,6 +59,7 @@ for (let i = 0; i < N; i++) {
   if (startHp) board.hp = { player: startHp, enemy: startHp };
   const aug = { player: createAugmentState(), enemy: createAugmentState() };
   let winner: Side | null = null, r = 0;
+  const lastSyn: Record<Side, string | null> = { player: null, enemy: null };
   while (r < CAP) {
     r++;
     const c = cloneBoard(board);
@@ -68,9 +73,18 @@ for (let i = 0; i < N; i++) {
     }
     // Hard scouts the rows as they stood before either side picked.
     const scout = cloneBoard(c);
-    aiCommit(c, "player", aug.player, { difficulty: diff.player, oppAug: aug.enemy, scout });
-    aiCommit(c, "enemy", aug.enemy, { difficulty: diff.enemy, oppAug: aug.player, scout });
+    const pp = aiCommit(c, "player", aug.player, { difficulty: diff.player, oppAug: aug.enemy, scout });
+    const ep = aiCommit(c, "enemy", aug.enemy, { difficulty: diff.enemy, oppAug: aug.player, scout });
+    // Drill: a maxed row's unspent picks, this round only (as in the app).
+    aug.player.drill = drillFor(c, "player", PICK_COUNT - pp.length);
+    aug.enemy.drill = drillFor(c, "enemy", PICK_COUNT - ep.length);
+    if (aug.player.drill || aug.enemy.drill) drillRounds++;
     refreshForRound(c, aug.player, aug.enemy);
+    for (const s of SIDES) {
+      const a = synergyOf(sideUnits(c, s), capacityOf(c, s));
+      lastSyn[s] = a;
+      if (a) synRounds[a]++;
+    }
     const res = resolveRound(c);
     // Same round-end bookkeeping as the app (Momentum, Rally, kills, Veteran,
     // Field medic) — before reading HP, since Field medic heals the result.
@@ -96,6 +110,10 @@ for (let i = 0; i < N; i++) {
     board = cloneBoard(c); board.hp = hp;
   }
   for (const s of SIDES) {
+    const a = lastSyn[s];
+    if (a) { synWin[a][1]++; if (winner === s) synWin[a][0]++; }
+  }
+  for (const s of SIDES) {
     for (const k of new Set(sideUnits(board, s).map((u) => u.key))) {
       const t = (unitWin[k] ??= [0, 0]);
       t[1]++;
@@ -118,12 +136,18 @@ console.log(`draw rule: ${rule}   matches: ${N}   cap: ${CAP}`);
 console.log(`player (${diff.player}) wins ${f(100 * sideWins.player / N)}%   enemy (${diff.enemy}) wins ${f(100 * sideWins.enemy / N)}%`);
 console.log(`rounds/match: p10 ${pct(0.1)} median ${pct(0.5)} p90 ${pct(0.9)} max ${rounds[rounds.length - 1]}   mean ${f(totRounds / N)}`);
 console.log(`draw rounds: ${f(100 * totDraws / totRounds)}%   zero-damage rounds: ${f(100 * zeroDmg / totRounds)}%   cap hits: ${capHits}`);
+console.log(`rounds with Drill (a maxed row): ${f(100 * drillRounds / totRounds)}%`);
 console.log("by round:");
 byRound.forEach((b, r) => { if (r && b.n) console.log(`  r${String(r).padEnd(3)}${r === MAXR ? "+" : " "} draws ${f(100 * b.draws / b.n, 0).padStart(3)}%  avg dmg ${f(b.dmg / b.n).padStart(5)}  (n=${b.n})`); });
 const q = (xs: number[], p: number) => xs[Math.min(xs.length - 1, Math.floor(p * xs.length))];
 endLevels.sort((a, b) => a - b); topLevels.sort((a, b) => a - b);
 console.log(`unit level at match end: median ${q(endLevels, 0.5)} p75 ${q(endLevels, 0.75)} p90 ${q(endLevels, 0.9)} p99 ${q(endLevels, 0.99)} max ${endLevels[endLevels.length - 1]}`);
 console.log(`row's top level:       median ${q(topLevels, 0.5)} p75 ${q(topLevels, 0.75)} p90 ${q(topLevels, 0.9)} p99 ${q(topLevels, 0.99)} max ${topLevels[topLevels.length - 1]}`);
+console.log("full-row synergies (share of rows that had one; win rate of sides holding one in the final round):");
+for (const a of Object.keys(synRounds)) {
+  const [w, n] = synWin[a];
+  console.log(`  ${a.padEnd(10)} ${f((100 * synRounds[a]) / (2 * totRounds))}% of rows   holder won ${n ? f((100 * w) / n) + "%" : "n/a"} (n=${n})`);
+}
 console.log("unit holder win rate (fielded at match end):");
 for (const [k, [w, n]] of Object.entries(unitWin).sort((a, b) => b[1][0] / b[1][1] - a[1][0] / a[1][1]))
   console.log(`  ${k.padEnd(20)} ${f(100 * w / n)}%  (n=${n})`);

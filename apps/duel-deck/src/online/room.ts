@@ -1,6 +1,5 @@
 import {
   clientId,
-  configure,
   createRoom,
   normalizeCode,
   presence,
@@ -10,6 +9,7 @@ import {
 
   watch,
 } from "@pwa-games/backend-client";
+import "./firebase";
 import { makeUnit } from "../engine/board";
 import type { Side, Unit } from "../engine/types";
 import type { AugmentState, Grant } from "../game/augments";
@@ -29,16 +29,20 @@ import type { AugmentState, Grant } from "../game/augments";
 // own screen. That only works because the engine is side-symmetric, which is
 // checked by `pnpm netcheck`.
 
-// Public web config: it identifies the project; the database rules guard it.
-configure({
-  apiKey: "AIzaSyDSy9OF5r3sJ13D3IhgEACL5oVffWm33Nk",
-  authDomain: "roguelike-games.firebaseapp.com",
-  databaseURL: "https://roguelike-games-default-rtdb.firebaseio.com",
-  projectId: "roguelike-games",
-  appId: "1:130931296377:web:6b48e09eb320de0fb62ca8",
-});
 
 export const GAME = "duel-deck";
+
+/**
+ * The rules version both devices must share. Each device runs the round itself,
+ * so two builds with different combat rules would silently disagree. Bump it
+ * with every change to what 
+esolveRound/
+efreshForRound compute (unit
+ * stats, abilities, upgrades, caps). Rooms carry it (proto); a join with a
+ * different one is refused, and the lobby asks the outdated side to update.
+ * Rooms from before it existed have none, which reads as 1.
+ */
+export const PROTOCOL = 5;
 
 export type Player = "p1" | "p2";
 export const otherPlayer = (p: Player): Player => (p === "p1" ? "p2" : "p1");
@@ -76,6 +80,8 @@ export interface Room {
   host: string;
   guest?: string;
   createdAt: number;
+  /** The host's PROTOCOL (absent = 1). */
+  proto?: number;
   /** Bumped by a rematch, so both devices restart together. */
   startedAt: number;
   presence?: Partial<Record<Player, boolean>>;
@@ -142,6 +148,7 @@ export function unpackCommit(
       momentum: a.momentum ?? 0,
       rally: a.rally ?? 0,
       kills: a.kills ?? 0,
+      drill: a.drill ?? 0,
       grants,
     },
   };
@@ -151,11 +158,12 @@ export function unpackCommit(
 
 export async function hostRoom(): Promise<Session> {
   const me = clientId();
-  const code = await createRoom(GAME, { host: me, startedAt: Date.now() });
+  const code = await createRoom(GAME, { host: me, startedAt: Date.now(), proto: PROTOCOL });
   return { code, me: "p1" };
 }
 
-export type JoinError = "not-found" | "full" | "ended";
+/** update-me: the room runs newer rules than this build; update-them: older. */
+export type JoinError = "not-found" | "full" | "ended" | "update-me" | "update-them";
 
 /** Join (or rejoin) a room by code. */
 export async function joinRoom(input: string): Promise<Session | JoinError> {
@@ -170,6 +178,11 @@ export async function joinRoom(input: string): Promise<Session | JoinError> {
     }
     if (cur.left) {
       why = "ended";
+      return undefined;
+    }
+    const proto = cur.proto ?? 1;
+    if (proto !== PROTOCOL) {
+      why = proto > PROTOCOL ? "update-me" : "update-them";
       return undefined;
     }
     if (cur.host === me) return cur; // rejoining your own room
@@ -204,6 +217,22 @@ export const watchRoom = <T,>(s: Session, field: string | undefined, cb: (v: T |
 export const stayPresent = (s: Session) => presence(GAME, s.code, s.me);
 export const sendCommit = (s: Session, c: Commit) => quiet(setField(GAME, s.code, `commits/${s.me}`, c));
 export const leaveRoom = (s: Session) => quiet(setField(GAME, s.code, "left", s.me));
+
+// --- Emotes ------------------------------------------------------------------
+
+/**
+ * The emotes a player can send, by index. Only the index goes over the wire
+ * (`emotes/<p>` = { i, n }), so the rules can check it's 0-7 and nobody can
+ * send text. `n` counts up, so the same emote twice still shows twice.
+ */
+export const EMOTES = ["👍", "👋", "😂", "😮", "😬", "🔥", "🎉", "🤝"] as const;
+export interface EmoteMsg {
+  i: number;
+  n: number;
+}
+export const sendEmote = (s: Session, i: number, n: number) => quiet(setField(GAME, s.code, `emotes/${s.me}`, { i, n }));
+export const watchEmotes = (s: Session, cb: (m: EmoteMsg | null) => void) =>
+  watch<EmoteMsg>(GAME, s.code, `emotes/${otherPlayer(s.me)}`, cb);
 
 // No in-room rematch yet: when a duel ends, both players go back to the title
 // and host a new one. Adding it means bumping `startedAt` and clearing

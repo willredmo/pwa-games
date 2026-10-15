@@ -5,8 +5,10 @@ import { setSoundEnabled, unlockSound } from "./game/sound";
 import { Game } from "./ui/Game";
 import { Title } from "./ui/Title";
 import { Lobby, type LobbyProps } from "./ui/Lobby";
-import { HelpPanel, UnitsView } from "./ui/Overlays";
+import { CodexView, HelpPanel } from "./ui/Overlays";
 import { UpdatePrompt } from "./ui/UpdatePrompt";
+import { tutorialDone } from "./ui/Tutorial";
+import { PatchNotes, hasUnseenNotes } from "./ui/PatchNotes";
 import { leaveRoom, loadSession, readSession, saveSession, type Session } from "./online/room";
 import "./App.css";
 
@@ -23,6 +25,8 @@ interface Run {
   resume: SavedMatch | null;
   difficulty: Difficulty;
   online?: Session;
+  /** The first-match tutorial (vs Easy, never saved). */
+  tutorial?: boolean;
 }
 
 /** A code from a shared invite link (?join=CODE), taken once at startup. */
@@ -48,6 +52,8 @@ export default function App() {
   const [run, setRun] = useState<Run | null>(null);
   const [help, setHelp] = useState(false);
   const [units, setUnits] = useState(false);
+  const [notes, setNotes] = useState(false);
+  const [newNotes, setNewNotes] = useState(hasUnseenNotes);
   /** An online duel this device was in, offered for rejoining after a reload. */
   const [savedOnline, setSavedOnline] = useState<Session | null>(loadSession);
   const [lobby, setLobby] = useState<Pick<LobbyProps, "kind" | "session" | "code"> | null>(() => {
@@ -65,6 +71,13 @@ export default function App() {
     if (settings.sound) unlockSound();
     setSettings((s) => ({ ...s, difficulty }));
     setRun({ id: ++runId.n, resume, difficulty });
+    setScreen("game");
+  };
+
+  /** The tutorial: a fresh match against Easy with the coach on. Leaves any save alone. */
+  const startTutorial = () => {
+    if (settings.sound) unlockSound();
+    setRun({ id: ++runId.n, resume: null, difficulty: "easy", tutorial: true });
     setScreen("game");
   };
 
@@ -120,6 +133,7 @@ export default function App() {
           resume={run.resume}
           difficulty={run.difficulty}
           online={run.online}
+          tutorial={run.tutorial}
           speed={settings.speed}
           onSpeed={(speed) => setSettings((s) => ({ ...s, speed }))}
           sound={settings.sound}
@@ -144,7 +158,14 @@ export default function App() {
           onPlay={() => start(settings.difficulty, null)}
           onResume={() => saved && start(saved.difficulty ?? settings.difficulty, saved)}
           onHelp={() => setHelp(true)}
-          onUnits={() => setUnits(true)}
+          onCodex={() => setUnits(true)}
+          onNotes={() => {
+            setNotes(true);
+            setNewNotes(false);
+          }}
+          newNotes={newNotes}
+          onTutorial={startTutorial}
+          suggestTutorial={!saved && !tutorialDone()}
           rejoinCode={savedOnline?.code ?? null}
           notice={notice}
           onHost={() => {
@@ -169,7 +190,8 @@ export default function App() {
         />
       )}
       {help && <HelpPanel onClose={() => setHelp(false)} />}
-      {units && <UnitsView onClose={() => setUnits(false)} />}
+      {units && <CodexView onClose={() => setUnits(false)} />}
+      {notes && <PatchNotes onClose={() => setNotes(false)} />}
       <UpdatePrompt />
     </div>
   );

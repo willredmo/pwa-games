@@ -1,4 +1,4 @@
-import type { UnitStats, UnitTraits } from "./types";
+import type { Archetype, UnitStats, UnitTraits } from "./types";
 
 // Unit pool — v1 first pass, straight from the tracker doc.
 // Melee/front-line only: no ranged units in v1.
@@ -16,8 +16,10 @@ export const UNITS: Record<string, UnitStats> = {
     maxHp: 6,
     shape: "square",
     classes: ["guard", "tank"],
+    archetype: "defense",
     role: "Tanky, absorbs hits, low output",
     ability: { name: "Bodyguard", trigger: "On death", text: "The unit behind it gains +2 health for the rest of the round.", scaling: "+1 health every 2 levels" },
+    mastery: "Bodyguard shields every unit on your row, not just the one behind.",
   },
   striker: {
     name: "Striker",
@@ -25,8 +27,10 @@ export const UNITS: Record<string, UnitStats> = {
     maxHp: 4,
     shape: "triangle",
     classes: ["striker", "aggro"],
+    archetype: "attack",
     role: "Glass cannon",
     ability: { name: "Charge", trigger: "First attack", text: "Its first attack each round deals +3 damage.", scaling: "+1 damage per level" },
+    mastery: "Charge hits the first blow against each new enemy, not just once a round.",
   },
   skirmisher: {
     name: "Skirmisher",
@@ -34,8 +38,10 @@ export const UNITS: Record<string, UnitStats> = {
     maxHp: 2,
     shape: "diamond",
     classes: ["skirmisher"],
+    archetype: "attack",
     role: "Balanced all-rounder",
     ability: { name: "Evasion", trigger: "Start of round", text: "Dodges the first hit it takes each round.", scaling: "When it dodges, strikes back for +1 damage every 2 levels" },
+    mastery: "Dodges the first two hits each round.",
   },
   bulwark: {
     name: "Bulwark",
@@ -43,8 +49,10 @@ export const UNITS: Record<string, UnitStats> = {
     maxHp: 11,
     shape: "hexagon",
     classes: ["bulwark", "tank"],
+    archetype: "defense",
     role: "Max tank, meant to stall",
     ability: { name: "Fortify", trigger: "End of round", text: "If it survived the round, it permanently gains +1 health.", scaling: "+1 health every 2 levels" },
+    mastery: "Fortify also gives +1 attack each round it survives.",
   },
   berserker: {
     name: "Berserker",
@@ -52,8 +60,10 @@ export const UNITS: Record<string, UnitStats> = {
     maxHp: 3,
     shape: "circle",
     classes: ["berserker", "aggro"],
+    archetype: "attack",
     role: "Highest attack, very fragile",
     ability: { name: "Overflow", trigger: "On kill", text: "Half the damage beyond a kill (up to 3) carries into the next enemy.", scaling: "Carry-over cap +1 per level" },
+    mastery: "Overflow chains: an enemy its Overflow kills passes the rest on to the next.",
   },
   // The first unit that wants to stand at the back: it never fights well, but
   // from behind the front it lifts whoever is fighting.
@@ -63,8 +73,10 @@ export const UNITS: Record<string, UnitStats> = {
     maxHp: 5,
     shape: "star",
     classes: ["herald", "support"],
+    archetype: "support",
     role: "Support: useless in front, lifts the front from behind",
     ability: { name: "Rally", trigger: "Start of round", text: "If it isn't your front unit, your front unit gains +3 attack for the round.", scaling: "+1 attack every 2 levels" },
+    mastery: "Rally also gives your front unit as much health as attack.",
   },
   // Reaches past the front: every blow it lands also stabs the unit behind.
   lancer: {
@@ -73,8 +85,10 @@ export const UNITS: Record<string, UnitStats> = {
     maxHp: 5,
     shape: "kite",
     classes: ["lancer"],
+    archetype: "attack",
     role: "Reach: hits the front and the unit behind it",
     ability: { name: "Impale", trigger: "On hit", text: "Each blow it lands also hits the enemy unit behind the front for 1.", scaling: "+1 pierce damage every 2 levels" },
+    mastery: "Impale hits the two units behind the front.",
   },
   // Back-row sustain: keeps the front standing from behind.
   medic: {
@@ -83,8 +97,37 @@ export const UNITS: Record<string, UnitStats> = {
     maxHp: 6,
     shape: "cross",
     classes: ["medic", "support"],
+    archetype: "support",
     role: "Support: heals your front unit from behind",
     ability: { name: "Mend", trigger: "After each exchange", text: "If it isn't your front unit, your front unit heals 3 (up to 3 times a round).", scaling: "+1 healing every 2 levels" },
+    mastery: "Mends 5 times a round instead of 3.",
+  },
+  // Burst protection from behind: soaks the first hits the front takes, but
+  // never grows the front's health, so it can't stall a round the way
+  // uncapped healing did.
+  warden: {
+    name: "Warden",
+    atk: 1,
+    maxHp: 6,
+    shape: "octagon",
+    classes: ["warden", "support"],
+    archetype: "support",
+    role: "Support: shields your front unit from behind",
+    ability: { name: "Barrier", trigger: "Start of round", text: "If it isn't your front unit, your front unit gets a shield that absorbs the first 4 damage it takes.", scaling: "+1 shield per level" },
+    mastery: "The unit behind the front gets the same shield.",
+  },
+  // Gives itself away: half its health moves to the front each round. Big
+  // health, no other use, so it wants the back of the row.
+  acolyte: {
+    name: "Acolyte",
+    atk: 1,
+    maxHp: 8,
+    shape: "drop",
+    classes: ["acolyte", "support"],
+    archetype: "support",
+    role: "Support: gives half its health to your front unit",
+    ability: { name: "Lifebond", trigger: "Start of round", text: "If it isn't your front unit, it gives half its health to your front unit for the round.", scaling: "Its health grows with levels, so the gift does too" },
+    mastery: "Your front unit also gains +2 attack.",
   },
   // The late-game unit: the weakest body in the pool, but its merges escalate
   // (see SQUIRE_STEP) and at KNIGHT_AT merges it is promoted to a Knight.
@@ -94,6 +137,7 @@ export const UNITS: Record<string, UnitStats> = {
     maxHp: 3,
     shape: "shield",
     classes: ["squire"],
+    archetype: "defense",
     role: "Weak now; every level is bigger than the last, and level 7 makes a Knight",
     ability: { name: "Pass the torch", trigger: "On death", text: "The unit behind it gains +1 attack for the rest of the round.", scaling: "+1 attack every 2 levels" },
   },
@@ -103,13 +147,46 @@ export const UNITS: Record<string, UnitStats> = {
     maxHp: 0,
     shape: "shield",
     classes: ["knight"],
+    archetype: "defense",
     role: "Promoted Squire: armoured, and still growing with every level",
     ability: { name: "Armour · Last rally", trigger: "Always · On death", text: "Takes 1 less damage per hit. When it falls, all your units gain +1 attack for the rest of the round.", scaling: "Last rally +1 attack every 2 levels past knighthood" },
+    mastery: "Armour 2: takes 2 less damage per hit.",
     offered: false,
   },
 };
 
 
+/** How each class reads to the player. */
+export const ARCHETYPES: Record<Archetype, { icon: string; name: string }> = {
+  attack: { icon: "⚔", name: "Attack" },
+  defense: { icon: "🛡", name: "Defense" },
+  support: { icon: "✚", name: "Support" },
+};
+
+/**
+ * Full-row synergies: when every slot of a side's row (5, or 6 with
+ * Reinforcements) holds one class, the whole row gets that class's bonus for
+ * the round, no upgrade needed. Applied in `applyAugments`, so it's recomputed
+ * each round, badged, itemised and deterministic online.
+ */
+export const SYNERGIES: Record<Archetype, { name: string; icon: string; text: string }> = {
+  attack: { name: "Full Assault", icon: "🔥", text: "Every unit gains +2 attack, and its overkill carries on to the next enemy (half, up to 3)." },
+  defense: { name: "Iron Line", icon: "🧱", text: "Every unit starts each round with a 5 shield." },
+  support: {
+    name: "Sanctuary",
+    icon: "🕊",
+    text: "Every support ability counts twice: rally, mend, barrier and lifebond are doubled.",
+  },
+};
+/** Smallest row a synergy needs: a single unit (Ascendant) is no "row of one class". */
+export const SYNERGY_MIN = 5;
+
+/** The class every unit in a full row shares, or null. */
+export function synergyOf(units: { key: string }[], capacity: number): Archetype | null {
+  if (units.length < Math.max(SYNERGY_MIN, capacity)) return null;
+  const first = UNITS[units[0].key]?.archetype;
+  return first && units.every((u) => UNITS[u.key]?.archetype === first) ? first : null;
+}
 /** Every unit type, including ones that are earned rather than offered. */
 export const UNIT_KEYS = Object.keys(UNITS);
 /** Unit types that can appear in the round's offer. */
@@ -131,6 +208,27 @@ export const KNIGHT_AT = 6;
 export const levelOf = (merges: number) => merges + 1;
 /** The level at which a Squire is knighted (7 by default). */
 export const KNIGHT_LEVEL = levelOf(KNIGHT_AT);
+/**
+ * Units stop levelling here, and reaching it unlocks their Mastery. Without a
+ * cap the dominant plan was to pour every pick into one unit; capped, a row
+ * needs several strong units. Ascendant (an upgrade) lifts it for a side that
+ * fields a single unit.
+ */
+export const MAX_LEVEL = 10;
+export const MAX_MERGES = MAX_LEVEL - 1;
+/** Whether a unit with this many merges has reached its Mastery. */
+export const isMastered = (merges: number) => levelOf(merges) >= MAX_LEVEL;
+
+/**
+ * Whether odies more bodies of type incoming can be folded into a unit of
+ * type 	arget that has merges already: like with like, and within the cap
+ * (cap = most merges allowed; Infinity once uncapped).
+ */
+export function canAbsorb(target: string, merges: number, incoming: string, bodies = 1, cap = MAX_MERGES): boolean {
+  // An uncapped side (Ascendant) holds one unit, and it absorbs any type.
+  if (cap === Infinity) return true;
+  return mergesInto(target, incoming) && merges + bodies <= cap;
+}
 /** One-off stats a Squire gains on being knighted, on top of its merges. */
 export const KNIGHTING_BONUS = { atk: 1, hp: 2 };
 
@@ -164,6 +262,9 @@ export function mergesInto(target: string, incoming: string): boolean {
   return target === incoming || (target === "knight" && incoming === "squire");
 }
 
+/** Mends a mastered Medic gets each round (combat's default is 3). */
+export const MASTER_MEND_MORE = 2;
+
 export function unitsOfClass(units: { classes: string[] }[], cls: string): number {
   return units.filter((u) => u.classes.includes(cls)).length;
 }
@@ -176,32 +277,46 @@ export function unitsOfClass(units: { classes: string[] }[], cls: string): numbe
  */
 export function innateTraits(key: string, merges = 0): UnitTraits {
   const m = Math.max(0, merges);
+  const master = isMastered(m);
   switch (key) {
+    // At MAX_LEVEL each ability takes its Mastery form (UNITS[key].mastery).
     case "guard":
-      return { deathBuff: { target: "behind", hp: 2 + Math.floor(m / 2) } };
+      return { deathBuff: { target: master ? "allies" : "behind", hp: 2 + Math.floor(m / 2) } };
     case "striker":
-      return { openingBonus: 3 + m };
+      return master ? { openingBonus: 3 + m, chargeEach: true } : { openingBonus: 3 + m };
     case "skirmisher":
-      // One dodge, always: a second made a merged Skirmisher near-untouchable
-      // (63-84% in the round-robin). Merges sharpen the counter instead.
-      return { dodges: 1, riposte: Math.floor(m / 2) };
+      // One dodge below Mastery: a second made a merged Skirmisher near-
+      // untouchable (63-84% in the round-robin). Merges sharpen the counter.
+      return { dodges: master ? 2 : 1, riposte: Math.floor(m / 2) };
     case "bulwark":
-      return { growOnSurvive: { hp: 1 + Math.floor(m / 2) } };
+      return { growOnSurvive: master ? { atk: 1, hp: 1 + Math.floor(m / 2) } : { hp: 1 + Math.floor(m / 2) } };
     case "berserker":
-      return { cleave: true, cleaveCap: 3 + m };
+      return master ? { cleave: true, cleaveCap: 3 + m, cleaveChain: true } : { cleave: true, cleaveCap: 3 + m };
     case "lancer":
-      return { pierce: 1 + Math.floor(m / 2) };
+      return master ? { pierce: 1 + Math.floor(m / 2), pierceDeeper: 1 } : { pierce: 1 + Math.floor(m / 2) };
     case "medic":
       // Read by combat, which only heals from behind the front.
-      return { mend: 3 + Math.floor(m / 2) };
-    case "herald":
+      return master ? { mend: 3 + Math.floor(m / 2), mendMore: MASTER_MEND_MORE } : { mend: 3 + Math.floor(m / 2) };
+    case "herald": {
       // Read by applyAugments, which only credits Heralds behind the front.
-      return { rally: 3 + Math.floor(m / 2) };
+      const rally = 3 + Math.floor(m / 2);
+      return master ? { rally, rallyHp: rally } : { rally };
+    }
+    case "warden": {
+      // Read by applyAugments, which only credits Wardens behind the front.
+      // 3 + 1 every 2 levels measured 41% (sim, --aug=random); 4 + 1 a level 52%.
+      const barrier = 4 + m;
+      return master ? { barrier, barrierReach: 1 } : { barrier };
+    }
+    case "acolyte":
+      // `lifebond` multiplies the gift (Sanctuary doubles it); the Acolyte
+      // always loses half its own health. Read by applyAugments.
+      return master ? { lifebond: 1, lifebondAtk: 2 } : { lifebond: 1 };
     case "squire":
       return { deathBuff: { target: "behind", atk: 1 + Math.floor(m / 2) } };
     case "knight": {
       const past = Math.max(0, m - KNIGHT_AT);
-      return { damageReduction: 1, deathBuff: { target: "allies", atk: 1 + Math.floor(past / 2) } };
+      return { damageReduction: master ? 2 : 1, deathBuff: { target: "allies", atk: 1 + Math.floor(past / 2) } };
     }
     default:
       return {};

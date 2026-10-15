@@ -9,6 +9,7 @@ import {
   type JoinError,
   type Session,
 } from "../online/room";
+import { THIS_BUILD, newerDeploy, updateNow, type DeployInfo } from "../pwa";
 
 // Getting two devices into one room. Host: a room is made and its code shown
 // (with a link to share); the match starts as soon as someone joins. Join:
@@ -32,6 +33,8 @@ const JOIN_ERROR: Record<JoinError, string> = {
   "not-found": "No game with that code. Check it and try again.",
   full: "That game already has two players.",
   ended: "That game has ended.",
+  "update-me": "That game is on a newer version of Duel Deck. Update to join it.",
+  "update-them": "Your opponent is on an older version of Duel Deck. Ask them to update the app, then host again.",
 };
 
 export function Lobby({ kind, session: initialSession, code: initialCode, onReady, onClose }: LobbyProps) {
@@ -41,10 +44,25 @@ export function Lobby({ kind, session: initialSession, code: initialCode, onRead
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const started = useRef(false);
+  /**
+   * Online play needs both devices on the same rules, so check for a newer
+   * deploy before hosting or joining: "checking", then null (up to date, or
+   * couldn't tell) or the newer deploy to update to.
+   */
+  const [gate, setGate] = useState<"checking" | DeployInfo | null>("checking");
+  useEffect(() => {
+    let live = true;
+    void newerDeploy().then((d) => live && setGate(d));
+    return () => {
+      live = false;
+    };
+  }, []);
+  const ready = gate === null;
+  const [updating, setUpdating] = useState(false);
 
   // Host: make the room.
   useEffect(() => {
-    if (kind !== "host" || session || started.current) return;
+    if (!ready || kind !== "host" || session || started.current) return;
     started.current = true;
     setBusy(true);
     hostRoom()
@@ -54,7 +72,7 @@ export function Lobby({ kind, session: initialSession, code: initialCode, onRead
       })
       .catch(() => setError("Couldn't reach the server. Check your connection and try again."))
       .finally(() => setBusy(false));
-  }, [kind, session]);
+  }, [ready, kind, session]);
 
   // Host: start when the guest arrives.
   useEffect(() => {
@@ -66,12 +84,12 @@ export function Lobby({ kind, session: initialSession, code: initialCode, onRead
 
   // Join: a shared link fills the code in; try it straight away.
   useEffect(() => {
-    if (kind === "join" && initialCode && !started.current) {
+    if (ready && kind === "join" && initialCode && !started.current) {
       started.current = true;
       void join(initialCode);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ready]);
 
   async function join(input: string) {
     setBusy(true);
@@ -130,7 +148,24 @@ export function Lobby({ kind, session: initialSession, code: initialCode, onRead
           <button className="close-btn" onClick={cancel} aria-label="Close">✕</button>
         </div>
 
-        {kind === "host" ? (
+        {gate === "checking" ? (
+          <p className="lobby__waiting">
+            <span className="lobby__spinner" aria-hidden /> Checking for updates…
+          </p>
+        ) : gate ? (
+          <div className="lobby__update">
+            <p className="lobby__hint">
+              <strong>Update needed.</strong> Version {gate.version} is out (you have {THIS_BUILD.version}). Both players need the
+              same version to duel online.
+            </p>
+            <button className="primary-btn primary-btn--wide" disabled={updating} onClick={() => {
+              setUpdating(true);
+              void updateNow();
+            }}>
+              {updating ? "Updating…" : "Update now"}
+            </button>
+          </div>
+        ) : kind === "host" ? (
           <>
             <p className="lobby__hint">Share this code with your opponent. The duel starts when they join.</p>
             <div className="lobby__code" aria-live="polite">
