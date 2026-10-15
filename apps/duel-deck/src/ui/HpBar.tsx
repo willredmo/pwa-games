@@ -64,7 +64,11 @@ export function HpBar({ side, label, hp, max, blown }: HpBarProps) {
         <div className="hpbar__ghost" style={{ transform: `scaleX(${ghostPct / 100})` }} />
         <div className={`hpbar__fill hpbar__fill--${side}`} style={{ transform: `scaleX(${pct / 100})` }} />
       </div>
-      <span className="hpbar__hp">{shown}</span>
+      <span className="hpbar__hp" aria-label={`${label}: ${shown} of ${max} health`}>
+        <span className="hpbar__heart" aria-hidden="true">♥</span>
+        {shown}
+        <small className="hpbar__max">/{max}</small>
+      </span>
     </div>
   );
 }

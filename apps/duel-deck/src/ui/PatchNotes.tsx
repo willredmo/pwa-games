@@ -10,6 +10,13 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.3.5",
+    date: "Oct 15, 2026",
+    notes: [
+      "Bigger, clearer health pools: both sides show their health as ♥ current/200 from the start of the match.",
+    ],
+  },
+  {
     version: "1.3.4",
     date: "Oct 15, 2026",
     notes: [
