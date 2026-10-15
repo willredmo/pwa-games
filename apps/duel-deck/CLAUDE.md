@@ -409,10 +409,25 @@ Sim after the cap (`pnpm sim 12000 --aug=random`, 2026-10-13): units 44-59%
 upgrades 43-60% (Bloodpact, Champion, Legion top; Squire upgrades fell to
 44-45%), median match 21 rounds, median unit level 7 and most rows' best unit
 at 10, Drill in 0.7% of rounds.
+### Starting health (title screen)
+CPU matches start both pools at 100, 200 (default) or 300 (`START_HP_OPTIONS`,
+`Settings.startHp`), stored on the board as `Board.startHp` (absent = 200, so
+old saves read right) and read through `startHpOf`. Everything that assumed 200
+scales with it: the HP bars' max, the result screen's bars, Field medic's heal
+cap, Desperate measures (below 30% of the start) and Bloodpact (costs 40% of
+the start, `hpCostShare`/`hpCostOf`). Online duels and the tutorial always use
+200: both devices would have to agree on the pool, which would mean a room
+field and new rules.
 ### Ascendant (epic): one unit, no cap
-Taking it trims your row to one unit (`keepChampion` in `refreshForRound`:
-highest level, then biggest base stats, then front-most; deterministic for
-online), and its mods are `capacity: 1` (beating Reinforcements) and
+Taking it trims your row to one unit (`keepChampion` in `refreshForRound`,
+choosing `championOf`: the strongest fighter by base attack × health, front-
+most on a tie, and a support unit only when the row has nothing else, since
+support abilities work from behind the front; deterministic for online). It
+was the highest level until 2026-10-15, which let the CPU keep a lone Acolyte.
+The AI scores Ascendant by fit (`aiAugmentScore`): never with a support
+champion, and up or down with the champion's share of the row's power
+(`ASCENDANT_SHARE` 0.35 breaks even). Sim with AI picks: holders 52.5% →
+54.6%; with random picks 48.4%. Its and its mods are `capacity: 1` (beating Reinforcements) and
 `uncapped`. Uncapped means `mergeCapFor` is Infinity and `canAbsorb` lets
 **any** type merge into the champion, since with one slot it would otherwise
 only grow on the rare matching card. Merges use the card's own gain (half its

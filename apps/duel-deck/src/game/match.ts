@@ -31,6 +31,7 @@ import {
   type AugmentDef,
   type AugmentState,
   type Rarity,
+  hpCostOf,
 } from "./augments";
 
 // Match configuration and round flow, per the tracker doc's v1 scope.
@@ -101,8 +102,16 @@ export function drillFor(board: Board, side: Side, unusedPicks: number): number 
   return rowMaxed(board, side) ? Math.max(0, unusedPicks) : 0;
 }
 
-export function newBoard(): Board {
-  return createBoard(LANES, DEPTH, START_HP);
+export function newBoard(startHp = START_HP): Board {
+  return createBoard(LANES, DEPTH, startHp);
+}
+
+/** Starting health choices on the title screen (both players start equal). */
+export const START_HP_OPTIONS = [100, 200, 300] as const;
+
+/** The pool this match started with (saves from before the setting read as 200). */
+export function startHpOf(board: Board): number {
+  return board.startHp ?? START_HP;
 }
 
 /**
@@ -498,11 +507,26 @@ const HARD_EXTRA_REROLLS = 1;
  * rarity premium, and fit — unit-specific augments are worth more when it
  * fields those units and close to nothing when it fields none.
  */
-export function aiAugmentScore(def: AugmentDef, units: Unit[] = [], ownHp = START_HP): number {
+/** Ascendant's AI fit: the champion's share of the row's power where it breaks even, and how much a share point moves the score. */
+const ASCENDANT_SHARE = 0.35;
+const ASCENDANT_SHARE_WEIGHT = 40;
+
+export function aiAugmentScore(def: AugmentDef, units: Unit[] = [], ownHp = START_HP, startHp = START_HP): number {
   let score = (AUGMENT_SCORE[def.id] ?? 45) + RARITY_BONUS[rarityOf(def)];
   // An HP cost (Bloodpact) is only worth paying with health to spare: taken
   // low, it left the AI on 1 HP, one round from losing.
-  if (def.hpCost && ownHp - def.hpCost < AI_HP_FLOOR) score -= 100;
+  const cost = hpCostOf(def, startHp);
+  if (cost && ownHp - cost < AI_HP_FLOOR) score -= 100;
+  // Ascendant throws away every unit but the champion, so it's only worth it
+  // when the champion is a real fighter carrying a big share of the row.
+  // Without this the AI took it whenever offered (it's an epic) and could be
+  // left with a lone support unit.
+  if (def.id === "ascendant" && units.length > 0) {
+    const champ = championOf(units)!;
+    if (UNITS[champ.key]?.archetype === "support") return score - 100;
+    const share = fighterPower(champ) / units.reduce((sum, u) => sum + fighterPower(u), 0);
+    score += Math.round((share - ASCENDANT_SHARE) * ASCENDANT_SHARE_WEIGHT);
+  }
   const affects = unitsAffectedBy(def);
   const specific = affects.length > 0 && affects.length < Object.keys(UNITS).length;
   if (specific && units.length > 0) {
@@ -517,13 +541,14 @@ export function aiPickAugment<T extends { id: string } | string>(
   options: T[],
   units: Unit[] = [],
   ownHp = START_HP,
+  startHp = START_HP,
 ): T | null {
   let best: T | null = null;
   let bestScore = -Infinity;
   for (const o of options) {
     const id = typeof o === "string" ? o : o.id;
     const def = typeof o === "string" ? null : (o as AugmentDef);
-    const score = def ? aiAugmentScore(def, units, ownHp) : (AUGMENT_SCORE[id] ?? 45);
+    const score = def ? aiAugmentScore(def, units, ownHp, startHp) : (AUGMENT_SCORE[id] ?? 45);
     if (score > bestScore) {
       best = o;
       bestScore = score;
@@ -545,12 +570,13 @@ export function aiTakeAugment(
   difficulty: Difficulty = "normal",
 ): string | null {
   const units = sideUnits(board, side);
+  const startHp = startHpOf(board);
   let offer = offerAugments(state, augmentOfferCount(state), upgradeTier(round));
   if (difficulty === "easy") {
     // Easy takes a card at random.
     const choice = offer[Math.floor(Math.random() * offer.length)];
     if (!choice) return null;
-    const cost = takeAugment(state, choice.id, units);
+    const cost = takeAugment(state, choice.id, units, startHp);
     if (cost) board.hp[side] = Math.max(1, board.hp[side] - cost);
     return choice.id;
   }
@@ -558,13 +584,13 @@ export function aiTakeAugment(
   const rerolls = AUGMENT_REROLLS + (difficulty === "hard" ? HARD_EXTRA_REROLLS : 0);
   const bar = AI_REROLL_BELOW + (difficulty === "hard" ? 4 : 0);
   for (let left = rerolls; left > 0; left--) {
-    const top = aiPickAugment(offer, units, board.hp[side]);
-    if (!top || aiAugmentScore(top, units, board.hp[side]) >= bar) break;
+    const top = aiPickAugment(offer, units, board.hp[side], startHp);
+    if (!top || aiAugmentScore(top, units, board.hp[side], startHp) >= bar) break;
     offer = offerAugments(state, augmentOfferCount(state), upgradeTier(round));
   }
-  const choice = aiPickAugment(offer, units, board.hp[side]);
+  const choice = aiPickAugment(offer, units, board.hp[side], startHp);
   if (!choice) return null;
-  const cost = takeAugment(state, choice.id, units);
+  const cost = takeAugment(state, choice.id, units, startHp);
   if (cost) board.hp[side] = Math.max(1, board.hp[side] - cost);
   return choice.id;
 }
@@ -684,24 +710,36 @@ export function refreshForRound(
   const e = sideUnits(board, ENEMY);
   const pCap = board.mods.player!.capacity!;
   const eCap = board.mods.enemy!.capacity!;
-  applyAugments(p, playerAug, board.hp.player, e.length, pCap, synergyOf(p, pCap));
-  applyAugments(e, enemyAug, board.hp.enemy, p.length, eCap, synergyOf(e, eCap));
+  const startHp = startHpOf(board);
+  applyAugments(p, playerAug, board.hp.player, e.length, pCap, synergyOf(p, pCap), startHp);
+  applyAugments(e, enemyAug, board.hp.enemy, p.length, eCap, synergyOf(e, eCap), startHp);
   // Sabotage reaches across: each side's holds the other's front down. After
   // both sides are computed, since it acts on the opponent's finished stats.
   if (hasAugment(playerAug, "sabotage")) sabotage(e[0]);
   if (hasAugment(enemyAug, "sabotage")) sabotage(p[0]);
 }
 
+/** How much a unit is worth fighting alone: attack times health, from its base stats. */
+const fighterPower = (u: Unit) => Math.max(1, u.baseAtk) * u.baseMaxHp;
+
 /**
- * Keep only `side`'s best unit: highest level, then biggest base stats, then
- * front-most. Deterministic, so both devices of an online match agree.
+ * Ascendant's champion: the strongest fighter (attack × health), front-most on
+ * a tie. A support unit only when there's nothing else: every support ability
+ * works from behind the front, so alone it does nothing. It used to be the
+ * highest level, which could keep a levelled Acolyte with 1 attack.
+ * Deterministic, so both devices of an online match agree.
  */
+export function championOf(units: Unit[]): Unit | undefined {
+  const fighters = units.filter((u) => UNITS[u.key]?.archetype !== "support");
+  const pool = fighters.length > 0 ? fighters : units;
+  return pool.reduce<Unit | undefined>((a, b) => (!a || fighterPower(b) > fighterPower(a) ? b : a), undefined);
+}
+
+/** Keep only `side`'s champion (`championOf`). */
 export function keepChampion(board: Board, side: Side): void {
   const units = sideUnits(board, side);
   if (units.length <= 1) return;
-  const best = units.reduce((a, b) =>
-    b.merges > a.merges || (b.merges === a.merges && b.baseAtk + b.baseMaxHp > a.baseAtk + a.baseMaxHp) ? b : a,
-  );
+  const best = championOf(units)!;
   for (let lane = 0; lane < board.lanes; lane++) {
     writeLane(board, side, lane, lane === 0 ? [best] : []);
   }

@@ -82,9 +82,12 @@ export interface Settings {
   sound: boolean;
   /** The running blow-by-blow shown where the offer cards sit during a battle. */
   battleLog: boolean;
+  /** Health both players start a CPU match with (START_HP_OPTIONS). */
+  startHp: number;
 }
 
-const DEFAULTS: Settings = { difficulty: "normal", speed: 1, sound: true, battleLog: true };
+const DEFAULTS: Settings = { difficulty: "normal", speed: 1, sound: true, battleLog: true, startHp: 200 };
+const START_HP_CHOICES = [100, 200, 300];
 
 /**
  * Read the saved settings, falling back per field so a partial or older blob
@@ -114,6 +117,7 @@ export function loadSettings(): Settings {
     speed,
     sound: saved.sound ?? DEFAULTS.sound,
     battleLog: saved.battleLog ?? DEFAULTS.battleLog,
+    startHp: START_HP_CHOICES.includes(saved.startHp as number) ? (saved.startHp as number) : DEFAULTS.startHp,
   };
 }
 

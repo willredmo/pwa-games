@@ -194,8 +194,10 @@ export interface Board {
   lanes: number;
   depth: number;
   slots: Record<Side, (Unit | null)[][]>;
-  /** Each player's own HP pool (100 at match start). */
+  /** Each player's own HP pool. */
   hp: Record<Side, number>;
+  /** The pool both players started the match with (the title screen's choice; absent = 200). */
+  startHp?: number;
   /** Side-wide augment modifiers (bounty, capacity). Absent = none. */
   mods?: Partial<Record<Side, SideMods>>;
 }

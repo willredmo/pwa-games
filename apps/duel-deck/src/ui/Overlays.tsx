@@ -4,7 +4,7 @@ import type { AugmentDef, AugmentState } from "../game/augments";
 import { AUGMENTS, MAX_FROZEN_AUGMENTS, RALLY_CAP, getAugment, rarityOf, unitsAffectedBy, type Rarity } from "../game/augments";
 import { ARCHETYPES, KNIGHT_LEVEL, MAX_LEVEL, SYNERGIES, UNITS, UNIT_KEYS, levelOf } from "../engine/units";
 import { levelLabel, levelTier } from "../board/render";
-import { AUGMENT_EVERY, PICK_COUNT, START_HP } from "../game/match";
+import { AUGMENT_EVERY, PICK_COUNT } from "../game/match";
 import { mvpOf, roundsPlayed, type MatchStats, type UnitTally } from "../game/stats";
 import { prefersReducedMotion } from "../board/anim";
 import { UNIT_LORE } from "../game/lore";
@@ -322,6 +322,8 @@ interface ResultPanelProps {
   stats: MatchStats;
   /** Both pools at the end. */
   hp: { player: number; enemy: number };
+  /** What both pools started at. */
+  startHp: number;
   /** Your upgrades, in pick order. */
   upgrades: string[];
   difficulty: string;
@@ -516,11 +518,11 @@ function UnitLedger({ stats, winner }: { stats: MatchStats; winner: "player" | "
   );
 }
 
-export function ResultPanel({ winner, round, stats, hp, upgrades, difficulty, onNewMatch }: ResultPanelProps) {
+export function ResultPanel({ winner, round, stats, hp, startHp, upgrades, difficulty, onNewMatch }: ResultPanelProps) {
   const won = winner === "player";
   const mvp = mvpOf(stats);
   const rounds = stats.won + stats.lost + stats.drawn;
-  const pct = (n: number) => `${Math.max(0, Math.min(100, (n / START_HP) * 100))}%`;
+  const pct = (n: number) => `${Math.max(0, Math.min(100, (n / startHp) * 100))}%`;
   return (
     <div className={`overlay overlay--result ${won ? "overlay--victory" : "overlay--defeat"}`}>
       <ResultBackdrop won={won} />

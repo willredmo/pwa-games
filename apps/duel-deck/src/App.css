@@ -81,13 +81,10 @@
 }
 .hpbar__label {
   color: var(--muted);
-  font-weight: 700;
   white-space: nowrap;
 }
-.hpbar--enemy .hpbar__label { color: #ff9a8c; }
-.hpbar--player .hpbar__label { color: #8ec5ff; }
 .hpbar__track {
-  height: 0.95rem;
+  height: 0.7rem;
   position: relative;
   background: #14121f;
   border-radius: 999px;
@@ -109,17 +106,10 @@
 }
 .hpbar__hp {
   font-variant-numeric: tabular-nums;
-  font-size: 1.25rem;
-  font-weight: 900;
-  line-height: 1;
-  min-width: 5.2rem;
+  font-weight: 700;
+  min-width: 2.2rem;
   text-align: right;
-  white-space: nowrap;
 }
-.hpbar--enemy .hpbar__heart { color: #ff6b5b; }
-.hpbar--player .hpbar__heart { color: #5aa7ff; }
-.hpbar__heart { font-size: 0.8em; margin-right: 0.15rem; }
-.hpbar__max { font-size: 0.6em; font-weight: 700; color: var(--muted); margin-left: 0.1rem; }
 
 /* --- Board --- */
 .app__stage {
@@ -949,7 +939,6 @@ button.menu-item:hover { border-color: #5a5180; }
   .app__subtitle { font-size: 0.8rem; margin-top: 0.1rem; }
   .menu-btn { width: 2.25rem; height: 2.25rem; font-size: 1.1rem; }
   .hpbar { width: 100%; font-size: 0.8rem; }
-  .hpbar__hp { font-size: 1.1rem; min-width: 4.6rem; }
   .app__stage { width: 100%; }
   .hud { flex-wrap: nowrap; gap: 0.4rem; width: 100%; }
   .hud .primary-btn, .hud .ghost-btn { padding: 0.5rem 0.7rem; white-space: nowrap; }
@@ -1121,6 +1110,26 @@ button.menu-item:hover { border-color: #5a5180; }
   text-transform: uppercase;
   color: var(--muted);
 }
+/* Starting health: three small radios between the opponent and Play. */
+.title__hp { display: flex; align-items: center; justify-content: center; gap: 0.4rem; flex-wrap: wrap; }
+.title__hp-label { color: var(--muted); font-size: 0.82rem; font-weight: 700; margin-right: 0.2rem; }
+.hp-option {
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 800;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.1;
+  padding: 0.3rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid #3a3454;
+  background: #221e33;
+  color: #e9e4ff;
+  cursor: pointer;
+}
+.hp-option small { font-size: 0.68rem; font-weight: 600; color: var(--muted); }
+.hp-option--on { border-color: #f0b429; background: rgba(240, 180, 41, 0.14); box-shadow: 0 0 0 1px #f0b429 inset; }
 .title__options {
   display: flex;
   flex-direction: column;

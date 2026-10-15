@@ -1,4 +1,4 @@
-import { DIFFICULTIES, type Difficulty } from "../game/match";
+import { DIFFICULTIES, START_HP_OPTIONS, type Difficulty } from "../game/match";
 import type { SavedMatch } from "../game/save";
 import { DIFFICULTY_INFO } from "./Overlays";
 
@@ -12,6 +12,9 @@ export interface TitleProps {
   saved: SavedMatch | null;
   difficulty: Difficulty;
   onDifficulty: (d: Difficulty) => void;
+  /** Health both players start a new CPU match with. */
+  startHp: number;
+  onStartHp: (hp: number) => void;
   sound: boolean;
   onSound: (on: boolean) => void;
   onPlay: () => void;
@@ -83,6 +86,22 @@ export function Title(props: TitleProps) {
               </button>
             );
           })}
+        </div>
+        {/* Match length: both players start with the same pool. */}
+        <div className="title__hp" role="radiogroup" aria-label="Starting health">
+          <span className="title__hp-label">Starting health</span>
+          {START_HP_OPTIONS.map((hp) => (
+            <button
+              key={hp}
+              role="radio"
+              aria-checked={hp === props.startHp}
+              className={`hp-option${hp === props.startHp ? " hp-option--on" : ""}`}
+              onClick={() => props.onStartHp(hp)}
+            >
+              ♥ {hp}
+              <small>{hp < 200 ? "Quick" : hp > 200 ? "Long" : "Standard"}</small>
+            </button>
+          ))}
         </div>
         <button
           className={`${saved || props.suggestTutorial ? "ghost-btn" : "primary-btn"} primary-btn--wide`}

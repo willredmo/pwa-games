@@ -1,6 +1,6 @@
 import type { Board, RoundResult, Side } from "../engine/types";
 import { countBerserkerDeaths, getAugment, hasAugment, type AugmentState } from "./augments";
-import { START_HP } from "./match";
+import { startHpOf } from "./match";
 
 // Round-end bookkeeping for one side's augments (Momentum stacks, Rally deaths,
 // Overwhelm kills, Veteran growth). Shared by App and the balance sim so the two
@@ -69,7 +69,7 @@ export function settleRound(
   const heal = state.active.reduce((sum, id) => sum + (getAugment(id)?.healOnWin ?? 0), 0);
   if (result.roundWinner === side && heal > 0 && !result.matchWinner) {
     const hp = result.board.hp[side];
-    healed = Math.max(0, Math.min(heal, START_HP - hp));
+    healed = Math.max(0, Math.min(heal, startHpOf(result.board) - hp));
     result.board.hp[side] = hp + healed;
   }
   return healed;

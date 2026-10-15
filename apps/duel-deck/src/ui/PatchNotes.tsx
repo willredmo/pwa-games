@@ -13,7 +13,9 @@ export const PATCH_NOTES: Release[] = [
     version: "1.3.5",
     date: "Oct 15, 2026",
     notes: [
-      "Bigger, clearer health pools: both sides show their health as ♥ current/200 from the start of the match.",
+      "Choose your starting health for matches against the CPU: 100 (quick), 200 or 300 (long). Desperate measures and Bloodpact scale with it.",
+      "Ascendant keeps your strongest fighter (attack × health) instead of your highest-level unit, and never a support unit if you have anything else.",
+      "The CPU only takes Ascendant when its best fighter carries its row, so it no longer ends up with a lone support unit.",
     ],
   },
   {

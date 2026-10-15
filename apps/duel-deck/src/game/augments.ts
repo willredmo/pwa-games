@@ -33,6 +33,8 @@ export interface AugmentContext {
   kills: number; // enemy units you killed last round, for Overwhelm
   /** Slots this side may fill this round (Full ranks). */
   capacity: number;
+  /** The pool the match started with, for HP thresholds (Desperate measures). */
+  startHp: number;
 }
 
 /** A flat stat delta applied to one unit for the coming round. */
@@ -56,8 +58,8 @@ export interface AugmentDef {
   effect?: (unit: Unit, index: number, ctx: AugmentContext) => Delta;
   /** One-time consequences at pick time (e.g. Bloodpact's HP cost). */
   onPick?: (state: AugmentState, units: Unit[]) => void;
-  /** Max HP change to the player's own pool, applied once at pick time. */
-  hpCost?: number;
+  /** Share of the starting pool it costs, once, at pick time (Bloodpact). */
+  hpCostShare?: number;
   /** Combat keywords for one unit, recomputed each round like `effect`. */
   traits?: (unit: Unit, index: number, ctx: AugmentContext) => UnitTraits;
   /** Side-wide modifiers while held (see `sideModsFor`). */
@@ -237,10 +239,9 @@ export const AUGMENTS: AugmentDef[] = [
     id: "desperate-measures",
     icon: "💢",
     name: "Desperate measures",
-    description: "While your HP is below 60, all units gain +3 attack.",
+    description: "While your HP is below 30% of what you started with (60 of 200), all units gain +3 attack.",
     category: "global",
-    // 30% of START_HP (game/match.ts) — not imported, as match.ts imports this module.
-    effect: (_u, _i, ctx) => (ctx.ownHp < 60 ? { atk: 3 } : {}),
+    effect: (_u, _i, ctx) => (ctx.ownHp < ctx.startHp * 0.3 ? { atk: 3 } : {}),
   },
   {
     id: "united-front",
@@ -262,10 +263,10 @@ export const AUGMENTS: AugmentDef[] = [
     id: "bloodpact",
     icon: "🩸",
     name: "Bloodpact",
-    description: "All units gain +2 attack, but you lose 80 HP.",
+    description: "All units gain +2 attack, but you lose 40% of your starting HP (80 of 200).",
     category: "global",
     effect: () => ({ atk: 2 }),
-    hpCost: 80,
+    hpCostShare: 0.4,
   },
 
   // --- Synergy-based ---
@@ -582,7 +583,7 @@ export const AUGMENTS: AugmentDef[] = [
     icon: "🌟",
     name: "Ascendant",
     description:
-      "Your row holds one unit: your highest-level unit stays and the rest leave. It has no level cap, and every unit you pick merges into it.",
+      "Your row holds one unit: your strongest fighter (attack × health; a support unit only if there's nothing else) stays and the rest leave. It has no level cap, and every unit you pick merges into it.",
     category: "strategy",
     rarity: "epic",
     mods: { capacity: 1, uncapped: true },
@@ -757,13 +758,19 @@ export function takeAugment(
   state: AugmentState,
   id: string,
   units: Unit[],
+  startHp = 200,
 ): number {
   const def = getAugment(id);
   if (!def || state.active.includes(id)) return 0;
   state.active.push(id);
   if (frozenAugments(state).includes(id)) state.frozen = frozenAugments(state).filter((x) => x !== id);
   def.onPick?.(state, units);
-  return def.hpCost ?? 0;
+  return hpCostOf(def, startHp);
+}
+
+/** What an augment costs from the pool at pick time, for a match started at `startHp`. */
+export function hpCostOf(def: AugmentDef, startHp = 200): number {
+  return def.hpCostShare ? Math.round(def.hpCostShare * startHp) : 0;
 }
 
 /**
@@ -779,12 +786,14 @@ export function applyAugments(
   capacity = 5,
   /** This side's full-row synergy this round (`synergyOf`), if any. */
   synergy: Archetype | null = null,
+  startHp = 200,
 ): void {
   const ctx: AugmentContext = {
     units,
     ownHp,
     enemyUnitCount,
     capacity,
+    startHp,
     momentum: state.momentum,
     rally: state.rally,
     kills: state.kills ?? 0,
@@ -1008,7 +1017,7 @@ function probeAffected(def: AugmentDef): string[] {
       atk: st.atk, maxHp: st.maxHp, hp: st.maxHp, auras: [],
     };
   });
-  const ctx: AugmentContext = { units, ownHp: 1, enemyUnitCount: 0, momentum: 99, rally: 99, kills: 99, capacity: 0 };
+  const ctx: AugmentContext = { units, ownHp: 1, enemyUnitCount: 0, momentum: 99, rally: 99, kills: 99, capacity: 0, startHp: 200 };
   const hit = new Set<string>();
   units.forEach((u, i) => {
     // Front (index 0) and its real queue position, for front-only augments.

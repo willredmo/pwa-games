@@ -39,6 +39,7 @@ import {
   upgradeTier,
   AUGMENT_REROLLS,
   newBoard,
+  startHpOf,
   refreshForRound,
   rollOffer,
 } from "../game/match";
@@ -326,14 +327,17 @@ export interface GameProps {
   online?: Session;
   /** The first-match tutorial: coach card, set first offers, never saved or logged. */
   tutorial?: boolean;
+  /** Starting health for a fresh CPU match (online and the tutorial use START_HP). */
+  startHp?: number;
 }
 
-export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, sound, onSound, battleLog, onBattleLog, onExit, online, tutorial }: GameProps) {
+export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, sound, onSound, battleLog, onBattleLog, onExit, online, tutorial, startHp }: GameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   /** The match being resumed, if any; resuming always lands in the pick phase. */
   const [saved] = useState(() => resume);
-  const [board, setBoard] = useState<Board>(() => saved?.board ?? newBoard());
+  // Both online devices must agree on the pool, so the setting is CPU-only.
+  const [board, setBoard] = useState<Board>(() => saved?.board ?? newBoard(online || tutorial ? START_HP : (startHp ?? START_HP)));
   const [round, setRound] = useState(saved?.round ?? 1);
   const [offer, setOffer] = useState<string[]>(
     () => saved?.offer ?? (tutorial ? TUTORIAL_OFFERS[1].slice() : rollOffer(OFFER_COUNT, saved?.player)),
@@ -1494,7 +1498,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   const onPickAugment = (id: string) => {
     sfx("upgrade");
     const units = sideUnits(board, PLAYER);
-    const cost = takeAugment(playerAug.current, id, units);
+    const cost = takeAugment(playerAug.current, id, units, startHpOf(board));
     const next = cloneBoard(board);
     if (cost) next.hp.player = Math.max(1, next.hp.player - cost);
 
@@ -2033,7 +2037,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         )}
       </header>
 
-      <HpBar side={ENEMY} label="Enemy" hp={Math.max(0, board.hp.enemy)} max={START_HP} blown={barBlast} />
+      <HpBar side={ENEMY} label="Enemy" hp={Math.max(0, board.hp.enemy)} max={startHpOf(board)} blown={barBlast} />
 
       <div className="app__stage">
         <canvas
@@ -2078,6 +2082,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
             round={round}
             stats={statsRef.current}
             hp={result.board.hp}
+            startHp={startHpOf(result.board)}
             upgrades={playerAug.current.active}
             difficulty={DIFFICULTY_LABEL[difficulty]}
             onNewMatch={newMatch}
@@ -2138,7 +2143,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         )}
       </div>
 
-      <HpBar side={PLAYER} label="You" hp={Math.max(0, board.hp.player)} max={START_HP} />
+      <HpBar side={PLAYER} label="You" hp={Math.max(0, board.hp.player)} max={startHpOf(board)} />
 
       {/* Always rendered: the board fills the space left over, so rows that came
           and went would resize it between phases. */}

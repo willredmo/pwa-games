@@ -42,7 +42,7 @@ efreshForRound compute (unit
  * different one is refused, and the lobby asks the outdated side to update.
  * Rooms from before it existed have none, which reads as 1.
  */
-export const PROTOCOL = 5;
+export const PROTOCOL = 6;
 
 export type Player = "p1" | "p2";
 export const otherPlayer = (p: Player): Player => (p === "p1" ? "p2" : "p1");

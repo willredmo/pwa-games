@@ -220,6 +220,7 @@ export function createBoard(lanes: number, depth: number, startHp: number): Boar
     depth,
     slots: { player: emptySide(), enemy: emptySide() },
     hp: { player: startHp, enemy: startHp },
+    startHp,
   };
 }
 
@@ -238,6 +239,7 @@ export function cloneBoard(board: Board): Board {
       enemy: cloneSide(board.slots.enemy),
     },
     hp: { ...board.hp },
+    ...(board.startHp !== undefined ? { startHp: board.startHp } : {}),
     ...(board.mods
       ? { mods: { player: { ...board.mods.player }, enemy: { ...board.mods.enemy } } }
       : {}),

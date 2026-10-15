@@ -24,6 +24,8 @@ interface Run {
   id: number;
   resume: SavedMatch | null;
   difficulty: Difficulty;
+  /** Starting health for a fresh CPU match. */
+  startHp?: number;
   online?: Session;
   /** The first-match tutorial (vs Easy, never saved). */
   tutorial?: boolean;
@@ -70,7 +72,7 @@ export default function App() {
     // Audio can only start from a gesture, and this click is one.
     if (settings.sound) unlockSound();
     setSettings((s) => ({ ...s, difficulty }));
-    setRun({ id: ++runId.n, resume, difficulty });
+    setRun({ id: ++runId.n, resume, difficulty, startHp: settings.startHp });
     setScreen("game");
   };
 
@@ -132,6 +134,7 @@ export default function App() {
           key={run.id}
           resume={run.resume}
           difficulty={run.difficulty}
+          startHp={run.startHp}
           online={run.online}
           tutorial={run.tutorial}
           speed={settings.speed}
@@ -150,6 +153,8 @@ export default function App() {
           saved={saved}
           difficulty={settings.difficulty}
           onDifficulty={(difficulty) => setSettings((s) => ({ ...s, difficulty }))}
+          startHp={settings.startHp}
+          onStartHp={(startHp) => setSettings((s) => ({ ...s, startHp }))}
           sound={settings.sound}
           onSound={(sound) => {
             if (sound) unlockSound();
