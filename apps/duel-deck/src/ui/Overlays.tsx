@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import "./overlays.css";
 import type { AugmentDef, AugmentState } from "../game/augments";
-import { AUGMENTS, MAX_FROZEN_AUGMENTS, RALLY_CAP, getAugment, rarityOf, unitsAffectedBy, type Rarity } from "../game/augments";
+import { OFFERED_AUGMENTS as AUGMENTS, MAX_FROZEN_AUGMENTS, RALLY_CAP, getAugment, rarityOf, unitsAffectedBy, type Rarity } from "../game/augments";
 import { ARCHETYPES, KNIGHT_LEVEL, MAX_LEVEL, SYNERGIES, UNITS, UNIT_KEYS, levelOf } from "../engine/units";
 import { levelLabel, levelTier } from "../board/render";
 import { AUGMENT_EVERY, PICK_COUNT } from "../game/match";

@@ -419,6 +419,10 @@ the start, `hpCostShare`/`hpCostOf`). Online duels and the tutorial always use
 200: both devices would have to agree on the pool, which would mean a room
 field and new rules.
 ### Ascendant (epic): one unit, no cap
+**Retired 2026-10-16** (`retired: true`): not offered, not listed in the Codex
+or the upgrades panel (`OFFERED_AUGMENTS`), pending more testing. Its code stays
+so a saved match that already holds it still plays; delete the flag to bring it
+back.
 Taking it trims your row to one unit (`keepChampion` in `refreshForRound`,
 choosing `championOf`: the strongest fighter by base attack × health, front-
 most on a tie, and a support unit only when the row has nothing else, since

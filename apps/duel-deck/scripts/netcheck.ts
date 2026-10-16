@@ -21,7 +21,7 @@ import { MAX_MERGES } from "../src/engine/units";
 import { resolveRound } from "../src/engine/combat";
 import type { Side, Unit } from "../src/engine/types";
 import { ENEMY, PLAYER, newBoard, refreshForRound } from "../src/game/match";
-import { AUGMENTS, createAugmentState, takeAugment, type AugmentState } from "../src/game/augments";
+import { OFFERED_AUGMENTS as AUGMENTS, createAugmentState, takeAugment, type AugmentState } from "../src/game/augments";
 import { settleRound } from "../src/game/roundEnd";
 import { packCommit, unpackCommit, type Commit } from "../src/online/room";
 

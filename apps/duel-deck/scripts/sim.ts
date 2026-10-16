@@ -14,7 +14,7 @@ import { resolveRound } from "../src/engine/combat";
 import { synergyOf } from "../src/engine/units";
 import type { Side } from "../src/engine/types";
 import { newBoard, aiCommit, drillFor, PICK_COUNT, type Difficulty, aiPickAugment, aiTakeAugment, isAugmentRound, refreshForRound, upgradeTier, augmentOfferCount } from "../src/game/match";
-import { createAugmentState, offerAugments, takeAugment, AUGMENTS } from "../src/game/augments";
+import { createAugmentState, offerAugments, takeAugment, OFFERED_AUGMENTS as AUGMENTS } from "../src/game/augments";
 import { settleRound } from "../src/game/roundEnd";
 
 type DrawRule = "none" | "more-damage" | "both";

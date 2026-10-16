@@ -69,6 +69,11 @@ export interface AugmentDef {
   /** Pool HP restored each round this side wins (see `settleRound`). */
   healOnWin?: number;
   /**
+   * Pulled from the game for now: never offered and not listed, but kept so a
+   * saved match that already holds it still plays.
+   */
+  retired?: boolean;
+  /**
    * Upgrades never offered while this one is held, because they can't do
    * anything alongside it (Ascendant's single unit has no allies or row).
    */
@@ -587,6 +592,8 @@ export const AUGMENTS: AugmentDef[] = [
     category: "strategy",
     rarity: "epic",
     mods: { capacity: 1, uncapped: true },
+    // Retired 2026-10-16 until it's had more testing.
+    retired: true,
     // One unit: no extra slots, no unit types to mix, no allies to fall or to
     // count, no Knight-and-others, and the champion always fights.
     excludes: ["reinforcements", "mixed-formation", "united-front", "last-light", "knights-oath", "veteran"],
@@ -713,6 +720,8 @@ export const AUGMENTS: AugmentDef[] = [
 export const SABOTAGE_ATK = 4;
 
 const BY_ID = new Map(AUGMENTS.map((a) => [a.id, a]));
+/** The upgrades in play: everything but the retired ones. Offers and lists use this. */
+export const OFFERED_AUGMENTS = AUGMENTS.filter((a) => !a.retired);
 
 export function getAugment(id: string): AugmentDef | undefined {
   return BY_ID.get(id);
@@ -736,7 +745,7 @@ export function offerAugments(state: AugmentState, n: number, tier = 1): Augment
     .slice(0, n);
   const frozenIds = new Set(frozen.map((a) => a.id));
   const excluded = new Set(state.active.flatMap((id) => getAugment(id)?.excludes ?? []));
-  const pool = AUGMENTS.filter(
+  const pool = OFFERED_AUGMENTS.filter(
     (a) =>
       !state.active.includes(a.id) && !frozenIds.has(a.id) && !excluded.has(a.id) && RARITY_UNLOCK[rarityOf(a)] <= tier,
   );

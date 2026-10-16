@@ -44,7 +44,7 @@ import {
   rollOffer,
 } from "../game/match";
 import {
-  AUGMENTS,
+  OFFERED_AUGMENTS as AUGMENTS,
   createAugmentState,
   frozenAugments,
   getAugment,

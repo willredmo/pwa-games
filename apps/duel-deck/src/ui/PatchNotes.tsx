@@ -10,6 +10,13 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.3.6",
+    date: "Oct 16, 2026",
+    notes: [
+      "Ascendant (the one-unit epic upgrade) is out of the game for now while it gets more testing. Matches already holding it keep it.",
+    ],
+  },
+  {
     version: "1.3.5",
     date: "Oct 15, 2026",
     notes: [
