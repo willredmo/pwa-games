@@ -675,7 +675,7 @@ export const AUGMENTS: AugmentDef[] = [
     id: "aegis",
     icon: "🔮",
     name: "Aegis",
-    description: "Wardens' Barrier also covers one more unit behind the front (stacks with a level 10 Warden's).",
+    description: "Wardens' Barrier also covers one more unit behind the front (stacks with a mastered Warden's).",
     category: "combat",
     rarity: "rare",
     traits: (u) => (has(u, "warden") ? { barrierReach: 1 } : {}),

@@ -72,14 +72,18 @@ export const MERGE_RATIO = 0.5;
 /**
  * What the n-th through (n+count-1)-th merges into a Squire line grant:
  * merge k adds k × SQUIRE_STEP, so each one is bigger than the last — up to
- * knighthood. After that every merge is worth the KNIGHT_AT-th step: an
- * uncapped escalation let a long match's Knight reach 30+ attack.
+ * knighthood. After that every merge is worth the POST_KNIGHT_STEP-th step: an
+ * uncapped escalation let a long match's Knight reach 30+ attack, and with the
+ * level cap at 12 the full KNIGHT_AT-th step lifted Knight rows to 66%
+ * (step 4: 59%, as at cap 10; step 3: 49%).
  */
+export const POST_KNIGHT_STEP = 4;
 function squireGain(targetMerges: number, count = 1): { atk: number; hp: number } {
   let atk = 0;
   let hp = 0;
   for (let i = 1; i <= count; i++) {
-    const k = Math.min(targetMerges + i, KNIGHT_AT);
+    const n = targetMerges + i;
+    const k = n <= KNIGHT_AT ? n : POST_KNIGHT_STEP;
     atk += Math.round(k * SQUIRE_STEP.atk);
     hp += Math.round(k * SQUIRE_STEP.hp);
   }
@@ -240,6 +244,7 @@ export function cloneBoard(board: Board): Board {
     },
     hp: { ...board.hp },
     ...(board.startHp !== undefined ? { startHp: board.startHp } : {}),
+    ...(board.rules ? { rules: { ...board.rules } } : {}),
     ...(board.mods
       ? { mods: { player: { ...board.mods.player }, enemy: { ...board.mods.enemy } } }
       : {}),

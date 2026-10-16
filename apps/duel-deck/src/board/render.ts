@@ -880,7 +880,7 @@ function drawSplitSlot(
 }
 
 /**
- * Level badge colours, rarity-style, under the level cap (MAX_LEVEL 10): the
+ * Level badge colours, rarity-style, under the level cap (MAX_LEVEL): the
  * median unit ends a match around level 7 and most rows have one at 10, so
  * gold is the cap itself (shown as "MAX") and red is past it, which only
  * Ascendant allows.

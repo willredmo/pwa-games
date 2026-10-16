@@ -1,3 +1,4 @@
+import { DEFAULT_RULES, rulesSummary, type MatchRules } from "../game/match";
 import { useEffect, useRef, useState } from "react";
 import {
   hostRoom,
@@ -27,6 +28,8 @@ export interface LobbyProps {
   code?: string;
   onReady: (s: Session) => void;
   onClose: () => void;
+  /** Host: the match settings the duel is played under (the title screen's). */
+  rules?: MatchRules;
 }
 
 const JOIN_ERROR: Record<JoinError, string> = {
@@ -37,7 +40,7 @@ const JOIN_ERROR: Record<JoinError, string> = {
   "update-them": "Your opponent is on an older version of Duel Deck. Ask them to update the app, then host again.",
 };
 
-export function Lobby({ kind, session: initialSession, code: initialCode, onReady, onClose }: LobbyProps) {
+export function Lobby({ kind, session: initialSession, code: initialCode, onReady, onClose, rules }: LobbyProps) {
   const [session, setSession] = useState<Session | null>(initialSession ?? null);
   const [code, setCode] = useState(initialCode ?? "");
   const [busy, setBusy] = useState(false);
@@ -65,7 +68,7 @@ export function Lobby({ kind, session: initialSession, code: initialCode, onRead
     if (!ready || kind !== "host" || session || started.current) return;
     started.current = true;
     setBusy(true);
-    hostRoom()
+    hostRoom(rules)
       .then((s) => {
         saveSession(s);
         setSession(s);
@@ -168,6 +171,9 @@ export function Lobby({ kind, session: initialSession, code: initialCode, onRead
         ) : kind === "host" ? (
           <>
             <p className="lobby__hint">Share this code with your opponent. The duel starts when they join.</p>
+            <p className="lobby__rules">
+              Settings: {rulesSummary(session?.rules ?? rules ?? DEFAULT_RULES).join(" · ") || "Standard"}
+            </p>
             <div className="lobby__code" aria-live="polite">
               {session ? (
                 session.code.split("").map((ch, i) => <span key={i}>{ch}</span>)

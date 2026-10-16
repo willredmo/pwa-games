@@ -102,8 +102,55 @@ export function drillFor(board: Board, side: Side, unusedPicks: number): number 
   return rowMaxed(board, side) ? Math.max(0, unusedPicks) : 0;
 }
 
-export function newBoard(startHp = START_HP): Board {
-  return createBoard(LANES, DEPTH, startHp);
+/**
+ * A match's settings, chosen before it starts (the title screen for a CPU
+ * match, the host for an online duel) and fixed for the whole match.
+ */
+export interface MatchRules {
+  /** Both pools start here (START_HP_OPTIONS). */
+  startHp: number;
+  /** Easy mode: undo also takes back unit rerolls (and refunds them). */
+  easy: boolean;
+  /** Full-row class bonuses (Full Assault, Iron Line, Sanctuary). */
+  synergies: boolean;
+  /** Upgrade choices every AUGMENT_EVERY rounds. */
+  upgrades: boolean;
+}
+
+export const DEFAULT_RULES: MatchRules = { startHp: START_HP, easy: false, synergies: true, upgrades: true };
+
+export function newBoard(rules: Partial<MatchRules> = {}): Board {
+  const r = { ...DEFAULT_RULES, ...rules };
+  const board = createBoard(LANES, DEPTH, r.startHp);
+  // Only the switches that differ from the defaults are stored.
+  if (r.easy || !r.synergies || !r.upgrades) {
+    board.rules = {
+      ...(r.easy ? { easy: true } : {}),
+      ...(!r.synergies ? { synergies: false } : {}),
+      ...(!r.upgrades ? { upgrades: false } : {}),
+    };
+  }
+  return board;
+}
+
+/** The settings a match is played under, read off its board. */
+export function rulesOf(board: Board): MatchRules {
+  return {
+    startHp: startHpOf(board),
+    easy: board.rules?.easy === true,
+    synergies: board.rules?.synergies !== false,
+    upgrades: board.rules?.upgrades !== false,
+  };
+}
+
+/** The settings that differ from the defaults, as short labels ("♥100", "Easy mode"). */
+export function rulesSummary(r: MatchRules): string[] {
+  return [
+    ...(r.startHp !== START_HP ? [`♥${r.startHp} start`] : []),
+    ...(r.easy ? ["Easy mode"] : []),
+    ...(!r.synergies ? ["No class bonuses"] : []),
+    ...(!r.upgrades ? ["No upgrades"] : []),
+  ];
 }
 
 /** Starting health choices on the title screen (both players start equal). */
@@ -710,9 +757,9 @@ export function refreshForRound(
   const e = sideUnits(board, ENEMY);
   const pCap = board.mods.player!.capacity!;
   const eCap = board.mods.enemy!.capacity!;
-  const startHp = startHpOf(board);
-  applyAugments(p, playerAug, board.hp.player, e.length, pCap, synergyOf(p, pCap), startHp);
-  applyAugments(e, enemyAug, board.hp.enemy, p.length, eCap, synergyOf(e, eCap), startHp);
+  const { startHp, synergies } = rulesOf(board);
+  applyAugments(p, playerAug, board.hp.player, e.length, pCap, synergies ? synergyOf(p, pCap) : null, startHp);
+  applyAugments(e, enemyAug, board.hp.enemy, p.length, eCap, synergies ? synergyOf(e, eCap) : null, startHp);
   // Sabotage reaches across: each side's holds the other's front down. After
   // both sides are computed, since it acts on the opponent's finished stats.
   if (hasAugment(playerAug, "sabotage")) sabotage(e[0]);

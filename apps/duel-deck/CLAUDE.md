@@ -375,7 +375,10 @@ units were tuned with a round-robin of single-unit builds (every one within
 so two dodging fronts don't end a round as a draw.
 
 ### Level cap, Mastery and Drill
-Units stop at **level 10** (`MAX_LEVEL`, `MAX_MERGES` = 9 in `engine/units.ts`).
+Units stop at **level 12** (`MAX_LEVEL`, `MAX_MERGES` = 11 in `engine/units.ts`; it was 10
+until 2026-10-16). Raising it lifted Knight rows from 59% to 66%, since every
+merge into a Knight added the 6th Squire step; post-knighthood merges now add
+`POST_KNIGHT_STEP` (4), back to 59% (3 was 49%).
 `canAbsorb` is the one rule (like with like, within the cap), used by
 `canMerge`/`mergePlaced` in board.ts (so the AI and every merge path obey it),
 by the drop rules in Game.tsx and by the AI's pick values. Placed-onto-placed
@@ -409,15 +412,28 @@ Sim after the cap (`pnpm sim 12000 --aug=random`, 2026-10-13): units 44-59%
 upgrades 43-60% (Bloodpact, Champion, Legion top; Squire upgrades fell to
 44-45%), median match 21 rounds, median unit level 7 and most rows' best unit
 at 10, Drill in 0.7% of rounds.
-### Starting health (title screen)
-CPU matches start both pools at 100, 200 (default) or 300 (`START_HP_OPTIONS`,
-`Settings.startHp`), stored on the board as `Board.startHp` (absent = 200, so
+### Match settings (title screen, and the host's for a duel)
+`MatchRules` (game/match.ts): starting health, **Easy mode**, **Class
+bonuses** and **Upgrades**. Set in the title screen's collapsible "Match
+settings" block (`Settings`), used for a new CPU match and for a duel you
+host: the room stores them (`Room.rules`, create-only in the database rules,
+startHp must be 100/200/300) and the guest's `Session.rules` comes from the
+room, so both devices build the same board. They ride on the board
+(`Board.startHp`, and `Board.rules` holding only the switches that differ from
+the defaults) and are read through `rulesOf`. Easy mode is UI-only: a unit
+reroll goes on the undo stack (`UndoEntry.offer`/`unitRerolls`) and undoing it
+brings the old cards and the reroll back. Class bonuses off makes
+`refreshForRound` pass no synergy and hides the meter; Upgrades off means no
+round offers a choice (`isAugmentRound` gated in Game), so the CPU never takes
+one either. Non-default settings show on the round-1 banner, in ☰ and in the
+host's lobby. The tutorial always uses the defaults. `PROTOCOL` 7.
+
+Starting health: both pools start at 100, 200 (default) or 300 (`START_HP_OPTIONS`),
+stored on the board as `Board.startHp` (absent = 200, so
 old saves read right) and read through `startHpOf`. Everything that assumed 200
 scales with it: the HP bars' max, the result screen's bars, Field medic's heal
 cap, Desperate measures (below 30% of the start) and Bloodpact (costs 40% of
-the start, `hpCostShare`/`hpCostOf`). Online duels and the tutorial always use
-200: both devices would have to agree on the pool, which would mean a room
-field and new rules.
+the start, `hpCostShare`/`hpCostOf`).
 ### Ascendant (epic): one unit, no cap
 **Retired 2026-10-16** (`retired: true`): not offered, not listed in the Codex
 or the upgrades panel (`OFFERED_AUGMENTS`), pending more testing. Its code stays

@@ -82,11 +82,24 @@ export interface Settings {
   sound: boolean;
   /** The running blow-by-blow shown where the offer cards sit during a battle. */
   battleLog: boolean;
-  /** Health both players start a CPU match with (START_HP_OPTIONS). */
+  /** Health both players start a match with (START_HP_OPTIONS). */
   startHp: number;
+  /** Match settings (MatchRules), used for CPU matches and when hosting a duel. */
+  easy: boolean;
+  synergies: boolean;
+  upgrades: boolean;
 }
 
-const DEFAULTS: Settings = { difficulty: "normal", speed: 1, sound: true, battleLog: true, startHp: 200 };
+const DEFAULTS: Settings = {
+  difficulty: "normal",
+  speed: 1,
+  sound: true,
+  battleLog: true,
+  startHp: 200,
+  easy: false,
+  synergies: true,
+  upgrades: true,
+};
 const START_HP_CHOICES = [100, 200, 300];
 
 /**
@@ -118,6 +131,9 @@ export function loadSettings(): Settings {
     sound: saved.sound ?? DEFAULTS.sound,
     battleLog: saved.battleLog ?? DEFAULTS.battleLog,
     startHp: START_HP_CHOICES.includes(saved.startHp as number) ? (saved.startHp as number) : DEFAULTS.startHp,
+    easy: saved.easy ?? DEFAULTS.easy,
+    synergies: saved.synergies ?? DEFAULTS.synergies,
+    upgrades: saved.upgrades ?? DEFAULTS.upgrades,
   };
 }
 

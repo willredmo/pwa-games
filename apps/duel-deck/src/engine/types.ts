@@ -198,6 +198,8 @@ export interface Board {
   hp: Record<Side, number>;
   /** The pool both players started the match with (the title screen's choice; absent = 200). */
   startHp?: number;
+  /** Match settings beyond the pool (absent = the defaults: no easy mode, synergies and upgrades on). */
+  rules?: { easy?: boolean; synergies?: boolean; upgrades?: boolean };
   /** Side-wide augment modifiers (bounty, capacity). Absent = none. */
   mods?: Partial<Record<Side, SideMods>>;
 }

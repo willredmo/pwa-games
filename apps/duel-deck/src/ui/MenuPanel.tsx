@@ -27,12 +27,14 @@ export interface MenuPanelProps {
   onBattleLog: (on: boolean) => void;
   /** This match's opponent, for display (it's chosen on the title screen). */
   difficultyLabel: string;
+  /** This match's settings that differ from the defaults, or "Standard". */
+  rulesLabel: string;
 }
 
 type CheckState = "idle" | "checking" | "done";
 
 export function MenuPanel(props: MenuPanelProps) {
-  const { onClose, onCodex, onNotes, onHelp, onNewMatch, onExit, sound, onSound, battleLog, onBattleLog, difficultyLabel } = props;
+  const { onClose, onCodex, onNotes, onHelp, onNewMatch, onExit, sound, onSound, battleLog, onBattleLog, difficultyLabel, rulesLabel } = props;
   const waiting = usePwaUpdate();
   const [latest, setLatest] = useState<DeployInfo | null>(null);
   const [check, setCheck] = useState<CheckState>("idle");
@@ -97,6 +99,13 @@ export function MenuPanel(props: MenuPanelProps) {
             <span>
               Opponent: {difficultyLabel}
               <small>Chosen when the match started. New match to pick again.</small>
+            </span>
+          </div>
+          <div className="menu-item menu-item--locked">
+            <span className="menu-item__icon">⚙️</span>
+            <span>
+              Settings: {rulesLabel}
+              <small>Fixed for this match.</small>
             </span>
           </div>
           {/* Leaving mid-match is safe — the save is written at the start of

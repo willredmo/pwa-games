@@ -214,7 +214,7 @@ export const KNIGHT_LEVEL = levelOf(KNIGHT_AT);
  * needs several strong units. Ascendant (an upgrade) lifts it for a side that
  * fields a single unit.
  */
-export const MAX_LEVEL = 10;
+export const MAX_LEVEL = 12;
 export const MAX_MERGES = MAX_LEVEL - 1;
 /** Whether a unit with this many merges has reached its Mastery. */
 export const isMastered = (merges: number) => levelOf(merges) >= MAX_LEVEL;

@@ -1,3 +1,4 @@
+import { DEFAULT_RULES, type MatchRules } from "../game/match";
 import {
   clientId,
   createRoom,
@@ -42,7 +43,7 @@ efreshForRound compute (unit
  * different one is refused, and the lobby asks the outdated side to update.
  * Rooms from before it existed have none, which reads as 1.
  */
-export const PROTOCOL = 6;
+export const PROTOCOL = 7;
 
 export type Player = "p1" | "p2";
 export const otherPlayer = (p: Player): Player => (p === "p1" ? "p2" : "p1");
@@ -82,6 +83,8 @@ export interface Room {
   createdAt: number;
   /** The host's PROTOCOL (absent = 1). */
   proto?: number;
+  /** The host's match settings, fixed at creation (absent: a room from before them, the defaults). */
+  rules?: MatchRules;
   /** Bumped by a rematch, so both devices restart together. */
   startedAt: number;
   presence?: Partial<Record<Player, boolean>>;
@@ -93,6 +96,8 @@ export interface Room {
 export interface Session {
   code: string;
   me: Player;
+  /** The room's match settings, so a rejoin after a reload rebuilds the same match. */
+  rules?: MatchRules;
 }
 
 /** Pack one side's row and upgrades for the wire. */
@@ -156,10 +161,10 @@ export function unpackCommit(
 
 // --- Rooms ----------------------------------------------------------------
 
-export async function hostRoom(): Promise<Session> {
+export async function hostRoom(rules: MatchRules = DEFAULT_RULES): Promise<Session> {
   const me = clientId();
-  const code = await createRoom(GAME, { host: me, startedAt: Date.now(), proto: PROTOCOL });
-  return { code, me: "p1" };
+  const code = await createRoom(GAME, { host: me, startedAt: Date.now(), proto: PROTOCOL, rules });
+  return { code, me: "p1", rules };
 }
 
 /** update-me: the room runs newer rules than this build; update-them: older. */
@@ -193,7 +198,7 @@ export async function joinRoom(input: string): Promise<Session | JoinError> {
     return { ...cur, guest: me };
   });
   if (!res.committed || !res.data) return why ?? "not-found";
-  return { code, me: res.data.host === me ? "p1" : "p2" };
+  return { code, me: res.data.host === me ? "p1" : "p2", rules: res.data.rules ?? DEFAULT_RULES };
 }
 
 /**

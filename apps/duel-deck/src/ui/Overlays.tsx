@@ -886,7 +886,7 @@ export function HelpPanel({ onClose }: HelpPanelProps) {
 
         <h3>Getting stronger</h3>
         <ul className="rules">
-          <li><strong>Merging</strong> adds half the card's stats and a level. At level 10 (MAX) a unit's ability gets stronger.</li>
+          <li><strong>Merging</strong> adds half the card's stats and a level. At level {MAX_LEVEL} (MAX) a unit's ability gets stronger.</li>
           <li><strong>Upgrades</strong>: every {AUGMENT_EVERY} rounds, pick one that lasts the whole match.</li>
           <li>
             <strong>Classes</strong>: fill every slot with one class for a bonus each round:{" "}

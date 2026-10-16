@@ -10,6 +10,17 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.4.0",
+    date: "Oct 16, 2026",
+    notes: [
+      "Match settings: before a match, choose starting health and turn Easy mode, class bonuses and upgrades on or off.",
+      "Easy mode: Undo also takes back a reroll, and gives the reroll back.",
+      "Online duels use the host's match settings, shown in the lobby and at the start of the duel.",
+      "The level cap is now 12 (was 10). Mastery abilities unlock at level 12.",
+      "Merges into a Knight give a little less, to keep Knights in line with the higher cap.",
+    ],
+  },
+  {
     version: "1.3.6",
     date: "Oct 16, 2026",
     notes: [

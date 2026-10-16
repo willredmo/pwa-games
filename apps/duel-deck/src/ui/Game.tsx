@@ -27,7 +27,6 @@ import {
   OFFER_COUNT,
   PICK_COUNT,
   PLAYER,
-  START_HP,
   aiCommit,
   aiTakeAugment,
   drillFor,
@@ -39,7 +38,10 @@ import {
   upgradeTier,
   AUGMENT_REROLLS,
   newBoard,
+  rulesOf,
+  rulesSummary,
   startHpOf,
+  type MatchRules,
   refreshForRound,
   rollOffer,
 } from "../game/match";
@@ -183,6 +185,9 @@ interface UndoEntry {
    * board would strand a grant on a unit that no longer exists.
    */
   grants: AugmentState["grants"];
+  /** The offer and rerolls left, so easy mode's undo can take back a reroll. */
+  offer: string[];
+  unitRerolls: number;
 }
 
 /**
@@ -327,17 +332,21 @@ export interface GameProps {
   online?: Session;
   /** The first-match tutorial: coach card, set first offers, never saved or logged. */
   tutorial?: boolean;
-  /** Starting health for a fresh CPU match (online and the tutorial use START_HP). */
-  startHp?: number;
+  /** Settings for a fresh CPU match (online uses the room's; the tutorial the defaults). */
+  rules?: MatchRules;
 }
 
-export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, sound, onSound, battleLog, onBattleLog, onExit, online, tutorial, startHp }: GameProps) {
+export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, sound, onSound, battleLog, onBattleLog, onExit, online, tutorial, rules: startRules }: GameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   /** The match being resumed, if any; resuming always lands in the pick phase. */
   const [saved] = useState(() => resume);
-  // Both online devices must agree on the pool, so the setting is CPU-only.
-  const [board, setBoard] = useState<Board>(() => saved?.board ?? newBoard(online || tutorial ? START_HP : (startHp ?? START_HP)));
+  // Online, both devices build the board from the room's settings, so they agree.
+  const [board, setBoard] = useState<Board>(
+    () => saved?.board ?? newBoard(online ? (online.rules ?? {}) : tutorial ? {} : (startRules ?? {})),
+  );
+  /** The match's settings, fixed for its whole length (they ride on the board). */
+  const rules = rulesOf(board);
   const [round, setRound] = useState(saved?.round ?? 1);
   const [offer, setOffer] = useState<string[]>(
     () => saved?.offer ?? (tutorial ? TUTORIAL_OFFERS[1].slice() : rollOffer(OFFER_COUNT, saved?.player)),
@@ -774,7 +783,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   const synergyGoal = ((): SynergyGoal | null => {
     const units = sideUnits(board, PLAYER);
     const cap = capacityOf(board, PLAYER);
-    if (cap < SYNERGY_MIN || units.length === 0) return null;
+    if (!rules.synergies || cap < SYNERGY_MIN || units.length === 0) return null;
     const done = synergyOf(units, cap);
     const counts = new Map<Archetype, number>();
     for (const u of units) counts.set(UNITS[u.key].archetype, (counts.get(UNITS[u.key].archetype) ?? 0) + 1);
@@ -838,7 +847,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   // Opening (or resumed) round announcement. The opponent is already chosen on
   // the title screen, so this fires for a fresh match too.
   useEffect(() => {
-    showBanner(`Round ${round}`, "neutral");
+    const changed = rulesSummary(rules);
+    showBanner(`Round ${round}`, "neutral", changed.length > 0 ? changed.join(" · ") : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -882,7 +892,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       posesRef.current = poses;
       // Upgrade rounds open with the upgrade, so it can shape this round's picks.
       // The pool is never refilled, so an exhausted one just skips the choice.
-      const augs = isAugmentRound(roundNum)
+      const augs = rules.upgrades && isAugmentRound(roundNum)
         ? offerAugments(playerAug.current, augmentOfferCount(playerAug.current), upgradeTier(roundNum))
         : [];
       save({
@@ -1059,6 +1069,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     picksLeft,
     picks: roundLog.current.picks.slice(),
     grants: JSON.parse(JSON.stringify(playerAug.current.grants)),
+    offer,
+    unitRerolls,
   });
   const pushUndo = () => {
     const entry = snapshot();
@@ -1076,6 +1088,12 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     setFrozen(prev.frozen);
     setPicksLeft(prev.picksLeft);
     roundLog.current.picks = prev.picks;
+    if (prev.offer !== offer) {
+      // Undoing an easy-mode reroll: the old cards come back, and the reroll too.
+      setOffer(prev.offer);
+      setUnitRerolls(prev.unitRerolls);
+      setRerollN((n) => n + 1);
+    }
     setSelected(null);
   };
 
@@ -1458,12 +1476,14 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     // Allowed after both picks too: rerolling then is a look at more cards, to
     // freeze any worth keeping for next round.
     if (phase !== "pick" || unitRerolls <= 0) return;
+    // Easy mode: the reroll goes on the undo stack like any other action.
+    if (rules.easy) pushUndo();
     const fresh = rollOffer(OFFER_COUNT, playerAug.current);
     setOffer(offer.map((k, i) => (usedOffers.includes(i) || frozen.includes(i) ? k : fresh[i])));
     setUnitRerolls(unitRerolls - 1);
     roundLog.current.rr++;
     setRerollN((n) => n + 1);
-    setHistory([]);
+    if (!rules.easy) setHistory([]);
     setSelected(null);
   };
 
@@ -1529,7 +1549,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
    * pool is exhausted.
    */
   const upgradeIn =
-    AUGMENTS.length - playerAug.current.active.length <= 0
+    !rules.upgrades || AUGMENTS.length - playerAug.current.active.length <= 0
       ? null
       : phase === "augment"
         ? 0
@@ -2116,6 +2136,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
             battleLog={battleLog}
             onBattleLog={onBattleLog}
             difficultyLabel={DIFFICULTY_LABEL[difficulty]}
+            rulesLabel={rulesSummary(rules).join(" · ") || "Standard"}
           />
         )}
         {showHelp && <HelpPanel onClose={() => setShowHelp(false)} />}

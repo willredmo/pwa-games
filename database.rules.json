@@ -143,6 +143,14 @@
           "guest": { ".validate": "newData.isString() && newData.val().length <= 40" },
           "createdAt": { ".validate": "newData.isNumber() && (!data.exists() || data.val() === newData.val())" },
           "startedAt": { ".validate": "newData.isNumber()" },
+          "rules": {
+            ".validate": "newData.hasChildren(['startHp', 'easy', 'synergies', 'upgrades'])",
+            "startHp": { ".validate": "(newData.val() === 100 || newData.val() === 200 || newData.val() === 300) && (!data.exists() || data.val() === newData.val())" },
+            "easy": { ".validate": "newData.isBoolean() && (!data.exists() || data.val() === newData.val())" },
+            "synergies": { ".validate": "newData.isBoolean() && (!data.exists() || data.val() === newData.val())" },
+            "upgrades": { ".validate": "newData.isBoolean() && (!data.exists() || data.val() === newData.val())" },
+            "$other": { ".validate": false }
+          },
           "proto": { ".validate": "newData.isNumber()" },
           "presence": {
             "p1": {

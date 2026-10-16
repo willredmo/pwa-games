@@ -1,4 +1,4 @@
-import { DIFFICULTIES, START_HP_OPTIONS, type Difficulty } from "../game/match";
+import { DIFFICULTIES, START_HP_OPTIONS, type Difficulty, type MatchRules } from "../game/match";
 import type { SavedMatch } from "../game/save";
 import { DIFFICULTY_INFO } from "./Overlays";
 
@@ -12,9 +12,9 @@ export interface TitleProps {
   saved: SavedMatch | null;
   difficulty: Difficulty;
   onDifficulty: (d: Difficulty) => void;
-  /** Health both players start a new CPU match with. */
-  startHp: number;
-  onStartHp: (hp: number) => void;
+  /** Settings for a new CPU match, and for a duel you host. */
+  rules: MatchRules;
+  onRules: (r: Partial<MatchRules>) => void;
   sound: boolean;
   onSound: (on: boolean) => void;
   onPlay: () => void;
@@ -87,22 +87,7 @@ export function Title(props: TitleProps) {
             );
           })}
         </div>
-        {/* Match length: both players start with the same pool. */}
-        <div className="title__hp" role="radiogroup" aria-label="Starting health">
-          <span className="title__hp-label">Starting health</span>
-          {START_HP_OPTIONS.map((hp) => (
-            <button
-              key={hp}
-              role="radio"
-              aria-checked={hp === props.startHp}
-              className={`hp-option${hp === props.startHp ? " hp-option--on" : ""}`}
-              onClick={() => props.onStartHp(hp)}
-            >
-              ♥ {hp}
-              <small>{hp < 200 ? "Quick" : hp > 200 ? "Long" : "Standard"}</small>
-            </button>
-          ))}
-        </div>
+        <MatchSettings rules={props.rules} onRules={props.onRules} />
         <button
           className={`${saved || props.suggestTutorial ? "ghost-btn" : "primary-btn"} primary-btn--wide`}
           onClick={props.onPlay}
@@ -142,5 +127,59 @@ export function Title(props: TitleProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+const TOGGLES: { key: "easy" | "synergies" | "upgrades"; label: string; hint: string }[] = [
+  { key: "easy", label: "Easy mode", hint: "Undo also takes back rerolls" },
+  { key: "synergies", label: "Class bonuses", hint: "Full-row bonuses for one class" },
+  { key: "upgrades", label: "Upgrades", hint: `A pick every 3 rounds` },
+];
+
+/**
+ * The match settings: starting health and three switches. They apply to a new
+ * CPU match and to a duel you host (the guest plays under the host's).
+ */
+function MatchSettings({ rules, onRules }: { rules: MatchRules; onRules: (r: Partial<MatchRules>) => void }) {
+  return (
+    <details className="match-settings">
+      <summary>
+        Match settings
+        <span className="match-settings__now">
+          ♥{rules.startHp}
+          {rules.easy ? " · Easy" : ""}
+          {!rules.synergies ? " · no bonuses" : ""}
+          {!rules.upgrades ? " · no upgrades" : ""}
+        </span>
+      </summary>
+      <div className="title__hp" role="radiogroup" aria-label="Starting health">
+        <span className="title__hp-label">Starting health</span>
+        {START_HP_OPTIONS.map((hp) => (
+          <button
+            key={hp}
+            role="radio"
+            aria-checked={hp === rules.startHp}
+            className={`hp-option${hp === rules.startHp ? " hp-option--on" : ""}`}
+            onClick={() => onRules({ startHp: hp })}
+          >
+            ♥ {hp}
+            <small>{hp < 200 ? "Quick" : hp > 200 ? "Long" : "Standard"}</small>
+          </button>
+        ))}
+      </div>
+      <div className="match-settings__toggles">
+        {TOGGLES.map((t) => (
+          <label key={t.key} className="toggle">
+            <input type="checkbox" checked={rules[t.key]} onChange={(e) => onRules({ [t.key]: e.target.checked })} />
+            <span className="toggle__switch" aria-hidden="true" />
+            <span>
+              {t.label}
+              <small>{t.hint}</small>
+            </span>
+          </label>
+        ))}
+      </div>
+      <p className="match-settings__note">Used for matches against the CPU and for duels you host.</p>
+    </details>
   );
 }

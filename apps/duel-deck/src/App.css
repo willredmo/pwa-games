@@ -1110,7 +1110,22 @@ button.menu-item:hover { border-color: #5a5180; }
   text-transform: uppercase;
   color: var(--muted);
 }
-/* Starting health: three small radios between the opponent and Play. */
+/* Match settings (ui/Title.tsx): a collapsible block between the opponent and Play. */
+.match-settings { border: 1px solid #3a3454; border-radius: 12px; background: #221e33; padding: 0.15rem 0.6rem; }
+.match-settings > summary { cursor: pointer; padding: 0.45rem 0.1rem; font-weight: 800; font-size: 0.9rem; display: flex; justify-content: space-between; gap: 0.5rem; }
+.match-settings__now { color: var(--muted); font-weight: 600; font-size: 0.8rem; }
+.match-settings[open] > summary { border-bottom: 1px solid #3a3454; margin-bottom: 0.5rem; }
+.match-settings__toggles { display: grid; gap: 0.35rem; margin: 0.6rem 0 0.2rem; }
+.match-settings__note { margin: 0.35rem 0 0.4rem; font-size: 0.74rem; color: var(--muted); text-align: center; }
+.toggle { display: flex; align-items: center; gap: 0.6rem; cursor: pointer; font-size: 0.88rem; font-weight: 700; }
+.toggle small { display: block; font-weight: 500; font-size: 0.74rem; color: var(--muted); }
+.toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.toggle__switch { flex: none; width: 2.3rem; height: 1.3rem; border-radius: 999px; background: #3a3454; position: relative; transition: background 0.15s; }
+.toggle__switch::after { content: ""; position: absolute; top: 0.15rem; left: 0.15rem; width: 1rem; height: 1rem; border-radius: 50%; background: #e9e4ff; transition: transform 0.15s; }
+.toggle input:checked + .toggle__switch { background: #3a86d6; }
+.toggle input:checked + .toggle__switch::after { transform: translateX(1rem); }
+.toggle input:focus-visible + .toggle__switch { outline: 2px solid #f0b429; outline-offset: 2px; }
+/* Starting health: three small radios inside Match settings. */
 .title__hp { display: flex; align-items: center; justify-content: center; gap: 0.4rem; flex-wrap: wrap; }
 .title__hp-label { color: var(--muted); font-size: 0.82rem; font-weight: 700; margin-right: 0.2rem; }
 .hp-option {
@@ -1191,6 +1206,7 @@ button.menu-item:hover { border-color: #5a5180; }
    the same join-code flow, so they should look like the same flow. */
 .lobby { display: flex; flex-direction: column; gap: 0.75rem; text-align: center; }
 .lobby__hint { margin: 0.3rem 0 0; color: #d5dceb; font-size: 0.92rem; }
+.lobby__rules { margin: 0; color: var(--muted); font-size: 0.82rem; font-weight: 700; }
 .lobby__code { display: flex; justify-content: center; gap: 0.4rem; margin: 0.3rem 0; }
 .lobby__code span {
   display: grid;

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { Difficulty } from "./game/match";
+import type { Difficulty, MatchRules } from "./game/match";
 import { loadMatch, loadSettings, saveSettings, type SavedMatch, type Settings } from "./game/save";
 import { setSoundEnabled, unlockSound } from "./game/sound";
 import { Game } from "./ui/Game";
@@ -19,13 +19,16 @@ import "./App.css";
 
 type Screen = "title" | "game";
 
+/** The title screen's match settings, as the rules a match is built with. */
+const rulesFrom = (s: Settings): MatchRules => ({ startHp: s.startHp, easy: s.easy, synergies: s.synergies, upgrades: s.upgrades });
+
 /** What `Game` was mounted with. `key` forces a remount when this changes. */
 interface Run {
   id: number;
   resume: SavedMatch | null;
   difficulty: Difficulty;
-  /** Starting health for a fresh CPU match. */
-  startHp?: number;
+  /** Settings for a fresh CPU match. */
+  rules?: MatchRules;
   online?: Session;
   /** The first-match tutorial (vs Easy, never saved). */
   tutorial?: boolean;
@@ -72,7 +75,7 @@ export default function App() {
     // Audio can only start from a gesture, and this click is one.
     if (settings.sound) unlockSound();
     setSettings((s) => ({ ...s, difficulty }));
-    setRun({ id: ++runId.n, resume, difficulty, startHp: settings.startHp });
+    setRun({ id: ++runId.n, resume, difficulty, rules: rulesFrom(settings) });
     setScreen("game");
   };
 
@@ -134,7 +137,7 @@ export default function App() {
           key={run.id}
           resume={run.resume}
           difficulty={run.difficulty}
-          startHp={run.startHp}
+          rules={run.rules}
           online={run.online}
           tutorial={run.tutorial}
           speed={settings.speed}
@@ -153,8 +156,8 @@ export default function App() {
           saved={saved}
           difficulty={settings.difficulty}
           onDifficulty={(difficulty) => setSettings((s) => ({ ...s, difficulty }))}
-          startHp={settings.startHp}
-          onStartHp={(startHp) => setSettings((s) => ({ ...s, startHp }))}
+          rules={rulesFrom(settings)}
+          onRules={(r) => setSettings((s) => ({ ...s, ...r }))}
           sound={settings.sound}
           onSound={(sound) => {
             if (sound) unlockSound();
@@ -187,6 +190,7 @@ export default function App() {
       {lobby && (
         <Lobby
           {...lobby}
+          rules={rulesFrom(settings)}
           onReady={startOnline}
           onClose={() => {
             setLobby(null);

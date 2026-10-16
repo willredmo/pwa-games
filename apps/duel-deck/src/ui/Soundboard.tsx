@@ -13,7 +13,7 @@ const SOUNDS: { kind: Sfx; name: string; when: string; unused?: boolean; scales?
   { kind: "ability", name: "Ability", when: "A named ability fires (Charge, Bodyguard, Overflow...)." },
   { kind: "place", name: "Place", when: "A unit is put on your row, or moved. (Louder: a wooden knock.)" },
   { kind: "merge", name: "Merge", when: "Two units become one." },
-  { kind: "knight", name: "Knighted / Mastered", when: "A Squire is knighted, or a unit reaches level 10." },
+  { kind: "knight", name: "Knighted / Mastered", when: "A Squire is knighted, or a unit reaches the max level." },
   { kind: "upgrade", name: "Upgrade", when: "You take an upgrade." },
   { kind: "round-win", name: "Round won", when: "You hold the row at the end of a round: two bells." },
   { kind: "round-loss", name: "Round lost", when: "The enemy holds the row." },
