@@ -15,6 +15,7 @@ export const PATCH_NOTES: Release[] = [
     notes: [
       "Offer cards that can upgrade a unit on your row show ⬆ and that unit's level.",
       "Replays: the other team no longer goes missing, and the banner says which round you're watching.",
+      "Online duels: the end screen no longer lists the opponent's units over and over (each round counted them as new units).",
     ],
   },
   {

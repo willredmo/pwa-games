@@ -950,6 +950,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
    * current value rather than close over the one from its subscribe render.
    */
   const pendingCommit = useRef<Board | null>(null);
+  /** The opponent's unit ids → our local ids for them, so each keeps one identity all match. */
+  const oppIds = useRef(new Map<string, string>());
   const roundRef = useRef(round);
   roundRef.current = round;
   /** The opponent's connection, for the waiting screen. */
@@ -988,7 +990,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   const resolveOnline = useCallback(
     (mine: Board, theirs: Commit) => {
       const committed = cloneBoard(mine);
-      const { lanes, aug } = unpackCommit(theirs, ENEMY, committed.lanes);
+      const { lanes, aug } = unpackCommit(theirs, ENEMY, committed.lanes, oppIds.current);
       for (let lane = 0; lane < committed.lanes; lane++) {
         writeLane(committed, ENEMY, lane, lanes[lane]);
       }

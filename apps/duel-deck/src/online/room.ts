@@ -43,7 +43,7 @@ efreshForRound compute (unit
  * different one is refused, and the lobby asks the outdated side to update.
  * Rooms from before it existed have none, which reads as 1.
  */
-export const PROTOCOL = 7;
+export const PROTOCOL = 8;
 
 export type Player = "p1" | "p2";
 export const otherPlayer = (p: Player): Player => (p === "p1" ? "p2" : "p1");
@@ -66,6 +66,13 @@ export interface WireUnit {
    * no id ever crosses the wire, and a grant can't be stranded.
    */
   grant?: Grant;
+  /**
+   * The sender's own id for this unit. Never used as an id here (it would
+   * collide with ours); the receiver maps it to one local id for the whole
+   * match (`unpackCommit`'s idMap), so the same unit keeps the same identity
+   * round after round — the stats, poses and replays key on it.
+   */
+  ref?: string;
 }
 
 export interface Commit {
@@ -106,7 +113,7 @@ export function packCommit(round: number, lanes: Unit[][], aug: AugmentState): C
     round,
     lanes: lanes.map((lane) =>
       lane.map((u) => {
-        const w: WireUnit = { key: u.key, baseAtk: u.baseAtk, baseMaxHp: u.baseMaxHp, merges: u.merges };
+        const w: WireUnit = { key: u.key, baseAtk: u.baseAtk, baseMaxHp: u.baseMaxHp, merges: u.merges, ref: u.id };
         const grant = aug.grants?.[u.id];
         if (grant) w.grant = grant;
         return w;
@@ -133,11 +140,22 @@ export function unpackCommit(
   c: Commit,
   side: Side,
   laneCount: number,
+  /**
+   * The sender's unit ids → the local ids given them, kept for the match.
+   * Without it every round minted new ids for the same units, and the result
+   * screen counted the opponent's row anew each round (118 "enemy units").
+   */
+  idMap?: Map<string, string>,
 ): { lanes: Unit[][]; aug: AugmentState } {
   const grants: Record<string, Grant> = {};
   const lanes = Array.from({ length: laneCount }, (_, i) =>
     (c.lanes?.[i] ?? []).map((w) => {
       const u = makeUnit(w.key, side);
+      if (idMap && w.ref) {
+        const known = idMap.get(w.ref);
+        if (known) u.id = known;
+        else idMap.set(w.ref, u.id);
+      }
       u.baseAtk = w.baseAtk;
       u.baseMaxHp = w.baseMaxHp;
       u.merges = w.merges ?? 0;

@@ -707,7 +707,12 @@ Three things make that safe, and none are obvious:
   drags, poses, playback and augment grants. `unpackCommit` mints fresh local
   ids. That breaks `AugmentState.grants`, which is id-keyed, so a grant travels
   on the `WireUnit` that carries it and is re-keyed on arrival. Nothing sends an
-  id back, so local-only ids are safe.
+  id back, so local-only ids are safe. Each wire unit also carries the sender's
+  own id as `ref`, which the receiver maps to one local id for the whole match
+  (`unpackCommit`'s idMap, `oppIds` in Game.tsx). Without it the same units got
+  new ids every round and the result screen counted the opponent's row anew
+  each round ("Enemy units (118)" after 25 rounds); it also kept fallen poses
+  stuck on the dead ids. `ref` is never used as an id itself.
 
 `pnpm netcheck` is the guard: it plays whole matches between two simulated
 devices exchanging commits through a JSON round-trip that strips empty values

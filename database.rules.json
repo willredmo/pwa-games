@@ -185,6 +185,9 @@
                     "merges": {
                       ".validate": "newData.isNumber()"
                     },
+                    "ref": {
+                      ".validate": "newData.isString() && newData.val().length <= 24"
+                    },
                     "grant": {
                       ".validate": "newData.hasChildren()"
                     },
