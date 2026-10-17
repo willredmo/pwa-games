@@ -799,6 +799,20 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     return { cls, done: !!done, have, cap: target, swap: units.length - have, pips };
   })();
 
+  /**
+   * The unit on your row an offer card would upgrade: the highest-level one it
+   * can merge into (same type, or a Squire into a Knight; under the cap), or
+   * null. Shown on the card, so you can see which picks level up what you have.
+   */
+  const mergeTargetFor = (key: string): Unit | null => {
+    const cap = mergeCapFor(board, PLAYER);
+    let best: Unit | null = null;
+    for (const u of sideUnits(board, PLAYER)) {
+      if (canAbsorb(u.key, u.merges, key, 1, cap) && (!best || u.merges > best.merges)) best = u;
+    }
+    return best;
+  };
+
   /** Merges a Squire still needs to be knighted, by its own side's threshold. */
   const squireToGo = (u: Unit): number | null =>
     u.key === "squire" ? knightAt(u.side === PLAYER ? playerAug.current : enemyAug.current) - u.merges : null;
@@ -947,7 +961,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
    * The last round played, for "Replay last fight". resolveRound is pure, so
    * the board as committed plus its result replays exactly, blow for blow.
    */
-  const lastFight = useRef<{ committed: Board; result: RoundResult } | null>(null);
+  const lastFight = useRef<{ committed: Board; result: RoundResult; round: number } | null>(null);
   /** While a replay runs: where to go back to when it ends (the phase and board it interrupted). */
   const replayFrom = useRef<{ phase: Phase; board: Board } | null>(null);
   const [replaying, setReplaying] = useState(false);
@@ -956,7 +970,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   const playRound = useCallback((committed: Board) => {
     // resolveRound clones its input, so `committed` keeps the full roster.
     const res = resolveRound(committed);
-    lastFight.current = { committed, result: res };
+    lastFight.current = { committed, result: res, round: roundRef.current };
     committedRef.current = committed;
     setBoard(committed);
     setResult(res);
@@ -1115,6 +1129,13 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     replayFrom.current = { phase, board };
     setReplaying(true);
     setSelected(null);
+    // Start every unit standing. Poses outlive the fight: a unit that fell
+    // keeps its "dying" pose, and online the opponent's units get fresh ids
+    // each round, so their fallen poses are never cleared — the replay would
+    // open with the other team invisible.
+    posesRef.current = {};
+    setFeed([]);
+    showBanner(`Replay · round ${fight.round}`, "neutral");
     setBoard(fight.committed);
     setResult(fight.result);
     setFrames(buildFrames(fight.committed, fight.result.ticks, fight.result.opening));
@@ -2359,6 +2380,18 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
                     <span className="stat stat--hp">♥{u.maxHp}</span>
                   </span>
                 )}
+                {/* Which of your units this card would level up. */}
+                {!taken &&
+                  (() => {
+                    const target = mergeTargetFor(key);
+                    if (!target) return null;
+                    const lv = levelOf(target.merges);
+                    return (
+                      <span className="card__merge" title={`Merges into your ${target.name}: level ${lv} → ${lv + 1}`}>
+                        ⬆ Lv{lv}
+                      </span>
+                    );
+                  })()}
                 {/* Frozen: the card sealed in a block of ice (pointer-events none, so it still drags). */}
                 {isFrozen && !taken && (
                   <span className="card__ice" aria-hidden="true">

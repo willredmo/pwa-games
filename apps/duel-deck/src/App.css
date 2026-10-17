@@ -1064,6 +1064,22 @@ button.menu-item:hover { border-color: #5a5180; }
 @media (prefers-reduced-motion: no-preference) {
   .card--frozen, .card-row--frozen { animation: frost-shimmer 3.2s ease-in-out infinite; }
 }
+.card__merge {
+  position: absolute;
+  left: 50%;
+  bottom: -0.55rem;
+  transform: translateX(-50%);
+  z-index: 3;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: #3fae6a;
+  color: #06240f;
+  font-size: 0.66rem;
+  font-weight: 900;
+  white-space: nowrap;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 0 8px rgba(95, 224, 143, 0.55);
+  pointer-events: none;
+}
 .card--frozen .card__ice {
   position: absolute;
   inset: 1px;

@@ -10,6 +10,14 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.4.2",
+    date: "Oct 17, 2026",
+    notes: [
+      "Offer cards that can upgrade a unit on your row show ⬆ and that unit's level.",
+      "Replays: the other team no longer goes missing, and the banner says which round you're watching.",
+    ],
+  },
+  {
     version: "1.4.1",
     date: "Oct 16, 2026",
     notes: [
