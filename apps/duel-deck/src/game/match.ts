@@ -155,8 +155,15 @@ export function rulesSummary(r: MatchRules): string[] {
   ];
 }
 
-/** Starting health choices on the title screen (both players start equal). */
+/** Starting health presets on the title screen (both players start equal). */
 export const START_HP_OPTIONS = [100, 200, 300] as const;
+/** A custom starting health must be a whole number in this range (the database rules enforce it too). */
+export const START_HP_MIN = 20;
+export const START_HP_MAX = 999;
+/** A starting health clamped to the allowed range, or null if it isn't a number. */
+export function clampStartHp(n: number): number | null {
+  return Number.isFinite(n) ? Math.min(START_HP_MAX, Math.max(START_HP_MIN, Math.round(n))) : null;
+}
 
 /** The pool this match started with (saves from before the setting read as 200). */
 export function startHpOf(board: Board): number {

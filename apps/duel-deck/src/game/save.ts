@@ -100,7 +100,8 @@ const DEFAULTS: Settings = {
   synergies: true,
   upgrades: true,
 };
-const START_HP_CHOICES = [100, 200, 300];
+/** Mirrors START_HP_MIN/MAX in match.ts (not imported: match.ts would pull the engine into this module's type-only import). */
+const START_HP_RANGE = [20, 999];
 
 /**
  * Read the saved settings, falling back per field so a partial or older blob
@@ -130,7 +131,10 @@ export function loadSettings(): Settings {
     speed,
     sound: saved.sound ?? DEFAULTS.sound,
     battleLog: saved.battleLog ?? DEFAULTS.battleLog,
-    startHp: START_HP_CHOICES.includes(saved.startHp as number) ? (saved.startHp as number) : DEFAULTS.startHp,
+    startHp:
+      Number.isInteger(saved.startHp) && saved.startHp! >= START_HP_RANGE[0] && saved.startHp! <= START_HP_RANGE[1]
+        ? saved.startHp!
+        : DEFAULTS.startHp,
     easy: saved.easy ?? DEFAULTS.easy,
     synergies: saved.synergies ?? DEFAULTS.synergies,
     upgrades: saved.upgrades ?? DEFAULTS.upgrades,

@@ -13,6 +13,8 @@ export const PATCH_NOTES: Release[] = [
     version: "1.4.2",
     date: "Oct 17, 2026",
     notes: [
+      "Custom starting health: besides 100, 200 and 300, type any amount from 20 to 999.",
+      "The title screen scrolls when it doesn't fit (it was cut off on smaller phones).",
       "Offer cards that can upgrade a unit on your row show ⬆ and that unit's level.",
       "Replays: the other team no longer goes missing, and the banner says which round you're watching.",
       "Online duels: the end screen no longer lists the opponent's units over and over (each round counted them as new units).",

@@ -1,4 +1,5 @@
-import { DIFFICULTIES, START_HP_OPTIONS, type Difficulty, type MatchRules } from "../game/match";
+import { useState } from "react";
+import { DIFFICULTIES, START_HP_MAX, START_HP_MIN, START_HP_OPTIONS, clampStartHp, type Difficulty, type MatchRules } from "../game/match";
 import type { SavedMatch } from "../game/save";
 import { DIFFICULTY_INFO } from "./Overlays";
 
@@ -152,6 +153,16 @@ const TOGGLES: { key: "easy" | "synergies" | "upgrades"; label: string; hint: st
  * CPU match and to a duel you host (the guest plays under the host's).
  */
 function MatchSettings({ rules, onRules }: { rules: MatchRules; onRules: (r: Partial<MatchRules>) => void }) {
+  const preset = (START_HP_OPTIONS as readonly number[]).includes(rules.startHp);
+  /** Custom health: open while picked, holding what's typed until it's a valid number. */
+  const [custom, setCustom] = useState(!preset);
+  const [draft, setDraft] = useState(String(rules.startHp));
+  const commitDraft = () => {
+    const hp = clampStartHp(parseInt(draft, 10));
+    if (hp === null) return setDraft(String(rules.startHp));
+    setDraft(String(hp));
+    onRules({ startHp: hp });
+  };
   return (
     <details className="match-settings">
       <summary>
@@ -164,15 +175,52 @@ function MatchSettings({ rules, onRules }: { rules: MatchRules; onRules: (r: Par
           <button
             key={hp}
             role="radio"
-            aria-checked={hp === rules.startHp}
-            className={`hp-option${hp === rules.startHp ? " hp-option--on" : ""}`}
-            onClick={() => onRules({ startHp: hp })}
+            aria-checked={!custom && hp === rules.startHp}
+            className={`hp-option${!custom && hp === rules.startHp ? " hp-option--on" : ""}`}
+            onClick={() => {
+              setCustom(false);
+              setDraft(String(hp));
+              onRules({ startHp: hp });
+            }}
           >
             ♥ {hp}
             <small>{hp < 200 ? "Quick" : hp > 200 ? "Long" : "Standard"}</small>
           </button>
         ))}
+        <button
+          role="radio"
+          aria-checked={custom}
+          className={`hp-option${custom ? " hp-option--on" : ""}`}
+          onClick={() => setCustom(true)}
+        >
+          ♥ ?
+          <small>Custom</small>
+        </button>
       </div>
+      {custom && (
+        <label className="hp-custom">
+          Your own starting health
+          <input
+            type="number"
+            inputMode="numeric"
+            min={START_HP_MIN}
+            max={START_HP_MAX}
+            step={10}
+            value={draft}
+            autoFocus
+            onChange={(e) => {
+              setDraft(e.target.value);
+              const n = parseInt(e.target.value, 10);
+              if (n >= START_HP_MIN && n <= START_HP_MAX) onRules({ startHp: n });
+            }}
+            onBlur={commitDraft}
+            onKeyDown={(e) => e.key === "Enter" && commitDraft()}
+          />
+          <small>
+            {START_HP_MIN} to {START_HP_MAX}
+          </small>
+        </label>
+      )}
       <div className="match-settings__toggles">
         {TOGGLES.map((t) => (
           <label key={t.key} className="toggle">

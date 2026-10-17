@@ -436,7 +436,9 @@ round offers a choice (`isAugmentRound` gated in Game), so the CPU never takes
 one either. Non-default settings show on the round-1 banner, in ☰ and in the
 host's lobby. The tutorial always uses the defaults. `PROTOCOL` 7.
 
-Starting health: both pools start at 100, 200 (default) or 300 (`START_HP_OPTIONS`),
+Starting health: both pools start at 100, 200 (default) or 300 (`START_HP_OPTIONS`), or a
+custom whole number from `START_HP_MIN` 20 to `START_HP_MAX` 999 (`clampStartHp`; the
+database rules check the same range for a hosted duel's `rules.startHp`),
 stored on the board as `Board.startHp` (absent = 200, so
 old saves read right) and read through `startHpOf`. Everything that assumed 200
 scales with it: the HP bars' max, the result screen's bars, Field medic's heal
