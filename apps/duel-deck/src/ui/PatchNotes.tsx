@@ -10,6 +10,14 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.4.1",
+    date: "Oct 16, 2026",
+    notes: [
+      "Match settings has its own section on the title screen, and says it applies to both matches vs the CPU and duels you host. Each Play button shows the settings it will use; joining a duel uses the host's.",
+      "Frozen cards are sealed in a block of ice.",
+    ],
+  },
+  {
     version: "1.4.0",
     date: "Oct 16, 2026",
     notes: [

@@ -63,7 +63,14 @@ export function Title(props: TitleProps) {
           </button>
         )}
 
-        <h2 className="title__label">{saved ? "New match" : "Play"}</h2>
+        {/* Above both ways to play, since it applies to both. */}
+        <h2 className="title__label">Match settings</h2>
+        <p className="title__applies">
+          For both <strong>🤖 matches vs the CPU</strong> and <strong>🌐 duels you host</strong>
+        </p>
+        <MatchSettings rules={props.rules} onRules={props.onRules} />
+
+        <h2 className="title__label">{saved ? "New match vs CPU" : "Play vs CPU"}</h2>
         <div className="title__options">
           {DIFFICULTIES.map((d, i) => {
             const info = DIFFICULTY_INFO[d] ?? { icon: "🤖", blurb: "" };
@@ -87,12 +94,12 @@ export function Title(props: TitleProps) {
             );
           })}
         </div>
-        <MatchSettings rules={props.rules} onRules={props.onRules} />
         <button
           className={`${saved || props.suggestTutorial ? "ghost-btn" : "primary-btn"} primary-btn--wide`}
           onClick={props.onPlay}
         >
           {saved ? `New match vs ${DIFFICULTY_LABEL[difficulty]}` : `Play vs ${DIFFICULTY_LABEL[difficulty]}`}
+          <small>{settingsText(props.rules)}</small>
         </button>
         {saved && (
           <p className="title__warn">Starting a new match ends the one in progress.</p>
@@ -105,8 +112,12 @@ export function Title(props: TitleProps) {
           </button>
         )}
         <div className="title__row">
-          <button className="ghost-btn" onClick={props.onHost}>🌐 Host a duel</button>
-          <button className="ghost-btn" onClick={props.onJoin}>Join with code</button>
+          <button className="ghost-btn" onClick={props.onHost}>
+            🌐 Host a duel <small>{settingsText(props.rules)}</small>
+          </button>
+          <button className="ghost-btn" onClick={props.onJoin}>
+            Join with code <small>Host's settings</small>
+          </button>
         </div>
         {props.notice && <p className="title__notice" role="status">{props.notice}</p>}
 
@@ -144,13 +155,8 @@ function MatchSettings({ rules, onRules }: { rules: MatchRules; onRules: (r: Par
   return (
     <details className="match-settings">
       <summary>
-        Match settings
-        <span className="match-settings__now">
-          ♥{rules.startHp}
-          {rules.easy ? " · Easy" : ""}
-          {!rules.synergies ? " · no bonuses" : ""}
-          {!rules.upgrades ? " · no upgrades" : ""}
-        </span>
+        <span className="match-settings__now">{settingsText(rules)}</span>
+        <span className="match-settings__edit">Change</span>
       </summary>
       <div className="title__hp" role="radiogroup" aria-label="Starting health">
         <span className="title__hp-label">Starting health</span>
@@ -179,7 +185,18 @@ function MatchSettings({ rules, onRules }: { rules: MatchRules; onRules: (r: Par
           </label>
         ))}
       </div>
-      <p className="match-settings__note">Used for matches against the CPU and for duels you host.</p>
     </details>
   );
+}
+
+/** The settings in a few words, for the summary line and under each Play button. */
+function settingsText(r: MatchRules): string {
+  return [
+    `♥${r.startHp}`,
+    r.easy ? "Easy mode" : null,
+    r.synergies ? null : "No class bonuses",
+    r.upgrades ? null : "No upgrades",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }

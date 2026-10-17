@@ -2359,6 +2359,12 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
                     <span className="stat stat--hp">♥{u.maxHp}</span>
                   </span>
                 )}
+                {/* Frozen: the card sealed in a block of ice (pointer-events none, so it still drags). */}
+                {isFrozen && !taken && (
+                  <span className="card__ice" aria-hidden="true">
+                    <span className="card__ice-glint" />
+                  </span>
+                )}
               </button>
               {!taken && (
                 <button
