@@ -16,8 +16,8 @@ export const PATCH_NOTES: Release[] = [
       "Match settings: before a match, choose starting health and turn Easy mode, class bonuses and upgrades on or off.",
       "Easy mode: Undo also takes back a reroll, and gives the reroll back.",
       "Online duels use the host's match settings, shown in the lobby and at the start of the duel.",
-      "The level cap is now 12 (was 10). Mastery abilities unlock at level 12.",
-      "Merges into a Knight give a little less, to keep Knights in line with the higher cap.",
+      "Every unit that reaches level 10 opens one more slot in your row (up to 8), so long matches don't get stuck. This replaces the Reinforcements upgrade, which is gone.",
+      "Class bonuses now need 5 or more units, all of one class (not every slot), so an extra slot never breaks one.",
     ],
   },
   {

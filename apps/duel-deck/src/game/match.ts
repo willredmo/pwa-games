@@ -15,7 +15,7 @@ import {
   cloneBoard,
 } from "../engine/board";
 import { resolveRound } from "../engine/combat";
-import { KNIGHT_AT, OFFER_KEYS, UNITS, canAbsorb, synergyOf } from "../engine/units";
+import { KNIGHT_AT, OFFER_KEYS, UNITS, canAbsorb, isMastered, synergyOf } from "../engine/units";
 import type { Archetype, Board, Side, Unit } from "../engine/types";
 import {
   SABOTAGE_ATK,
@@ -43,6 +43,8 @@ export const ENEMY: Side = "enemy";
 export const LANES = 1;
 /** Queue depth per side. */
 export const DEPTH = 5;
+/** Most extra slots a side can earn from units at the level cap (a row of 8). */
+export const MAX_EARNED_SLOTS = 3;
 /**
  * Each player's HP pool. Round damage is the winner's surviving units' attack,
  * so pools drain slowly; 200 gives long matches with several augment picks.
@@ -740,18 +742,29 @@ export function refreshForRound(
   // Capacity is always explicit: once one side's Reinforcements grows the board,
   // `capacityOf`'s fallback (the board depth) would hand the other side the
   // extra slot too.
-  const withCapacity = (state: AugmentState) => {
-    const mods = sideModsFor(state);
-    return { ...mods, capacity: mods.capacity ?? DEPTH };
+  // Knighting first: a Knight reaching the cap earns a slot like anyone.
+  promoteSquires(board, PLAYER, playerAug);
+  promoteSquires(board, ENEMY, enemyAug);
+  // Every unit at the level cap opens one more slot for its side (kept even if
+  // that unit is later replaced), so a long match never stalls on a row of
+  // maxed units with nowhere to put a pick.
+  const earned = (side: Side) => {
+    const now = Math.min(MAX_EARNED_SLOTS, sideUnits(board, side).filter((u) => isMastered(u.merges)).length);
+    return Math.max(board.earnedSlots?.[side] ?? 0, now);
   };
-  board.mods = { player: withCapacity(playerAug), enemy: withCapacity(enemyAug) };
+  board.earnedSlots = { player: earned(PLAYER), enemy: earned(ENEMY) };
+  const withCapacity = (state: AugmentState, side: Side) => {
+    const mods = sideModsFor(state);
+    // Ascendant's single slot stays single.
+    if (mods.uncapped) return { ...mods, capacity: mods.capacity ?? 1 };
+    return { ...mods, capacity: (mods.capacity ?? DEPTH) + (board.earnedSlots![side] ?? 0) };
+  };
+  board.mods = { player: withCapacity(playerAug, PLAYER), enemy: withCapacity(enemyAug, ENEMY) };
   // Ascendant: the row is one unit. Taking it trims the row to its best unit
   // here, where every path (the app, the AI, the sim, online) passes.
   for (const side of [PLAYER, ENEMY]) if (board.mods[side]!.uncapped) keepChampion(board, side);
-  // Knighting happens here because every merge path (offer, placed unit, AI)
-  // is followed by a refresh — one place to check, so none can skip it.
-  promoteSquires(board, PLAYER, playerAug);
-  promoteSquires(board, ENEMY, enemyAug);
+  // (Knighting, above, happens here because every merge path — offer, placed
+  // unit, AI — is followed by a refresh: one place to check, so none can skip it.)
   ensureDepth(board, Math.max(board.mods.player!.capacity!, board.mods.enemy!.capacity!));
   const p = sideUnits(board, PLAYER);
   const e = sideUnits(board, ENEMY);

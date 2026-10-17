@@ -791,11 +791,12 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     const cls = done ?? [...counts].sort((a, b) => b[1] - a[1] || (a[0] === front ? -1 : b[0] === front ? 1 : 0))[0][0];
     const have = counts.get(cls) ?? 0;
     if (!done && have < 2) return null;
-    const pips = Array.from({ length: cap }, (_, i): SynergyPip => {
+    const target = Math.max(SYNERGY_MIN, units.length);
+    const pips = Array.from({ length: target }, (_, i): SynergyPip => {
       const u = units[i];
       return !u ? "empty" : UNITS[u.key].archetype === cls ? "match" : "other";
     });
-    return { cls, done: !!done, have, cap, swap: units.length - have, pips };
+    return { cls, done: !!done, have, cap: target, swap: units.length - have, pips };
   })();
 
   /** Merges a Squire still needs to be knighted, by its own side's threshold. */
@@ -2435,7 +2436,7 @@ function SynergyMeter({ goal }: { goal: SynergyGoal }) {
   const short = goal.done ? `${syn.name}!` : goal.swap > 0 ? `swap ${goal.swap}` : `${need} more`;
   const title = goal.done
     ? `${syn.name} is on: ${syn.text}`
-    : `${syn.name}: fill every slot with ${cls} units. ${goal.have}/${goal.cap}${
+    : `${syn.name}: at least ${goal.cap} units, all ${cls}. ${goal.have}/${goal.cap}${
         goal.swap > 0 ? `; replace ${goal.swap} unit${goal.swap > 1 ? "s" : ""} of another class` : `; ${need} more to go`
       }. ${syn.text}`;
   return (

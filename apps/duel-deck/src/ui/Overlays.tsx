@@ -671,8 +671,8 @@ function CodexUnits({ onUnit, onAug }: { onUnit: (key: string) => void; onAug: (
       {/* Classes first: they decide which units belong together. */}
       <section className="class-guide" aria-label="Classes">
         <p className="class-guide__intro">
-          Every unit has a class. Fill <strong>every slot</strong> of your row with one class (5 units, or 6 with
-          Reinforcements) and the whole row gets that class's bonus each round. Tap a unit to jump to it.
+          Every unit has a class. Field <strong>5 or more units, all of one class</strong>, and the whole row gets
+          that class's bonus each round. Tap a unit to jump to it.
         </p>
         <div className="class-guide__list">
           {CLASS_ORDER.map((a) => (
@@ -889,7 +889,7 @@ export function HelpPanel({ onClose }: HelpPanelProps) {
           <li><strong>Merging</strong> adds half the card's stats and a level. At level {MAX_LEVEL} (MAX) a unit's ability gets stronger.</li>
           <li><strong>Upgrades</strong>: every {AUGMENT_EVERY} rounds, pick one that lasts the whole match.</li>
           <li>
-            <strong>Classes</strong>: fill every slot with one class for a bonus each round:{" "}
+            <strong>Classes</strong>: field 5 or more units, all one class, for a bonus each round:{" "}
             {(["attack", "defense", "support"] as const).map((a, i) => (
               <span key={a}>
                 {i ? ", " : ""}

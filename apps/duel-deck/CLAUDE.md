@@ -375,10 +375,18 @@ units were tuned with a round-robin of single-unit builds (every one within
 so two dodging fronts don't end a round as a draw.
 
 ### Level cap, Mastery and Drill
-Units stop at **level 12** (`MAX_LEVEL`, `MAX_MERGES` = 11 in `engine/units.ts`; it was 10
-until 2026-10-16). Raising it lifted Knight rows from 59% to 66%, since every
-merge into a Knight added the 6th Squire step; post-knighthood merges now add
-`POST_KNIGHT_STEP` (4), back to 59% (3 was 49%).
+Units stop at **level 10** (`MAX_LEVEL`, `MAX_MERGES` = 9 in `engine/units.ts`).
+A cap of 12 was tried on 2026-10-16 and dropped for earned slots (below); it
+had lifted Knight rows to 66% (`POST_KNIGHT_STEP` 4 brought them back to 59%).
+
+**Earned slots:** every unit that reaches the cap opens one more slot in its
+side's row (`Board.earnedSlots`, set in `refreshForRound` as the most maxed
+units the side has had, up to `MAX_EARNED_SLOTS` 3, so a row of 8). It never
+shrinks, so replacing a maxed unit keeps its slot. This replaced the
+Reinforcements upgrade (retired) as the answer to long matches stalling on a
+full, maxed row. Ascendant keeps its single slot. Sim: median match 20 rounds,
+Knight rows 62%. On a 375×667 phone a full 8-slot row on both sides draws
+units ~13px tall; 375×812 is fine (~24px).
 `canAbsorb` is the one rule (like with like, within the cap), used by
 `canMerge`/`mergePlaced` in board.ts (so the AI and every merge path obey it),
 by the drop rules in Game.tsx and by the AI's pick values. Placed-onto-placed
@@ -511,8 +519,8 @@ Every unit has a class (`UnitStats.archetype`, separate from `classes`, the tags
 upgrades target): **Attack** Striker, Berserker, Lancer, Skirmisher;
 **Defense** Guard, Bulwark, Squire, Knight; **Support** Herald, Medic, Warden, Acolyte. Shown on
 offer cards (top corner), info cards and the Codex. When every slot of
-a row (5, or 6 with Reinforcements; never a 1-unit Ascendant row,
-`SYNERGY_MIN`) holds one class, `synergyOf` picks its synergy and
+a row has at least `SYNERGY_MIN` (5) units, all of one class (not "every
+slot", since earned slots grow rows past 5; never a 1-unit Ascendant row), `synergyOf` picks its synergy and
 `applyAugments` applies it for the round, badged and itemised (`syn-<class>`
 auras): **🔥 Full Assault** +2 attack and Overflow for every unit (half the
 overkill, up to 3; Berserkers keep their own); **🧱 Iron Line** a 5 shield on every unit each round

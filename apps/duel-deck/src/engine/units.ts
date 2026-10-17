@@ -181,9 +181,14 @@ export const SYNERGIES: Record<Archetype, { name: string; icon: string; text: st
 /** Smallest row a synergy needs: a single unit (Ascendant) is no "row of one class". */
 export const SYNERGY_MIN = 5;
 
-/** The class every unit in a full row shares, or null. */
+/**
+ * The class every unit on the row shares, once there are at least
+ * SYNERGY_MIN of them, or null. Not "every slot": rows grow past 5 as units
+ * reach the level cap, and an earned slot shouldn't break a bonus. A row with
+ * room for fewer than SYNERGY_MIN (Ascendant's one) never qualifies.
+ */
 export function synergyOf(units: { key: string }[], capacity: number): Archetype | null {
-  if (units.length < Math.max(SYNERGY_MIN, capacity)) return null;
+  if (capacity < SYNERGY_MIN || units.length < SYNERGY_MIN) return null;
   const first = UNITS[units[0].key]?.archetype;
   return first && units.every((u) => UNITS[u.key]?.archetype === first) ? first : null;
 }
@@ -214,7 +219,7 @@ export const KNIGHT_LEVEL = levelOf(KNIGHT_AT);
  * needs several strong units. Ascendant (an upgrade) lifts it for a side that
  * fields a single unit.
  */
-export const MAX_LEVEL = 12;
+export const MAX_LEVEL = 10;
 export const MAX_MERGES = MAX_LEVEL - 1;
 /** Whether a unit with this many merges has reached its Mastery. */
 export const isMastered = (merges: number) => levelOf(merges) >= MAX_LEVEL;

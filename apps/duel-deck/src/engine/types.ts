@@ -198,6 +198,12 @@ export interface Board {
   hp: Record<Side, number>;
   /** The pool both players started the match with (the title screen's choice; absent = 200). */
   startHp?: number;
+  /**
+   * Extra row slots each side has earned by bringing units to the level cap
+   * (one per unit, up to MAX_EARNED_SLOTS). Never shrinks, so replacing a
+   * maxed unit doesn't take its slot away.
+   */
+  earnedSlots?: Partial<Record<Side, number>>;
   /** Match settings beyond the pool (absent = the defaults: no easy mode, synergies and upgrades on). */
   rules?: { easy?: boolean; synergies?: boolean; upgrades?: boolean };
   /** Side-wide augment modifiers (bounty, capacity). Absent = none. */

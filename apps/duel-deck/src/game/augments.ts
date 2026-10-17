@@ -498,6 +498,8 @@ export const AUGMENTS: AugmentDef[] = [
     category: "strategy",
     effect: () => ({ hp: 1 }),
     mods: { capacity: 6 },
+    // Retired 2026-10-16: units reaching the level cap open slots instead.
+    retired: true,
   },
   {
     id: "scout",
