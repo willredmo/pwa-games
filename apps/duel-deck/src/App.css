@@ -633,6 +633,11 @@ body { background-color: #12101c; }
     repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 16px);
 }
 .app__log, .app__hint { overflow-wrap: anywhere; text-align: center; max-width: 94vw; }
+/* The round summary and its Replay button share one line (the row reserves it). */
+.app__log-row { display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-width: 0; max-width: 100%; }
+.app__log-row .app__log { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.replay-btn { flex: none; font-size: 0.8rem; padding: 0 0.2rem; }
+.result-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem; }
 
 @media (prefers-reduced-motion: no-preference) {
   .hpbar__track--hit { animation: hp-shake 0.35s linear; }
@@ -1326,10 +1331,10 @@ button.menu-item:hover { border-color: #5a5180; }
   .hpbar--enemy { grid-area: ehp; }
   .app__stage { grid-area: stage; }
   .hpbar--player { grid-area: php; }
-  .app__log { grid-area: log; }
+  .app__log-row { grid-area: log; }
 
   /* Each column's children fill it, rather than keeping their phone widths. */
-  .app__header, .hpbar, .app__log { width: 100%; }
+  .app__header, .hpbar, .app__log-row { width: 100%; }
   .app__stage { width: 100%; }
 
   .app__controls {

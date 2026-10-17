@@ -943,10 +943,20 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   /** Set when the opponent leaves for good — the match can't continue. */
   const [oppLeft, setOppLeft] = useState(false);
 
+  /**
+   * The last round played, for "Replay last fight". resolveRound is pure, so
+   * the board as committed plus its result replays exactly, blow for blow.
+   */
+  const lastFight = useRef<{ committed: Board; result: RoundResult } | null>(null);
+  /** While a replay runs: where to go back to when it ends (the phase and board it interrupted). */
+  const replayFrom = useRef<{ phase: Phase; board: Board } | null>(null);
+  const [replaying, setReplaying] = useState(false);
+
   /** Start playback of a fully-assembled round (both rows final, stats applied). */
   const playRound = useCallback((committed: Board) => {
     // resolveRound clones its input, so `committed` keeps the full roster.
     const res = resolveRound(committed);
+    lastFight.current = { committed, result: res };
     committedRef.current = committed;
     setBoard(committed);
     setResult(res);
@@ -1097,6 +1107,35 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     }
     setSelected(null);
   };
+
+  /** Replay the last round's fight from the pick phase or the result screen. Changes nothing. */
+  const startReplay = () => {
+    const fight = lastFight.current;
+    if (!fight || (phase !== "pick" && phase !== "over")) return;
+    replayFrom.current = { phase, board };
+    setReplaying(true);
+    setSelected(null);
+    setBoard(fight.committed);
+    setResult(fight.result);
+    setFrames(buildFrames(fight.committed, fight.result.ticks, fight.result.opening));
+    setPhase("battle");
+  };
+  /** Back to where the replay started; also the Stop button. */
+  const endReplay = () => {
+    const from = replayFrom.current;
+    if (!from) return;
+    replayFrom.current = null;
+    setReplaying(false);
+    // Units that fell in the replay would otherwise stay mid-fall.
+    posesRef.current = {};
+    setFeed([]);
+    setBoard(from.board);
+    // The result screen reads the final result; the pick phase has none.
+    if (from.phase !== "over") setResult(null);
+    setPhase(from.phase);
+  };
+  const endReplayRef = useRef(endReplay);
+  endReplayRef.current = endReplay;
 
   // Ctrl/⌘+Z. Read through a ref so the listener isn't re-bound every render.
   const undoRef = useRef(undo);
@@ -1568,6 +1607,13 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     };
 
     const finish = () => {
+      // A replay changes nothing: no HP, stats, log or next round. Hold on the
+      // last beat a moment, then go back to where the player was.
+      if (replayFrom.current) {
+        showBanner("Replay over", "neutral");
+        timer = window.setTimeout(() => endReplayRef.current(), scaled(RESULT_MS));
+        return;
+      }
       // Momentum, rally, Veteran etc. — before the respawn snapshot is used.
       const committed = committedRef.current ?? result.board;
       // Fortify: surviving Bulwarks visibly harden before the next round.
@@ -2099,6 +2145,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         )}
         {phase === "over" && result?.matchWinner && (
           <ResultPanel
+            onReplay={lastFight.current ? startReplay : undefined}
             winner={result.matchWinner}
             round={round}
             stats={statsRef.current}
@@ -2169,7 +2216,19 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
 
       {/* Always rendered: the board fills the space left over, so rows that came
           and went would resize it between phases. */}
-      <p className="app__log" title={lastRound?.long}>{lastRound && <LongShort long={lastRound.long} short={lastRound.short} />}</p>
+      <div className="app__log-row">
+        <p className="app__log" title={lastRound?.long}>{lastRound && <LongShort long={lastRound.long} short={lastRound.short} />}</p>
+        {replaying ? (
+          <button className="link-btn replay-btn" onClick={endReplay}>⏹ Stop replay</button>
+        ) : (
+          lastFight.current &&
+          phase === "pick" && (
+            <button className="link-btn replay-btn" onClick={startReplay} title="Watch the last fight again">
+              ↻ Replay
+            </button>
+          )
+        )}
+      </div>
 
       {/* The board's chrome. Wrapped so a wide screen can stand it beside
           the board instead of under it, which is the only way the board

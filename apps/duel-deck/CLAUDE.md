@@ -619,6 +619,16 @@ buff arriving) the moment their number appears. So a hit's health loss shows
 before any ability fires, and a buff's gain shows when it lands. The tick's
 engine snapshot is still authoritative at settle (the replay matches it exactly).
 
+### Replay last fight
+`playRound` keeps the round's committed board and its `RoundResult`
+(`lastFight`); `resolveRound` is pure, so they replay blow for blow. "↻ Replay"
+beside the round summary (pick phase) and "↻ Replay final fight" on the result
+screen run them through the normal playback with `replayFrom` set, which makes
+`finish` skip everything with consequences (HP, settleRound, stats, telemetry,
+explosions, the next round) and, after a beat, restore the phase and board the
+replay interrupted (`endReplay`, also the "⏹ Stop replay" button). Poses are
+cleared on the way back, or units that fell in the replay would stay mid-fall.
+Local only: online, the other player never sees it.
 ### Side-hit sequencing and the end screen
 Side hits (Overflow, Thorns, Riposte, Last breath) play one at a time after the
 main blows (`EXTRA_GAP_MS`, `EXTRA_STEP_MS`): Overflow's shockwave sets off from

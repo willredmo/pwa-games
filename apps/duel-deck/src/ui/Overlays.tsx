@@ -328,6 +328,8 @@ interface ResultPanelProps {
   upgrades: string[];
   difficulty: string;
   onNewMatch: () => void;
+  /** Watch the final fight again (absent when there's none to show). */
+  onReplay?: () => void;
 }
 
 /** Count a number up from 0 once, eased; instant under reduced motion. */
@@ -518,7 +520,7 @@ function UnitLedger({ stats, winner }: { stats: MatchStats; winner: "player" | "
   );
 }
 
-export function ResultPanel({ winner, round, stats, hp, startHp, upgrades, difficulty, onNewMatch }: ResultPanelProps) {
+export function ResultPanel({ winner, round, stats, hp, startHp, upgrades, difficulty, onNewMatch, onReplay }: ResultPanelProps) {
   const won = winner === "player";
   const mvp = mvpOf(stats);
   const rounds = stats.won + stats.lost + stats.drawn;
@@ -593,7 +595,14 @@ export function ResultPanel({ winner, round, stats, hp, startHp, upgrades, diffi
           </div>
         )}
 
-        <button className="primary-btn" onClick={onNewMatch}>New match</button>
+        <div className="result-actions">
+          {onReplay && (
+            <button className="ghost-btn" onClick={onReplay}>
+              ↻ Replay final fight
+            </button>
+          )}
+          <button className="primary-btn" onClick={onNewMatch}>New match</button>
+        </div>
       </div>
     </div>
   );

@@ -18,6 +18,7 @@ export const PATCH_NOTES: Release[] = [
       "Online duels use the host's match settings, shown in the lobby and at the start of the duel.",
       "Every unit that reaches level 10 opens one more slot in your row (up to 8), so long matches don't get stuck. This replaces the Reinforcements upgrade, which is gone.",
       "Class bonuses now need 5 or more units, all of one class (not every slot), so an extra slot never breaks one.",
+      "Replay the last fight: ↻ Replay beside the round summary, or ↻ Replay final fight on the end screen.",
     ],
   },
   {
