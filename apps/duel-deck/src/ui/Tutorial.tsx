@@ -160,7 +160,7 @@ const STEPS: Step[] = [
     text: (
       <>
         Every 3rd round you choose an <strong>upgrade</strong> that lasts the whole match. Rarer ones unlock as the match goes
-        on. ❄ keeps up to two for your next choice. Pick one.
+        on. ❄ keeps up to two for your next choice. Tap one to select it, then press <strong>Take</strong>.
       </>
     ),
     waitFor: (s) => s.phase === "augment",

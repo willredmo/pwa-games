@@ -631,3 +631,29 @@ button.unit-entry__aug:hover, button.unit-entry__aug:focus-visible { border-colo
   100% { box-shadow: 0 0 0 2px transparent; }
 }
 .class-card__bonus { margin: 0; font-size: 0.85rem; line-height: 1.35; }
+/* Upgrade choice: a tap selects, Take commits (see AugmentPanel). */
+.card-row--deal { position: relative; }
+.card-row--selected,
+.card-row--selected:not(:disabled):hover {
+  border-color: rgb(var(--glow));
+  background: linear-gradient(rgba(var(--glow), 0.14), rgba(var(--glow), 0.14)), #2f2a47;
+  box-shadow: 0 0 0 2px rgb(var(--glow)), 0 6px 18px rgba(var(--glow), 0.35);
+  transform: translateY(-2px) scale(1.015);
+}
+.card-row__check {
+  position: absolute;
+  top: -0.45rem;
+  right: -0.45rem;
+  width: 1.4rem;
+  height: 1.4rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 0.8rem;
+  font-weight: 900;
+  color: #14121f;
+  background: rgb(var(--glow));
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+.take-btn { margin-top: 0.7rem; }
+.take-btn:disabled { opacity: 0.45; }

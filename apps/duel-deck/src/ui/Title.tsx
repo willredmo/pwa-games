@@ -35,6 +35,8 @@ export interface TitleProps {
   onHost: () => void;
   onJoin: () => void;
   onRejoin: () => void;
+  /** Report a bug or suggest a feature. */
+  onFeedback: () => void;
 }
 
 export function Title(props: TitleProps) {
@@ -136,6 +138,7 @@ export function Title(props: TitleProps) {
           >
             {props.sound ? "🔊 Sound on" : "🔇 Sound off"}
           </button>
+          <button className="link-btn" onClick={props.onFeedback}>🐞 Bugs &amp; ideas</button>
         </div>
       </div>
     </div>

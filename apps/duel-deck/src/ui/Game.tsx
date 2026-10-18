@@ -88,12 +88,17 @@ import { MatchLog, rowLog, type PickLog } from "../game/telemetry";
 import { SPEEDS, clearMatch, saveMatch, type SavedMatch, type Speed } from "../game/save";
 import { sfx } from "../game/sound";
 import {
+  askRematch,
+  matchOf,
   otherPlayer,
   packCommit,
+  startRematch,
   sendCommit,
   setWriteErrorHandler,
   stayPresent,
   unpackCommit,
+  watchMatch,
+  watchRematch,
   watchRoom,
   type Commit,
   type Player,
@@ -334,9 +339,13 @@ export interface GameProps {
   tutorial?: boolean;
   /** Settings for a fresh CPU match (online uses the room's; the tutorial the defaults). */
   rules?: MatchRules;
+  /** Online: both players accepted a rematch, and the room is now on match `match`. */
+  onRematch?: (match: number) => void;
+  /** Report a bug or suggest a feature; `context` says where the player was. */
+  onFeedback: (context: string) => void;
 }
 
-export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, sound, onSound, battleLog, onBattleLog, onExit, online, tutorial, rules: startRules }: GameProps) {
+export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, sound, onSound, battleLog, onBattleLog, onExit, online, tutorial, rules: startRules, onRematch, onFeedback }: GameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   /** The match being resumed, if any; resuming always lands in the pick phase. */
@@ -379,7 +388,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   };
   /** Balance telemetry for this match (game/telemetry.ts). */
   const [matchLog] = useState(() =>
-    tutorial ? MatchLog.none() : online ? MatchLog.online(online.code, online.me) : MatchLog.cpu(!!saved, saved?.difficulty ?? startDifficulty),
+    tutorial ? MatchLog.none() : online ? MatchLog.online(online.code, online.me, matchOf(online)) : MatchLog.cpu(!!saved, saved?.difficulty ?? startDifficulty),
   );
   /**
    * This round's log so far: the cards as dealt, each pick, and rerolls spent.
@@ -1085,6 +1094,38 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     };
   }, [online]);
 
+  // --- Online: rematch ------------------------------------------------------
+  // Both players must ask (see room.ts). Each device starts the next match the
+  // moment it sees both requests; the room's `match` rising is what remounts
+  // Game, on both devices, whichever one's transaction won.
+
+  const [rematchAsks, setRematchAsks] = useState<Partial<Record<Player, number>>>({});
+  const onRematchRef = useRef(onRematch);
+  onRematchRef.current = onRematch;
+  useEffect(() => {
+    if (!online) return;
+    const mine = matchOf(online);
+    const offAsks = watchRematch(online, setRematchAsks);
+    const offMatch = watchMatch(online, (m) => {
+      if (m > mine) onRematchRef.current?.(m);
+    });
+    return () => {
+      offAsks();
+      offMatch();
+    };
+  }, [online]);
+  const iAskedRematch = !!online && rematchAsks[online.me] === matchOf(online);
+  const theyAskedRematch = !!online && rematchAsks[otherPlayer(online.me)] === matchOf(online);
+  useEffect(() => {
+    if (online && iAskedRematch && theyAskedRematch && !oppLeft) startRematch(online);
+  }, [online, iAskedRematch, theyAskedRematch, oppLeft]);
+  // A soft ping when the opponent asks, so a player reading the stats notices.
+  const theyAskedBefore = useRef(false);
+  useEffect(() => {
+    if (theyAskedRematch && !theyAskedBefore.current && !iAskedRematch) sfx("emote");
+    theyAskedBefore.current = theyAskedRematch;
+  }, [theyAskedRematch, iAskedRematch]);
+
   // Note: picks never auto-commit. The player stays in the pick phase until
   // they press Battle, so there's always a chance to reorder the queue first.
 
@@ -1531,9 +1572,10 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   // --- Augments & playback --------------------------------------------------
 
   /**
-   * Reroll the cards not yet taken this round. Taken cards stay (their units
-   * are on the board), so this works mid-round. Undo can't reach back past it —
-   * the history's offer indices would point at the old cards.
+   * Reroll every offer slot that isn't frozen, taken ones included: their units
+   * are already on the board, so the slot just gets a fresh card. Picks already
+   * spent stay spent. Undo can't reach back past it (outside easy mode) — the
+   * history's offer indices would point at the old cards.
    */
   const rerollOffer = () => {
     // Allowed after both picks too: rerolling then is a look at more cards, to
@@ -1542,7 +1584,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     // Easy mode: the reroll goes on the undo stack like any other action.
     if (rules.easy) pushUndo();
     const fresh = rollOffer(OFFER_COUNT, playerAug.current);
-    setOffer(offer.map((k, i) => (usedOffers.includes(i) || frozen.includes(i) ? k : fresh[i])));
+    setOffer(offer.map((k, i) => (frozen.includes(i) ? k : fresh[i])));
+    setUsedOffers([]);
     setUnitRerolls(unitRerolls - 1);
     roundLog.current.rr++;
     setRerollN((n) => n + 1);
@@ -2004,6 +2047,15 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
    * and a fresh Game is mounted. Resetting in place would mean reproducing
    * every piece of match state here; dropping the component can't miss one.
    */
+  /** Where the player is, for a feedback report: mode, round, phase. */
+  const feedbackContext = () =>
+    [
+      online ? `online ${online.me} match ${matchOf(online)} room ${online.code}` : tutorial ? "tutorial" : `cpu ${difficulty}`,
+      `round ${round}`,
+      phase,
+      `hp ${board.hp.player}/${board.hp.enemy} of ${startHpOf(board)}`,
+    ].join(" · ");
+
   const newMatch = () => {
     if (!online && !tutorial) clearMatch();
     onExit();
@@ -2175,8 +2227,22 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
             hp={result.board.hp}
             startHp={startHpOf(result.board)}
             upgrades={playerAug.current.active}
-            difficulty={DIFFICULTY_LABEL[difficulty]}
+            opponent={online ? "online duel" : `${DIFFICULTY_LABEL[difficulty]} AI`}
             onNewMatch={newMatch}
+            newMatchLabel={online ? "Leave duel" : undefined}
+            rematch={
+              online
+                ? {
+                    asked: iAskedRematch,
+                    offered: theyAskedRematch,
+                    unavailable: oppLeft ? "Your opponent left the duel." : undefined,
+                    away: !oppPresent,
+                    onAsk: () => askRematch(online, true),
+                    onCancel: () => askRematch(online, false),
+                  }
+                : undefined
+            }
+            onFeedback={() => onFeedback(feedbackContext())}
           />
         )}
         {showMenu && (
@@ -2193,6 +2259,10 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
             onHelp={() => {
               setShowMenu(false);
               setShowHelp(true);
+            }}
+            onFeedback={() => {
+              setShowMenu(false);
+              onFeedback(feedbackContext());
             }}
             onNewMatch={() => {
               setShowMenu(false);

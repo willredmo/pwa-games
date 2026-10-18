@@ -9,6 +9,8 @@ import { CodexView, HelpPanel } from "./ui/Overlays";
 import { UpdatePrompt } from "./ui/UpdatePrompt";
 import { tutorialDone } from "./ui/Tutorial";
 import { PatchNotes, hasUnseenNotes } from "./ui/PatchNotes";
+import { EMPTY_DRAFT, FeedbackPanel, type FeedbackDraft } from "./ui/Feedback";
+import { afterPaint, captureScreenshot } from "./game/feedback";
 import { leaveRoom, loadSession, readSession, saveSession, type Session } from "./online/room";
 import "./App.css";
 
@@ -66,6 +68,10 @@ export default function App() {
     return code ? { kind: "join", code } : null;
   });
   const [notice, setNotice] = useState<string | null>(null);
+  /** The open feedback form, with the screenshot taken just before it opened. */
+  const [feedback, setFeedback] = useState<{ shot: string | null; context: string } | null>(null);
+  /** What's typed in the form, kept across a Retake (and a Cancel, until it's sent). */
+  const [draft, setDraft] = useState<FeedbackDraft>(EMPTY_DRAFT);
   const runId = useState(() => ({ n: 0 }))[0];
 
   useEffect(() => saveSettings(settings), [settings]);
@@ -99,6 +105,17 @@ export default function App() {
     [settings.sound, settings.difficulty, runId],
   );
 
+  /**
+   * Screenshot what's on screen, then open the feedback form. Whatever opened
+   * it (☰) has just been closed, so wait for that to paint away first.
+   */
+  const openFeedback = async (context: string) => {
+    setFeedback(null);
+    await afterPaint();
+    const shot = await captureScreenshot();
+    setFeedback({ shot, context });
+  };
+
   const toTitle = () => {
     // Leaving an online duel closes it for the other side too: there's no
     // half-match to come back to once one row stops committing.
@@ -123,8 +140,10 @@ export default function App() {
         return;
       }
       // A host whose guest never arrived goes back to showing the code.
-      if (savedOnline.me === "p1" && !room.guest) setLobby({ kind: "host", session: savedOnline });
-      else startOnline(savedOnline);
+      // A rematch may have started since this device saved the session.
+      const session = { ...savedOnline, match: room.match ?? 1 };
+      if (session.me === "p1" && !room.guest) setLobby({ kind: "host", session });
+      else startOnline(session);
     } catch {
       setNotice("Couldn't reach the server. Check your connection.");
     }
@@ -150,6 +169,8 @@ export default function App() {
           battleLog={settings.battleLog}
           onBattleLog={(battleLog) => setSettings((s) => ({ ...s, battleLog }))}
           onExit={toTitle}
+          onRematch={(match) => run.online && startOnline({ ...run.online, match })}
+          onFeedback={(context) => void openFeedback(context)}
         />
       ) : (
         <Title
@@ -185,6 +206,7 @@ export default function App() {
             setLobby({ kind: "join" });
           }}
           onRejoin={() => void rejoin()}
+          onFeedback={() => void openFeedback("title")}
         />
       )}
       {lobby && (
@@ -201,6 +223,19 @@ export default function App() {
       {help && <HelpPanel onClose={() => setHelp(false)} />}
       {units && <CodexView onClose={() => setUnits(false)} />}
       {notes && <PatchNotes onClose={() => setNotes(false)} />}
+      {feedback && (
+        <FeedbackPanel
+          shot={feedback.shot}
+          context={feedback.context}
+          draft={draft}
+          onDraft={setDraft}
+          onRetake={() => void openFeedback(feedback.context)}
+          onClose={(sent) => {
+            setFeedback(null);
+            if (sent) setDraft(EMPTY_DRAFT);
+          }}
+        />
+      )}
       <UpdatePrompt />
     </div>
   );

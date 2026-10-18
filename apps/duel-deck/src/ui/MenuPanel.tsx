@@ -18,6 +18,8 @@ export interface MenuPanelProps {
   onCodex: () => void;
   onNotes: () => void;
   onHelp: () => void;
+  /** Report a bug or suggest a feature (screenshots the game first). */
+  onFeedback: () => void;
   onNewMatch: () => void;
   /** Back to the title screen, keeping this match saved to resume. */
   onExit: () => void;
@@ -34,7 +36,7 @@ export interface MenuPanelProps {
 type CheckState = "idle" | "checking" | "done";
 
 export function MenuPanel(props: MenuPanelProps) {
-  const { onClose, onCodex, onNotes, onHelp, onNewMatch, onExit, sound, onSound, battleLog, onBattleLog, difficultyLabel, rulesLabel } = props;
+  const { onClose, onCodex, onNotes, onHelp, onFeedback, onNewMatch, onExit, sound, onSound, battleLog, onBattleLog, difficultyLabel, rulesLabel } = props;
   const waiting = usePwaUpdate();
   const [latest, setLatest] = useState<DeployInfo | null>(null);
   const [check, setCheck] = useState<CheckState>("idle");
@@ -73,6 +75,10 @@ export function MenuPanel(props: MenuPanelProps) {
           <button className="menu-item" onClick={onNotes}>
             <span className="menu-item__icon">✨</span>
             <span>What's new<small>Patch notes for every version</small></span>
+          </button>
+          <button className="menu-item" onClick={onFeedback}>
+            <span className="menu-item__icon">🐞</span>
+            <span>Report a bug or suggest a feature<small>Sends a screenshot of the game with your note</small></span>
           </button>
           {/* Also on the title screen, but a battle is exactly when you want
               to silence it, and the title is a whole match away from here. */}

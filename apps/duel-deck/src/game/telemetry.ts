@@ -87,11 +87,12 @@ export class MatchLog {
 
   /**
    * The log for one side of an online match. The id comes from the room, so a
-   * reload (which rejoins the room) keeps writing to the same match.
+   * reload (which rejoins the room) keeps writing to the same match. A rematch
+   * in the same room gets its own (`match` > 1), or its writes would be refused.
    */
-  static online(code: string, me: string): MatchLog {
+  static online(code: string, me: string, match = 1): MatchLog {
     const at = Date.now();
-    const log = new MatchLog(`${day(at)}/on-${code}-${me}`);
+    const log = new MatchLog(`${day(at)}/on-${code}-${me}${match > 1 ? `-${match}` : ""}`);
     log.meta("online", "pvp", at);
     return log;
   }

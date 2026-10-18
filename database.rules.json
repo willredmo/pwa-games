@@ -67,6 +67,24 @@
         }
       }
     },
+    "feedback": {
+      "duel-deck": {
+        "$id": {
+          ".write": "!data.exists()",
+          ".validate": "$id.length <= 40 && newData.hasChildren(['kind', 'text', 'at', 'v'])",
+          "kind": { ".validate": "newData.val() === 'bug' || newData.val() === 'idea'" },
+          "text": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 2000" },
+          "contact": { ".validate": "newData.isString() && newData.val().length <= 120" },
+          "at": { ".validate": "newData.isNumber()" },
+          "v": { ".validate": "newData.isString() && newData.val().length <= 16" },
+          "c": { ".validate": "newData.isString() && newData.val().length <= 40" },
+          "ua": { ".validate": "newData.isString() && newData.val().length <= 400" },
+          "ctx": { ".validate": "newData.isString() && newData.val().length <= 500" },
+          "shot": { ".validate": "newData.isString() && newData.val().length <= 1000000 && newData.val().beginsWith('data:image/')" },
+          "$other": { ".validate": false }
+        }
+      }
+    },
     "rooms": {      "knock-hockey": {
         "$code": {
           ".read": "$code.length === 5",
@@ -143,6 +161,12 @@
           "guest": { ".validate": "newData.isString() && newData.val().length <= 40" },
           "createdAt": { ".validate": "newData.isNumber() && (!data.exists() || data.val() === newData.val())" },
           "startedAt": { ".validate": "newData.isNumber()" },
+          "match": { ".validate": "newData.isNumber() && newData.val() === (data.exists() ? data.val() : 1) + 1" },
+          "rematch": {
+            "p1": { ".validate": "newData.isNumber()" },
+            "p2": { ".validate": "newData.isNumber()" },
+            "$other": { ".validate": false }
+          },
           "rules": {
             ".validate": "newData.hasChildren(['startHp', 'easy', 'synergies', 'upgrades'])",
             "startHp": { ".validate": "newData.isNumber() && newData.val() >= 20 && newData.val() <= 999 && newData.val() % 1 === 0 && (!data.exists() || data.val() === newData.val())" },

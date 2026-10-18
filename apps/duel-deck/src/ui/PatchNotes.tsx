@@ -10,6 +10,17 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.5.0",
+    date: "Oct 18, 2026",
+    notes: [
+      "Report a bug or suggest a feature from ☰, the title screen or the end screen. It takes a screenshot of the game to send with your note (you can leave it out, retake it or save it).",
+      "Online duels: ask for a rematch on the end screen. It starts when both players accept, in the same room with the same settings.",
+      "Rerolling now deals new cards in every slot, including the ones you've already taken this round (frozen cards still stay).",
+      "Upgrades are no longer taken by a single tap: tap one to select it, then press Take. Taps right as the cards appear are ignored, so a tap meant for the battle can't pick one.",
+      "Online duels need both players on this version.",
+    ],
+  },
+  {
     version: "1.4.2",
     date: "Oct 17, 2026",
     notes: [

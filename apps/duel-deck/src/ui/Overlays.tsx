@@ -33,6 +33,13 @@ interface AugmentPanelProps {
   onFreeze: (id: string) => void;
 }
 
+/**
+ * Taps on the upgrade cards are ignored this long after they're dealt (the
+ * panel opening, or a reroll). The panel opens right as a battle ends, so a
+ * tap meant for the board could otherwise land on a card still dealing in.
+ */
+const AUGMENT_ARM_MS = 600;
+
 const RARITY_LABEL: Record<Rarity, string> = { common: "Common", rare: "Rare", epic: "Epic" };
 
 /** Rarity chip; commons get one too so the tiers read as a scale. */
@@ -61,8 +68,25 @@ export function AugmentPanel({
   onFreeze,
 }: AugmentPanelProps) {
   const freezeFull = frozenIds.length >= MAX_FROZEN_AUGMENTS;
+  // Two steps, so one stray tap can't lock in an upgrade for the whole match:
+  // tapping a card only selects it, and "Take" commits the selection.
+  const [selected, setSelected] = useState<string | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
   const timer = useRef<number | undefined>(undefined);
+  const armedAt = useRef(0);
+  // Re-arm whenever the cards change (opening, a reroll), and drop a selection
+  // that was rerolled away. Keyed on the ids, so freezing a card doesn't re-arm.
+  const offerKey = offers.map((a) => a.id).join();
+  useEffect(() => {
+    armedAt.current = performance.now() + AUGMENT_ARM_MS;
+    setSelected((s) => (s && offers.some((a) => a.id === s) ? s : null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offerKey]);
+  const select = (id: string) => {
+    if (picked || peeking || performance.now() < armedAt.current) return;
+    setSelected(id);
+  };
+  const selectedDef = offers.find((a) => a.id === selected);
   const choose = (id: string) => {
     if (picked || peeking) return;
     const reduce =
@@ -101,9 +125,10 @@ export function AugmentPanel({
             <button
               className={`card-row card-row--deal card-row--${a.category} card-row--${rarityOf(a)}${
                 picked ? (picked === a.id ? " card-row--chosen" : " card-row--away") : ""
-              }${frozenIds.includes(a.id) ? " card-row--frozen" : ""}`}
+              }${frozenIds.includes(a.id) ? " card-row--frozen" : ""}${selected === a.id && !picked ? " card-row--selected" : ""}`}
               style={{ "--i": i } as React.CSSProperties}
-              onClick={() => choose(a.id)}
+              onClick={() => select(a.id)}
+              aria-pressed={selected === a.id}
               tabIndex={peeking ? -1 : undefined}
             >
               <span className="card-row__head">
@@ -116,6 +141,7 @@ export function AugmentPanel({
                 </span>
               </span>
               <span className="card-row__desc">{a.description}</span>
+              {selected === a.id && !picked && <span className="card-row__check" aria-hidden="true">✓</span>}
             </button>
             {/* Freeze: offered first at your next upgrade choice. */}
             <button
@@ -138,6 +164,20 @@ export function AugmentPanel({
             );
           })}
         </div>
+        <button
+          className="primary-btn primary-btn--wide take-btn"
+          onClick={() => selectedDef && choose(selectedDef.id)}
+          disabled={!selectedDef || !!picked || peeking}
+          tabIndex={peeking ? -1 : undefined}
+        >
+          {selectedDef ? (
+            <>
+              Take {selectedDef.icon} {selectedDef.name}
+            </>
+          ) : (
+            "Tap an upgrade to choose it"
+          )}
+        </button>
       </div>
     </div>
   );
@@ -326,10 +366,67 @@ interface ResultPanelProps {
   startHp: number;
   /** Your upgrades, in pick order. */
   upgrades: string[];
-  difficulty: string;
+  /** Who it was against, e.g. "Normal AI" or "online duel". */
+  opponent: string;
   onNewMatch: () => void;
+  /** The New match button's label (online it leaves the duel). */
+  newMatchLabel?: string;
   /** Watch the final fight again (absent when there's none to show). */
   onReplay?: () => void;
+  /** Online only: the rematch handshake (both players must ask). */
+  rematch?: RematchState;
+  /** Report a bug or suggest a feature. */
+  onFeedback?: () => void;
+}
+
+export interface RematchState {
+  /** This player has asked for a rematch. */
+  asked: boolean;
+  /** The opponent has asked for one. */
+  offered: boolean;
+  /** Why a rematch can't happen (the opponent left), if it can't. */
+  unavailable?: string;
+  /** The opponent is disconnected right now (they may come back). */
+  away: boolean;
+  onAsk: () => void;
+  onCancel: () => void;
+}
+
+/** The rematch line on an online result screen: ask, accept, wait or take it back. */
+function RematchBlock({ r }: { r: RematchState }) {
+  if (r.unavailable) return <p className="result-rematch result-rematch--off">{r.unavailable}</p>;
+  if (r.asked && r.offered) {
+    return (
+      <p className="result-rematch result-rematch--go" role="status">
+        <span className="lobby__spinner" aria-hidden="true" /> Both ready — starting the rematch…
+      </p>
+    );
+  }
+  if (r.asked) {
+    return (
+      <div className="result-rematch" role="status">
+        <span>
+          <span className="lobby__spinner" aria-hidden="true" />{" "}
+          {r.away ? "Rematch asked — your opponent is offline right now…" : "Rematch asked — waiting for your opponent to accept…"}
+        </span>
+        <button className="ghost-btn ghost-btn--sm" onClick={r.onCancel}>Take it back</button>
+      </div>
+    );
+  }
+  if (r.offered) {
+    return (
+      <div className="result-rematch result-rematch--offer" role="status">
+        <span>🔁 Your opponent wants a rematch!</span>
+        <button className="primary-btn" onClick={r.onAsk} autoFocus>Accept rematch</button>
+      </div>
+    );
+  }
+  return (
+    <div className="result-rematch">
+      <button className="primary-btn" onClick={r.onAsk}>🔁 Rematch</button>
+      <small>{r.away ? "Your opponent is offline right now." : "Starts when your opponent accepts too. Same settings."}</small>
+    </div>
+  );
 }
 
 /** Count a number up from 0 once, eased; instant under reduced motion. */
@@ -520,7 +617,7 @@ function UnitLedger({ stats, winner }: { stats: MatchStats; winner: "player" | "
   );
 }
 
-export function ResultPanel({ winner, round, stats, hp, startHp, upgrades, difficulty, onNewMatch, onReplay }: ResultPanelProps) {
+export function ResultPanel({ winner, round, stats, hp, startHp, upgrades, opponent, onNewMatch, newMatchLabel, onReplay, rematch, onFeedback }: ResultPanelProps) {
   const won = winner === "player";
   const mvp = mvpOf(stats);
   const rounds = stats.won + stats.lost + stats.drawn;
@@ -532,7 +629,7 @@ export function ResultPanel({ winner, round, stats, hp, startHp, upgrades, diffi
         <div className="result-emblem" aria-hidden="true">{won ? "🏆" : "🛡️"}</div>
         <h2>{won ? "Victory" : "Defeat"}</h2>
         <p className="result-sub">
-          {won ? "You emptied their HP pool" : "Your HP pool hit zero"} on round {round} · {difficulty} AI
+          {won ? "You emptied their HP pool" : "Your HP pool hit zero"} on round {round} · {opponent}
         </p>
 
         <div className="result-hp">
@@ -595,14 +692,19 @@ export function ResultPanel({ winner, round, stats, hp, startHp, upgrades, diffi
           </div>
         )}
 
+        {rematch && <RematchBlock r={rematch} />}
+
         <div className="result-actions">
           {onReplay && (
             <button className="ghost-btn" onClick={onReplay}>
               ↻ Replay final fight
             </button>
           )}
-          <button className="primary-btn" onClick={onNewMatch}>New match</button>
+          <button className={rematch ? "ghost-btn" : "primary-btn"} onClick={onNewMatch}>{newMatchLabel ?? "New match"}</button>
         </div>
+        {onFeedback && (
+          <button className="link-btn result-feedback" onClick={onFeedback}>🐞 Report a bug or suggest a feature</button>
+        )}
       </div>
     </div>
   );

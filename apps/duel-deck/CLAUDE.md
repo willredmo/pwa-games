@@ -597,7 +597,7 @@ only offers rarities unlocked by `upgradeTier(round)` — commons from the first
 upgrade round, rares from the second, epics from the third (`RARITY_UNLOCK`) —
 and the round a rarity unlocks guarantees one card of it. Each upgrade choice
 has `AUGMENT_REROLLS` (2); unit picking has `UNIT_REROLLS` (1) per round, plus
-one with Scout, rerolling only the cards not yet taken (undo can't cross it).
+one with Scout, rerolling every slot that isn't frozen, including ones already taken this round (their units stay on the board, spent picks stay spent; undo can't cross it outside easy mode).
 This rarity ladder is the answer to "should offers scale over a long match"
 (settled): with upgrades every 3rd round, rares arrive at round 6 and epics at
 round 9. Nothing unlocks after that, so a median 18-round match spends its
@@ -605,6 +605,13 @@ second half at full power. The AI fills its row before merging (`deployToBack`):
 fielding two or three bodies, and with survivor damage empty slots are lost
 damage. Hovering a unit shows `UnitInfo`, built from `unit.auraDetails`, which
 `applyAugments` rebuilds with the stats.
+
+**Choosing an upgrade takes two steps** (`AugmentPanel`): a tap only selects a
+card (glow and ✓), and "Take <name>" under the cards commits it. A single tap
+used to commit, and players picked the wrong one by accident. Taps are also
+ignored for `AUGMENT_ARM_MS` (600) after the cards are dealt (the panel opens
+right as a battle ends, while cards are still flipping in, and again after a
+reroll), and a reroll drops a selection it replaced. Freezing doesn't re-arm.
 
 ### Ability beats
 Charge and death buffs (Bodyguard, Pass the torch, Last rally) get their own
@@ -744,10 +751,49 @@ the opponent's; `save()` is a no-op online) — a reload rejoins via the room, a
 `duel-deck:online` holds the code and side. Waiting on the other player is a
 `"waiting"` phase shown where the offer cards sit, so the board keeps its
 height. Each side rolls its own unit and upgrade offers; they're independent and
-need no shared RNG. There's no in-room rematch yet — both players return to the
-title and host again. Rules live in `database.rules.json` at the repo root and
+need no shared RNG. Rules live in `database.rules.json` at the repo root and
 must be deployed (`firebase deploy --only database`) before online works at all;
 without the `duel-deck` block every write is a 401.
+
+**Rematch** (room.ts "Rematch", `RematchBlock` in ui/Overlays.tsx): the online
+result screen offers 🔁 Rematch, and **both players must ask**. Each writes
+`rematch/<p>` = the match number it wants to replay (`Room.match`, absent = 1;
+`Session.match`), or removes it ("Take it back"); a request for an older match
+never counts. Once both requests name the current match, *each* device runs
+`startRematch`, a transaction that only the first one gets through: `match`
++1, `startedAt` now, `commits` and `rematch` cleared. Both devices watch
+`match`, and when it rises Game calls `onRematch` and App mounts a fresh Game
+in the same room with the same settings — the usual remount, so no match state
+carries over. The other side's request pings (`sfx("emote")`) and glows gold.
+"Leave duel" (was New match) closes the room as before, which turns the other
+side's rematch block into "Your opponent left the duel." A rejoin after a
+reload takes `match` from the room. Telemetry ids get `-<match>` from the
+second match on (`MatchLog.online`), since the paths are create-only. The
+database rules allow `match` only to go up by one. `PROTOCOL` 9, so both
+sides of a duel have rematch.
+
+### Feedback (game/feedback.ts, ui/Feedback.tsx, scripts/feedback.ts)
+"Report a bug or suggest a feature" in ☰, on the title screen (🐞 Bugs & ideas)
+and on the result screen. App screenshots the page *before* opening the form
+(`openFeedback`: wait for the menu to paint away, then `captureScreenshot`),
+so it shows what the player was looking at; Retake closes the form, captures
+again and reopens it with the draft kept. The screenshot is html2canvas
+(lazy-loaded, its own ~200 KB chunk), not a screen capture: no permission
+prompt, works on phones, and only the game can be in it. Longest side
+1280px, JPEG stepped down until it's under 900k characters. html2canvas
+draws a clone of the page and gets three things wrong, fixed in `onclone`:
+entrance animations restart at frame one (cards at opacity 0), closed
+`<details>` draw their contents, and gradient text (`background-clip: text`)
+draws as a block (it becomes its gradient's first colour). The player can
+untick the screenshot, save it (⬇ Save image) and add an optional contact.
+
+Reports go to `feedback/duel-deck/<UTC day>-<random>` = `{ kind: bug|idea,
+text, contact?, at, v, c, ua, ctx, shot? }`, where `ctx` is the mode, room,
+round, phase, HP and viewport (`feedbackContext` in Game.tsx). The rules make
+it create-only, size-capped and unreadable by clients, like telemetry. `pnpm
+feedback [--kind=bug|idea]` lists them through the Firebase CLI and writes the
+screenshots to `feedback/<id>.jpg` (gitignored); `--remove=<id>` deletes one
+once it's dealt with. Nothing prunes it.
 
 ### Telemetry (game/telemetry.ts, scripts/telemetry.ts)
 Balance data from real players, always on and not shown in the UI. Each match
@@ -830,8 +876,8 @@ in the sim are not used in the game. Revisit only if late-round draws climb.
 ## Deferred (not v1)
 
 - Ranged units, multi-lane boards, economy/currency, scaling/rarity tiers.
-- In-room rematch, and a turn timer (online currently waits indefinitely,
-  which was a deliberate call — see "Online duel").
+- A turn timer (online currently waits indefinitely, which was a deliberate
+  call — see "Online duel").
 - Board-synergy-aware AI (picks that build toward an augment it holds).
 
 ## Open questions

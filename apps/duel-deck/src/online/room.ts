@@ -43,7 +43,7 @@ efreshForRound compute (unit
  * different one is refused, and the lobby asks the outdated side to update.
  * Rooms from before it existed have none, which reads as 1.
  */
-export const PROTOCOL = 8;
+export const PROTOCOL = 9;
 
 export type Player = "p1" | "p2";
 export const otherPlayer = (p: Player): Player => (p === "p1" ? "p2" : "p1");
@@ -92,8 +92,12 @@ export interface Room {
   proto?: number;
   /** The host's match settings, fixed at creation (absent: a room from before them, the defaults). */
   rules?: MatchRules;
-  /** Bumped by a rematch, so both devices restart together. */
+  /** When the current match started (bumped by a rematch). */
   startedAt: number;
+  /** Which match this is in the room: 1, then +1 per rematch (absent = 1). Both devices restart when it rises. */
+  match?: number;
+  /** Rematch requests: each player's is the match it wants to replay, so a stale request never counts. */
+  rematch?: Partial<Record<Player, number>>;
   presence?: Partial<Record<Player, boolean>>;
   commits?: Partial<Record<Player, Commit>>;
   /** Set to the player who left for good; the room is then closed. */
@@ -105,6 +109,8 @@ export interface Session {
   me: Player;
   /** The room's match settings, so a rejoin after a reload rebuilds the same match. */
   rules?: MatchRules;
+  /** Which match in the room this device is playing (absent = 1); see `Room.match`. */
+  match?: number;
 }
 
 /** Pack one side's row and upgrades for the wire. */
@@ -216,7 +222,7 @@ export async function joinRoom(input: string): Promise<Session | JoinError> {
     return { ...cur, guest: me };
   });
   if (!res.committed || !res.data) return why ?? "not-found";
-  return { code, me: res.data.host === me ? "p1" : "p2", rules: res.data.rules ?? DEFAULT_RULES };
+  return { code, me: res.data.host === me ? "p1" : "p2", rules: res.data.rules ?? DEFAULT_RULES, match: res.data.match ?? 1 };
 }
 
 /**
@@ -257,9 +263,39 @@ export const sendEmote = (s: Session, i: number, n: number) => quiet(setField(GA
 export const watchEmotes = (s: Session, cb: (m: EmoteMsg | null) => void) =>
   watch<EmoteMsg>(GAME, s.code, `emotes/${otherPlayer(s.me)}`, cb);
 
-// No in-room rematch yet: when a duel ends, both players go back to the title
-// and host a new one. Adding it means bumping `startedAt` and clearing
-// `commits` in a transaction, with both devices restarting on the new value.
+// --- Rematch ------------------------------------------------------------------
+//
+// A rematch needs both players. Each writes `rematch/<p>` = the match number it
+// wants to replay (or removes it to take the offer back). Once both requests
+// name the current match, either device may start the next one — both try, in
+// a transaction, and only the first changes anything: `match` goes up, the old
+// commits and requests are cleared, and every device watching `match` mounts a
+// fresh Game for the new number. Same room, same code, same settings.
+
+export const matchOf = (s: Session) => s.match ?? 1;
+
+export const askRematch = (s: Session, on: boolean) =>
+  quiet(setField(GAME, s.code, `rematch/${s.me}`, on ? matchOf(s) : null));
+
+export const watchRematch = (s: Session, cb: (r: Partial<Record<Player, number>>) => void) =>
+  watch<Partial<Record<Player, number>>>(GAME, s.code, "rematch", (v) => cb(v ?? {}));
+
+export const watchMatch = (s: Session, cb: (match: number) => void) =>
+  watch<number>(GAME, s.code, "match", (v) => cb(v ?? 1));
+
+/** Start the next match if both players have asked for one. Safe to call from both devices. */
+export function startRematch(s: Session): void {
+  const match = matchOf(s);
+  quiet(
+    transactRoom<Room>(GAME, s.code, (cur) => {
+      if (!cur) return null; // not loaded yet: see transactRoom
+      if (cur.left || (cur.match ?? 1) !== match) return undefined; // closed, or already started
+      if (cur.rematch?.p1 !== match || cur.rematch?.p2 !== match) return undefined;
+      const { commits, rematch, ...rest } = cur;
+      return { ...rest, match: match + 1, startedAt: Date.now() };
+    }),
+  );
+}
 
 // --- This device's current online game, so a reload can rejoin -------------
 
