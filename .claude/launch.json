@@ -3,9 +3,8 @@
   "configurations": [
     {
       "name": "duel-deck",
-      "runtimeExecutable": "corepack",
+      "runtimeExecutable": "pnpm",
       "runtimeArgs": [
-        "pnpm",
         "--filter",
         "duel-deck",
         "dev",
