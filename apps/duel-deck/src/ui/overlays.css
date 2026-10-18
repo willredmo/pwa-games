@@ -657,3 +657,70 @@ button.unit-entry__aug:hover, button.unit-entry__aug:focus-visible { border-colo
 }
 .take-btn { margin-top: 0.7rem; }
 .take-btn:disabled { opacity: 0.45; }
+
+/* Result screen: the action footer stays on screen while the stats scroll. */
+.result-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  margin: 0 -1.2rem -1.4rem;
+  padding: 0.8rem 1.2rem calc(1rem + env(safe-area-inset-bottom));
+  border-radius: 0 0 12px 12px;
+  background: #272338;
+  box-shadow: 0 -10px 16px -6px rgba(39, 35, 56, 0.95);
+}
+
+/* Phones: a shorter header and stats as compact two-column rows. */
+@media (max-width: 520px) {
+  .overlay.overlay--result { padding: max(0.8rem, env(safe-area-inset-top)) 10px 0; }
+  .overlay--result .panel--result { padding: 0.9rem 0.85rem 1.4rem; }
+  .result-footer { margin: 0 -0.85rem -1.4rem; padding: 0.7rem 0.85rem calc(0.8rem + env(safe-area-inset-bottom)); bottom: 0; border-radius: 0; }
+  .result-emblem { font-size: 2.4rem; }
+  .overlay--result .panel--result h2 { font-size: 1.9rem; }
+  .result-sub { font-size: 0.84rem; margin-bottom: 0.7rem; }
+  .result-hp { margin-bottom: 0.7rem; }
+  .result-stats { gap: 0.35rem; }
+  .result-stat {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto;
+    align-items: center;
+    column-gap: 0.5rem;
+    padding: 0.4rem 0.5rem;
+    text-align: left;
+  }
+  .result-stat__value { grid-row: 1 / span 2; font-size: 1.2rem; min-width: 2ch; text-align: center; }
+  .result-stat__label { font-size: 0.7rem; line-height: 1.15; }
+  .result-stat__sub { font-size: 0.64rem; line-height: 1.15; }
+  .result-stat__label:last-child { grid-row: 1 / span 2; }
+  .panel--result .result-actions { gap: 0.4rem; flex-wrap: nowrap; }
+  .panel--result .result-actions > button { flex: 1 1 0; min-height: 2.75rem; padding-left: 0.5rem; padding-right: 0.5rem; }
+  .panel--result .result-rematch { margin-bottom: 0.5rem; padding: 0.45rem 0.6rem; flex-wrap: nowrap; justify-content: space-between; text-align: left; font-size: 0.84rem; }
+  .panel--result .result-rematch small { display: none; }
+  .panel--result .result-rematch > .primary-btn, .panel--result .result-rematch > .ghost-btn { flex: none; }
+  .panel--result .result-rematch--ask { padding: 0; border: none; background: none; }
+  .panel--result .result-rematch--ask > .primary-btn { flex: 1; min-height: 2.75rem; }
+  .panel--result .result-feedback { margin-top: 0.45rem; font-size: 0.72rem; }
+}
+
+/* Phones: the upgrade choice takes the whole screen and scrolls, rather than
+   fitting inside the board's box (234px tall on a 320×568 phone, so the
+   heading and View board were pushed off the top). Doubled class: App.css's
+   .overlay loads later. */
+@media (max-width: 44.99rem) {
+  .overlay.overlay--augment {
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    border-radius: 0;
+    overflow-y: auto;
+    align-items: flex-start;
+    padding: max(10px, env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom));
+  }
+  .overlay--augment > .panel { margin: auto 0; padding: 0.8rem 0.75rem; }
+  .overlay--augment .panel__head h2::first-letter { text-transform: uppercase; }
+  .overlay--augment .peek-toggle { min-width: 8.5rem; }
+  /* Tags on their own line, so the name gets the width. */
+  .overlay--augment .card-row__head { flex-wrap: wrap; row-gap: 0.15rem; }
+  .overlay--augment .take-btn { position: sticky; bottom: 0; min-height: 2.9rem; }
+}

@@ -97,10 +97,12 @@ export function AugmentPanel({
     timer.current = window.setTimeout(() => onPick(id), 450);
   };
   return (
-    <div className={`overlay${peeking ? " overlay--peek" : ""}`}>
+    <div className={`overlay overlay--augment${peeking ? " overlay--peek" : ""}`}>
       <div className={`panel panel--wide${peeking ? " panel--peek" : ""}`}>
         <div className="panel__head">
-          <h2>Persistent upgrade</h2>
+          <h2>
+            <span className="hud__long">Persistent </span>upgrade
+          </h2>
           {/* Several upgrades scale off your board, so let the player check it. */}
           <button className="ghost-btn ghost-btn--sm peek-toggle" onClick={onPeek}>
             {peeking ? "← Back to upgrades" : "View board"}
@@ -417,12 +419,14 @@ function RematchBlock({ r }: { r: RematchState }) {
     return (
       <div className="result-rematch result-rematch--offer" role="status">
         <span>🔁 Your opponent wants a rematch!</span>
-        <button className="primary-btn" onClick={r.onAsk} autoFocus>Accept rematch</button>
+        <button className="primary-btn" onClick={r.onAsk} autoFocus>
+          Accept<span className="hud__long"> rematch</span>
+        </button>
       </div>
     );
   }
   return (
-    <div className="result-rematch">
+    <div className="result-rematch result-rematch--ask">
       <button className="primary-btn" onClick={r.onAsk}>🔁 Rematch</button>
       <small>{r.away ? "Your opponent is offline right now." : "Starts when your opponent accepts too. Same settings."}</small>
     </div>
@@ -692,12 +696,15 @@ export function ResultPanel({ winner, round, stats, hp, startHp, upgrades, oppon
           </div>
         )}
 
+        {/* Pinned to the bottom of the screen while the stats scroll under
+            it, so Rematch / New match never sit a phone-screen away. */}
+        <div className="result-footer">
         {rematch && <RematchBlock r={rematch} />}
 
         <div className="result-actions">
           {onReplay && (
             <button className="ghost-btn" onClick={onReplay}>
-              ↻ Replay final fight
+              ↻ Replay<span className="hud__long"> final fight</span>
             </button>
           )}
           <button className={rematch ? "ghost-btn" : "primary-btn"} onClick={onNewMatch}>{newMatchLabel ?? "New match"}</button>
@@ -705,6 +712,7 @@ export function ResultPanel({ winner, round, stats, hp, startHp, upgrades, oppon
         {onFeedback && (
           <button className="link-btn result-feedback" onClick={onFeedback}>🐞 Report a bug or suggest a feature</button>
         )}
+        </div>
       </div>
     </div>
   );

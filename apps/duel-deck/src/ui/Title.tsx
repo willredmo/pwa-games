@@ -2,12 +2,29 @@ import { useState } from "react";
 import { DIFFICULTIES, START_HP_MAX, START_HP_MIN, START_HP_OPTIONS, clampStartHp, type Difficulty, type MatchRules } from "../game/match";
 import type { SavedMatch } from "../game/save";
 import { DIFFICULTY_INFO } from "./Overlays";
+import { UnitPortrait } from "./UnitPortrait";
 
 // The main menu. Everything that used to be decided inside a running match —
 // which opponent, whether a save is resumed — is decided here instead, so the
 // match itself starts already knowing what it is.
+//
+// Laid out to fit a 360×640 phone without scrolling: the hero, then the one
+// thing you're most likely here to do (Continue, or the tutorial the first
+// time), a "vs CPU" card with the opponent as a segmented control and one Play
+// button, an online card, the match settings as a one-line chip that opens a
+// sheet, and the rest as an icon dock. It still scrolls when it can't fit
+// (a save, a rejoin and the tutorial all at once on a short phone).
 
 const DIFFICULTY_LABEL: Record<Difficulty, string> = { easy: "Easy", normal: "Normal", hard: "Hard" };
+
+/** The lineup under the logo: one of each class, facing each other across the middle. */
+const HERO_UNITS: { key: string; side: "player" | "enemy" }[] = [
+  { key: "guard", side: "player" },
+  { key: "striker", side: "player" },
+  { key: "herald", side: "player" },
+  { key: "berserker", side: "enemy" },
+  { key: "bulwark", side: "enemy" },
+];
 
 export interface TitleProps {
   saved: SavedMatch | null;
@@ -41,107 +58,158 @@ export interface TitleProps {
 
 export function Title(props: TitleProps) {
   const { saved, difficulty } = props;
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const info = DIFFICULTY_INFO[difficulty] ?? { icon: "🤖", blurb: "" };
   const savedLabel = saved
-    ? `Round ${saved.round}${saved.difficulty ? ` · ${DIFFICULTY_LABEL[saved.difficulty]}` : ""}`
+    ? `Round ${saved.round}${saved.difficulty ? ` · vs ${DIFFICULTY_LABEL[saved.difficulty]}` : ""}`
     : null;
 
   return (
     <div className="title">
-      <div className="title__hero">
+      <header className="title__hero">
         <div className="title__emblem" aria-hidden="true">⚔</div>
         <h1>Duel Deck</h1>
         <p className="title__tagline">Build a row. Merge it. Outlast them.</p>
-      </div>
+        <div className="title__lineup" aria-hidden="true">
+          {HERO_UNITS.map((u, i) => (
+            <span key={u.key} className={`title__unit title__unit--${u.side}`} style={{ "--i": i } as React.CSSProperties}>
+              <UnitPortrait unitKey={u.key} side={u.side} size={40} />
+            </span>
+          ))}
+        </div>
+      </header>
 
-      <div className="panel title__panel">
+      <main className="title__main">
         {saved && (
-          <button className="primary-btn primary-btn--wide" onClick={props.onResume}>
-            Continue <small>{savedLabel}</small>
+          <button className="title-cta title-cta--continue" onClick={props.onResume}>
+            <span className="title-cta__icon" aria-hidden="true">▶</span>
+            <span className="title-cta__text">
+              Continue
+              <small>{savedLabel}</small>
+            </span>
           </button>
         )}
 
         {props.suggestTutorial && (
-          <button className="primary-btn primary-btn--wide title__tutorial" onClick={props.onTutorial}>
-            🎓 New here? Play the tutorial <small>A guided first match, about 3 minutes</small>
+          <button className="title-nudge" onClick={props.onTutorial}>
+            <span aria-hidden="true">🎓</span>
+            <span className="title-nudge__text">
+              New here? <strong>Play the tutorial</strong>
+              <small>A guided first match, about 3 minutes</small>
+            </span>
+            <span className="title-nudge__go" aria-hidden="true">›</span>
           </button>
         )}
 
-        {/* Above both ways to play, since it applies to both. */}
-        <h2 className="title__label">Match settings</h2>
-        <p className="title__applies">
-          For both <strong>🤖 matches vs the CPU</strong> and <strong>🌐 duels you host</strong>
-        </p>
-        <MatchSettings rules={props.rules} onRules={props.onRules} />
-
-        <h2 className="title__label">{saved ? "New match vs CPU" : "Play vs CPU"}</h2>
-        <div className="title__options">
-          {DIFFICULTIES.map((d, i) => {
-            const info = DIFFICULTY_INFO[d] ?? { icon: "🤖", blurb: "" };
-            return (
+        <section className="title-card" aria-labelledby="title-cpu">
+          <h2 id="title-cpu" className="title-card__label">
+            <span aria-hidden="true">🤖</span> {saved ? "New match vs CPU" : "Play vs CPU"}
+          </h2>
+          {/* Radios, not buttons that start a match: the opponent is a setting
+              you compare, and Play is the single commit point. */}
+          <div className="segmented" role="radiogroup" aria-label="Opponent">
+            {DIFFICULTIES.map((d) => (
               <button
                 key={d}
-                // Radios, not buttons that start a match: the opponent is a
-                // setting you compare, and Play is the single commit point.
                 role="radio"
                 aria-checked={d === difficulty}
-                className={`start-option start-option--${d}${d === difficulty ? " start-option--on" : ""}`}
-                style={{ "--i": i } as React.CSSProperties}
+                className={`segmented__opt segmented__opt--${d}${d === difficulty ? " segmented__opt--on" : ""}`}
                 onClick={() => props.onDifficulty(d)}
               >
-                <span className="start-option__icon" aria-hidden="true">{info.icon}</span>
-                <span className="start-option__text">
-                  <strong>{DIFFICULTY_LABEL[d]}</strong>
-                  <span>{info.blurb}</span>
-                </span>
+                <span aria-hidden="true">{DIFFICULTY_INFO[d]?.icon}</span> {DIFFICULTY_LABEL[d]}
               </button>
-            );
-          })}
-        </div>
-        <button
-          className={`${saved || props.suggestTutorial ? "ghost-btn" : "primary-btn"} primary-btn--wide`}
-          onClick={props.onPlay}
-        >
-          {saved ? `New match vs ${DIFFICULTY_LABEL[difficulty]}` : `Play vs ${DIFFICULTY_LABEL[difficulty]}`}
-          <small>{settingsText(props.rules)}</small>
+            ))}
+          </div>
+          <p className="title-card__blurb" aria-live="polite">{info.blurb}</p>
+          <button className={`title-play${saved ? " title-play--quiet" : ""}`} onClick={props.onPlay}>
+            {saved ? `New match vs ${DIFFICULTY_LABEL[difficulty]}` : `Play vs ${DIFFICULTY_LABEL[difficulty]}`}
+          </button>
+          {saved && <p className="title__warn">Ends the match in progress.</p>}
+        </section>
+
+        <section className="title-card" aria-labelledby="title-online">
+          <h2 id="title-online" className="title-card__label">
+            <span aria-hidden="true">🌐</span> Online duel
+          </h2>
+          {props.rejoinCode && (
+            <button className="title-play" onClick={props.onRejoin}>
+              Rejoin duel · {props.rejoinCode}
+            </button>
+          )}
+          <div className="title__row">
+            <button className="title-btn" onClick={props.onHost}>
+              Host a duel <small>Your settings</small>
+            </button>
+            <button className="title-btn" onClick={props.onJoin}>
+              Join with code <small>Host's settings</small>
+            </button>
+          </div>
+          {props.notice && <p className="title__notice" role="status">{props.notice}</p>}
+        </section>
+
+        {/* One line, since most matches use the defaults; the sheet holds the rest. */}
+        <button className="settings-chip" onClick={() => setSettingsOpen(true)} aria-haspopup="dialog">
+          <span aria-hidden="true">⚙️</span>
+          <span className="settings-chip__text">
+            Match settings <strong>{settingsText(props.rules)}</strong>
+          </span>
+          <span className="settings-chip__go" aria-hidden="true">›</span>
         </button>
-        {saved && (
-          <p className="title__warn">Starting a new match ends the one in progress.</p>
-        )}
+      </main>
 
-        <h2 className="title__label">Online duel</h2>
-        {props.rejoinCode && (
-          <button className="primary-btn primary-btn--wide" onClick={props.onRejoin}>
-            Rejoin duel <small>Code {props.rejoinCode}</small>
-          </button>
-        )}
-        <div className="title__row">
-          <button className="ghost-btn" onClick={props.onHost}>
-            🌐 Host a duel <small>{settingsText(props.rules)}</small>
-          </button>
-          <button className="ghost-btn" onClick={props.onJoin}>
-            Join with code <small>Host's settings</small>
-          </button>
-        </div>
-        {props.notice && <p className="title__notice" role="status">{props.notice}</p>}
+      <nav className="title-dock" aria-label="More">
+        <DockButton icon="🎓" label="Tutorial" onClick={props.onTutorial} />
+        <DockButton icon="❓" label="Rules" onClick={props.onHelp} />
+        <DockButton icon="📖" label="Codex" onClick={props.onCodex} />
+        <DockButton icon="✨" label="New" onClick={props.onNotes} dot={props.newNotes} />
+        <DockButton
+          icon={props.sound ? "🔊" : "🔇"}
+          label={props.sound ? "Sound" : "Muted"}
+          onClick={() => props.onSound(!props.sound)}
+          pressed={props.sound}
+        />
+        <DockButton icon="🐞" label="Feedback" onClick={props.onFeedback} />
+      </nav>
 
-        <div className="title__links">
-          <button className="link-btn" onClick={props.onTutorial}>Tutorial</button>
-          <button className="link-btn" onClick={props.onHelp}>How to play</button>
-          <button className="link-btn" onClick={props.onCodex}>Codex</button>
-          <button className="link-btn" onClick={props.onNotes}>
-            What's new{props.newNotes && <span className="link-btn__dot" aria-label="(new)" />}
-          </button>
-          <button
-            className="link-btn"
-            onClick={() => props.onSound(!props.sound)}
-            aria-pressed={props.sound}
+      {settingsOpen && (
+        <div className="overlay overlay--sheet" onClick={() => setSettingsOpen(false)}>
+          <div
+            className="panel sheet"
+            role="dialog"
+            aria-labelledby="settings-title"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.key === "Escape" && setSettingsOpen(false)}
           >
-            {props.sound ? "🔊 Sound on" : "🔇 Sound off"}
-          </button>
-          <button className="link-btn" onClick={props.onFeedback}>🐞 Bugs &amp; ideas</button>
+            <div className="panel__head">
+              <h2 id="settings-title">Match settings</h2>
+              <button className="close-btn" onClick={() => setSettingsOpen(false)} aria-label="Close">✕</button>
+            </div>
+            <p className="panel__hint">
+              For both <strong>🤖 matches vs the CPU</strong> and <strong>🌐 duels you host</strong>. Joining a duel uses the host's.
+            </p>
+            <MatchSettings rules={props.rules} onRules={props.onRules} />
+            <button className="primary-btn primary-btn--wide sheet__done" onClick={() => setSettingsOpen(false)} autoFocus>
+              Done
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
+  );
+}
+
+function DockButton(p: { icon: string; label: string; onClick: () => void; dot?: boolean; pressed?: boolean }) {
+  return (
+    <button className="dock-btn" onClick={p.onClick} aria-pressed={p.pressed}>
+      <span className="dock-btn__icon" aria-hidden="true">
+        {p.icon}
+        {p.dot && <span className="dock-btn__dot" />}
+      </span>
+      <span className="dock-btn__label">
+        {p.label}
+        {p.dot && <span className="sr-only"> (new)</span>}
+      </span>
+    </button>
   );
 }
 
@@ -167,13 +235,9 @@ function MatchSettings({ rules, onRules }: { rules: MatchRules; onRules: (r: Par
     onRules({ startHp: hp });
   };
   return (
-    <details className="match-settings">
-      <summary>
-        <span className="match-settings__now">{settingsText(rules)}</span>
-        <span className="match-settings__edit">Change</span>
-      </summary>
+    <div className="match-settings">
+      <span className="match-settings__label">Starting health</span>
       <div className="title__hp" role="radiogroup" aria-label="Starting health">
-        <span className="title__hp-label">Starting health</span>
         {START_HP_OPTIONS.map((hp) => (
           <button
             key={hp}
@@ -236,18 +300,17 @@ function MatchSettings({ rules, onRules }: { rules: MatchRules; onRules: (r: Par
           </label>
         ))}
       </div>
-    </details>
+    </div>
   );
 }
 
-/** The settings in a few words, for the summary line and under each Play button. */
+/** The settings in a few words, for the settings chip. */
 function settingsText(r: MatchRules): string {
-  return [
+  const parts = [
     `♥${r.startHp}`,
     r.easy ? "Easy mode" : null,
     r.synergies ? null : "No class bonuses",
     r.upgrades ? null : "No upgrades",
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  ].filter(Boolean);
+  return parts.length === 1 ? `${parts[0]} · Standard` : parts.join(" · ");
 }

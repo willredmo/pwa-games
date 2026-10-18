@@ -939,10 +939,13 @@ button.menu-item:hover { border-color: #5a5180; }
 .hud__short { display: none; }
 @media (max-width: 44.99rem) {
   .app { gap: 0.35rem; padding: max(0.6rem, env(safe-area-inset-top)) 12px calc(0.6rem + env(safe-area-inset-bottom)); }
-  .app__header { min-height: 2.5rem; }
-  .app__header h1 { font-size: 1.15rem; }
-  .app__subtitle { font-size: 0.8rem; margin-top: 0.1rem; }
-  .menu-btn { width: 2.25rem; height: 2.25rem; font-size: 1.1rem; }
+  /* One row: ☰, where the match is, and the upgrade countdown. The game's
+     name is on the title screen; here its line is board. */
+  .app__header { display: flex; align-items: center; gap: 0.5rem; width: 100%; min-height: 2.25rem; text-align: left; }
+  .app__header h1 { display: none; }
+  .app__subtitle { flex: 1; min-width: 0; margin: 0; font-size: 0.86rem; font-weight: 700; color: #e9e4ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .menu-btn { position: static; flex: none; width: 2.25rem; height: 2.25rem; font-size: 1.1rem; }
+  .next-upgrade { margin: 0; flex: none; padding: 0.2rem 0.55rem; }
   .hpbar { width: 100%; font-size: 0.8rem; }
   .app__stage { width: 100%; }
   .hud { flex-wrap: nowrap; gap: 0.4rem; width: 100%; }
@@ -959,6 +962,19 @@ button.menu-item:hover { border-color: #5a5180; }
   .card__name { font-size: 0.68rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
   .card__stats { font-size: 0.72rem; }
   .pick-row .pick-label { margin: 0.1rem 0; }
+}
+
+/* Narrow phones (320-380px): four HUD buttons only fit if Undo drops its word. */
+@media (max-width: 23.75rem) {
+  .hud { gap: 0.3rem; }
+  .hud .primary-btn, .hud .ghost-btn { padding: 0.5rem 0.55rem; font-size: 0.85rem; }
+  .hud__wide-only { display: none; }
+  .app__hint { font-size: 0.76rem; }
+}
+
+/* Short phones: every pixel of gap goes to the board. */
+@media (max-width: 44.99rem) and (max-height: 740px) {
+  .app { gap: 0.25rem; }
 }
 
 /* --- Desktop side panels (#7): only where there's room beside the board --- */
@@ -1143,14 +1159,12 @@ button.menu-item:hover { border-color: #5a5180; }
   0%, 100% { box-shadow: 0 0 0 1px rgba(143, 211, 255, 0.45), 0 0 10px rgba(124, 200, 255, 0.25); }
   50% { box-shadow: 0 0 0 1px rgba(191, 230, 255, 0.8), 0 0 18px rgba(124, 200, 255, 0.5); }
 }
-/* --- Title screen --------------------------------------------------------
-   Unlike the match (one fixed screen, never scrolls), the menu is allowed to
-   scroll: on a short phone the opponent cards plus Play don't always fit. */
+/* --- Title screen (ui/Title.tsx) ------------------------------------------
+   Sized to fit a 360×640 phone without scrolling; it still scrolls itself
+   (the page never does) when a save, a rejoin and the tutorial nudge all
+   show at once. Centred with auto margins rather than justify-content, which
+   would cut off the top of an overflowing column. */
 .title {
-  /* The page never scrolls (index.css locks it for the game screen), so the
-     title scrolls itself when its content is taller than the screen. Centred
-     with auto margins rather than justify-content, which would cut off the
-     top of an overflowing column. */
   height: 100dvh;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -1160,57 +1174,288 @@ button.menu-item:hover { border-color: #5a5180; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
-  gap: 1.2rem;
-  padding: 1.5rem 1rem calc(1.5rem + env(safe-area-inset-bottom));
+  gap: 0.9rem;
+  padding: max(1rem, env(safe-area-inset-top)) 16px calc(0.8rem + env(safe-area-inset-bottom));
 }
 .title > :first-child { margin-top: auto; }
 .title > :last-child { margin-bottom: auto; }
-.title__hero { text-align: center; }
+.title__hero { text-align: center; position: relative; }
 .title__emblem {
-  font-size: 2.6rem;
+  width: 3.2rem;
+  height: 3.2rem;
+  margin: 0 auto;
+  display: grid;
+  place-items: center;
+  font-size: 1.7rem;
   line-height: 1;
-  filter: drop-shadow(0 0 14px rgba(240, 180, 41, 0.45));
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #4a3f78, #221d38 70%);
+  box-shadow: 0 0 0 1px rgba(240, 180, 41, 0.45), 0 0 28px rgba(240, 180, 41, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15);
 }
 .title__hero h1 {
-  margin: 0.3rem 0 0;
-  font-size: clamp(2rem, 9vw, 2.9rem);
-  letter-spacing: 0.03em;
-  background: linear-gradient(180deg, #fff 10%, #f0b429 120%);
+  margin: 0.45rem 0 0;
+  font-size: clamp(2.1rem, 11vw, 3.1rem);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  background: linear-gradient(180deg, #fff 15%, #ffd666 60%, #e8962a 110%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.35));
 }
-.title__tagline {
-  margin: 0.35rem 0 0;
-  color: var(--muted);
-  font-size: 0.92rem;
+.title__tagline { margin: 0.4rem 0 0; color: var(--muted); font-size: 0.88rem; }
+.title__lineup { display: flex; justify-content: center; align-items: flex-end; gap: 0.2rem; margin-top: 0.4rem; height: 44px; }
+.title__unit { display: block; }
+.title__unit:nth-child(4) { margin-left: 1.1rem; }
+@media (prefers-reduced-motion: no-preference) {
+  .title__unit { animation: unit-hop 2.4s ease-in-out infinite; animation-delay: calc(var(--i) * 0.18s); }
 }
-.title__panel {
-  width: min(94vw, 27rem);
+@keyframes unit-hop { 0%, 70%, 100% { transform: none; } 80% { transform: translateY(-5px); } 90% { transform: translateY(0); } }
+
+.title__main { width: min(100%, 26rem); display: flex; flex-direction: column; gap: 0.6rem; }
+
+/* Cards: frosted glass over the backdrop, a faint top highlight. */
+.title-card {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.55rem;
+  padding: 0.75rem;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(52, 46, 80, 0.72), rgba(32, 28, 50, 0.78));
+  border: 1px solid rgba(140, 125, 200, 0.22);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
-.title__label {
-  margin: 0.2rem 0 0;
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+.title-card__label {
+  margin: 0;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: #b8b0d8;
 }
-/* Match settings (ui/Title.tsx): a collapsible block between the opponent and Play. */
-.match-settings { border: 1px solid #3a3454; border-radius: 12px; background: #221e33; padding: 0.15rem 0.6rem; }
-.match-settings > summary { cursor: pointer; padding: 0.45rem 0.1rem; font-weight: 800; font-size: 0.9rem; display: flex; justify-content: space-between; gap: 0.5rem; }
-.match-settings__now { color: #e9e4ff; font-weight: 700; font-size: 0.85rem; }
-.match-settings__edit { color: #9ecbf5; font-weight: 700; font-size: 0.8rem; text-decoration: underline; text-underline-offset: 3px; }
-.match-settings[open] .match-settings__edit { visibility: hidden; }
-.title__applies { margin: -0.2rem 0 0.1rem; text-align: center; font-size: 0.78rem; color: var(--muted); }
-.title__applies strong { color: #d5dceb; font-weight: 700; }
-.match-settings[open] > summary { border-bottom: 1px solid #3a3454; margin-bottom: 0.5rem; }
-.match-settings__toggles { display: grid; gap: 0.35rem; margin: 0.6rem 0 0.2rem; }
-.match-settings__note { margin: 0.35rem 0 0.4rem; font-size: 0.74rem; color: var(--muted); text-align: center; }
+.title-card__blurb { margin: -0.1rem 0.1rem 0; min-height: 2.5em; font-size: 0.8rem; line-height: 1.25; color: var(--muted); }
+
+/* Opponent: a three-way segmented control. */
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 12px;
+  background: rgba(10, 8, 20, 0.55);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+.segmented__opt {
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 800;
+  min-height: 2.6rem;
+  padding: 0.4rem 0.2rem;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #b9b3c9;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+}
+.segmented__opt:hover { color: #fff; }
+.segmented__opt--on { background: #3a3360; color: #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08); }
+.segmented__opt--easy.segmented__opt--on { border-color: rgba(123, 216, 143, 0.6); color: #a6f0b6; }
+.segmented__opt--normal.segmented__opt--on { border-color: rgba(125, 184, 255, 0.6); color: #b5d6ff; }
+.segmented__opt--hard.segmented__opt--on { border-color: rgba(255, 133, 119, 0.6); color: #ffb3a8; }
+.segmented__opt:focus-visible { outline: 2px solid #f0b429; outline-offset: 1px; }
+
+/* The big buttons. */
+.title-play,
+.title-cta {
+  font: inherit;
+  width: 100%;
+  min-height: 3rem;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 900;
+  font-size: 1.02rem;
+  letter-spacing: 0.01em;
+  color: #0b1d33;
+  background: linear-gradient(180deg, #6fb2f2, #3a86d6);
+  box-shadow: 0 4px 0 #245c98, 0 8px 18px rgba(58, 134, 214, 0.35);
+  transition: transform 0.1s, box-shadow 0.1s, filter 0.15s;
+}
+.title-play:hover, .title-cta:hover { filter: brightness(1.08); }
+.title-play:active, .title-cta:active { transform: translateY(3px); box-shadow: 0 1px 0 #245c98, 0 4px 10px rgba(58, 134, 214, 0.3); }
+.title-play:focus-visible, .title-cta:focus-visible { outline: 2px solid #f0b429; outline-offset: 2px; }
+.title-play--quiet {
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid #4a4370;
+  box-shadow: none;
+  font-weight: 800;
+  font-size: 0.92rem;
+  min-height: 2.6rem;
+}
+.title-play--quiet:active { box-shadow: none; }
+.title-cta--continue {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.55rem 1rem;
+  text-align: left;
+  color: #2a1a00;
+  background: linear-gradient(180deg, #ffd666, #f0a929);
+  box-shadow: 0 4px 0 #a86e12, 0 8px 22px rgba(240, 180, 41, 0.35);
+}
+.title-cta--continue:active { box-shadow: 0 1px 0 #a86e12; }
+.title-cta__icon { font-size: 1.2rem; width: 2.2rem; height: 2.2rem; display: grid; place-items: center; border-radius: 50%; background: rgba(0, 0, 0, 0.14); }
+.title-cta__text { display: flex; flex-direction: column; font-size: 1.1rem; line-height: 1.15; }
+.title-cta__text small { font-size: 0.78rem; font-weight: 700; opacity: 0.75; }
+
+.title-nudge {
+  font: inherit;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  color: var(--fg);
+  border-radius: 14px;
+  border: 1px solid rgba(240, 180, 41, 0.55);
+  background: linear-gradient(90deg, rgba(240, 180, 41, 0.18), rgba(240, 180, 41, 0.05));
+  cursor: pointer;
+  font-size: 0.92rem;
+}
+.title-nudge > span:first-child { font-size: 1.4rem; }
+.title-nudge__text { flex: 1; display: flex; flex-direction: column; }
+.title-nudge__text strong { color: #ffd666; }
+.title-nudge__text small { font-size: 0.74rem; color: var(--muted); }
+.title-nudge__go, .settings-chip__go { font-size: 1.4rem; color: var(--muted); line-height: 1; }
+
+.title__row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.title-btn {
+  font: inherit;
+  min-height: 3rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: 12px;
+  border: 1px solid #4a4370;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--fg);
+  font-weight: 800;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+.title-btn small { display: block; font-weight: 600; font-size: 0.72rem; color: var(--muted); }
+.title-btn:hover { border-color: #7a6fb0; background: rgba(255, 255, 255, 0.08); }
+.title-btn:active { transform: translateY(1px); }
+.title-btn:focus-visible { outline: 2px solid #f0b429; outline-offset: 2px; }
+
+.settings-chip {
+  font: inherit;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.45rem 0.8rem;
+  border-radius: 12px;
+  border: 1px dashed #4a4370;
+  background: transparent;
+  color: #cfc8e8;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.84rem;
+}
+.settings-chip:hover { border-color: #7a6fb0; }
+.settings-chip__text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-chip__text strong { color: #fff; margin-left: 0.3rem; }
+
+.title__warn { margin: -0.2rem 0 0; text-align: center; font-size: 0.74rem; color: var(--muted); }
+.title__notice { margin: 0; text-align: center; font-size: 0.84rem; color: #ffb4a8; }
+
+/* The icon dock: everything you reach for now and then. */
+.title-dock {
+  width: min(100%, 26rem);
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.25rem;
+  padding: 0.35rem;
+  border-radius: 16px;
+  background: rgba(20, 17, 34, 0.7);
+  border: 1px solid rgba(140, 125, 200, 0.18);
+}
+.dock-btn {
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  min-height: 3rem;
+  padding: 0.35rem 0;
+  border: none;
+  border-radius: 11px;
+  background: transparent;
+  color: #cfc8e8;
+  cursor: pointer;
+}
+.dock-btn:hover, .dock-btn:focus-visible { background: rgba(255, 255, 255, 0.07); outline: none; }
+.dock-btn__icon { position: relative; font-size: 1.2rem; line-height: 1; }
+.dock-btn__dot { position: absolute; top: -2px; right: -6px; width: 8px; height: 8px; border-radius: 50%; background: #f0b429; box-shadow: 0 0 0 2px #14121f; }
+.dock-btn__label { font-size: 0.66rem; font-weight: 700; letter-spacing: 0.01em; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Match settings, in a sheet from the bottom on phones (centred on bigger screens). */
+.overlay.overlay--sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  border-radius: 0;
+  align-items: flex-end;
+  padding: 0;
+  overflow-y: auto;
+}
+.sheet {
+  width: min(100%, 28rem);
+  border-radius: 18px 18px 0 0;
+  padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom));
+  animation: sheet-up 0.25s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+@keyframes sheet-up { from { transform: translateY(40px); opacity: 0; } }
+@media (min-width: 40rem) and (min-height: 34rem) {
+  .overlay.overlay--sheet { align-items: center; padding: 1rem; }
+  .sheet { border-radius: 16px; }
+}
+.sheet__done { margin-top: 0.9rem; min-height: 2.75rem; }
+.match-settings { display: flex; flex-direction: column; gap: 0.5rem; }
+.match-settings__label { font-size: 0.76rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.match-settings__toggles { display: grid; gap: 0.6rem; margin-top: 0.4rem; }
+.title__hp { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.35rem; }
+
+/* Short phones: drop the lineup first, then tighten. */
+@media (max-height: 700px) {
+  .title { gap: 0.65rem; }
+  .title__lineup { display: none; }
+  .title__emblem { width: 2.5rem; height: 2.5rem; font-size: 1.3rem; }
+  .title__hero h1 { margin-top: 0.3rem; font-size: clamp(2rem, 10vw, 2.6rem); }
+  .title__tagline { margin-top: 0.25rem; font-size: 0.82rem; }
+  .title-nudge { padding: 0.45rem 0.8rem; }
+  .title-nudge__text small { display: none; }
+}
+@media (max-height: 600px) {
+  .title { gap: 0.6rem; }
+  .title__emblem { display: none; }
+  .title__hero h1 { margin-top: 0; font-size: 2rem; }
+  .title__tagline { display: none; }
+  .title-card { padding: 0.6rem; gap: 0.45rem; }
+  .title__main { gap: 0.5rem; }
+  .title-card__blurb { min-height: 0; }
+  .dock-btn { min-height: 2.75rem; }
+}
+
 .toggle { display: flex; align-items: center; gap: 0.6rem; cursor: pointer; font-size: 0.88rem; font-weight: 700; }
 .toggle small { display: block; font-weight: 500; font-size: 0.74rem; color: var(--muted); }
 .toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; }
@@ -1219,9 +1464,6 @@ button.menu-item:hover { border-color: #5a5180; }
 .toggle input:checked + .toggle__switch { background: #3a86d6; }
 .toggle input:checked + .toggle__switch::after { transform: translateX(1rem); }
 .toggle input:focus-visible + .toggle__switch { outline: 2px solid #f0b429; outline-offset: 2px; }
-/* Starting health: three small radios inside Match settings. */
-.title__hp { display: flex; align-items: center; justify-content: center; gap: 0.4rem; flex-wrap: wrap; }
-.title__hp-label { color: var(--muted); font-size: 0.82rem; font-weight: 700; margin-right: 0.2rem; }
 .hp-option {
   font: inherit;
   font-size: 0.9rem;
@@ -1253,17 +1495,6 @@ button.menu-item:hover { border-color: #5a5180; }
 .hp-custom small { font-weight: 600; font-size: 0.72rem; }
 .hp-option small { font-size: 0.68rem; font-weight: 600; color: var(--muted); }
 .hp-option--on { border-color: #f0b429; background: rgba(240, 180, 41, 0.14); box-shadow: 0 0 0 1px #f0b429 inset; }
-.title__options {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-/* The chosen opponent, as a radio rather than the start screen's one-shot
-   button: gold edge and a tinted fill so it reads as "this is set". */
-.start-option--on {
-  border-color: #f0b429;
-  background: rgba(240, 180, 41, 0.12);
-}
 .primary-btn--wide { width: 100%; }
 .primary-btn--wide small,
 .ghost-btn small {
@@ -1271,19 +1502,6 @@ button.menu-item:hover { border-color: #5a5180; }
   font-weight: 500;
   font-size: 0.76rem;
   opacity: 0.8;
-}
-.title__warn {
-  margin: 0;
-  text-align: center;
-  font-size: 0.76rem;
-  color: var(--muted);
-}
-.title__links {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.3rem 1rem;
-  margin-top: 0.3rem;
 }
 .link-btn {
   font: inherit;
@@ -1373,14 +1591,6 @@ button.menu-item:hover { border-color: #5a5180; }
 }
 .lobby__error { margin: 0; color: #ffb4a8; font-size: 0.88rem; }
 
-.title__row { display: flex; gap: 0.5rem; }
-.title__row .ghost-btn { flex: 1; }
-.title__notice {
-  margin: 0;
-  text-align: center;
-  font-size: 0.84rem;
-  color: #ffb4a8;
-}
 
 /* Online: your row is in, theirs isn't yet. Sits where the offer cards were,
    so the board keeps exactly the height it had during picks. */
@@ -1615,7 +1825,6 @@ button.menu-item:hover { border-color: #5a5180; }
   border-radius: 10px;
   animation: tut-pulse 1.4s ease-in-out infinite;
 }
-.title__tutorial { margin-bottom: 0.4rem; }
 @keyframes tut-in {
   from { opacity: 0; transform: translateX(-50%) translateY(-6px); }
   to { opacity: 1; transform: translateX(-50%); }
@@ -1735,3 +1944,62 @@ button.menu-item:hover { border-color: #5a5180; }
 @keyframes rematch-glow { 50% { box-shadow: 0 0 0 3px rgba(240, 180, 41, 0.25); } }
 @media (prefers-reduced-motion: reduce) { .result-rematch--offer { animation: none; } }
 .result-feedback { display: block; margin: 0.7rem auto 0; font-size: 0.78rem; }
+/* After the kept hp-option rules, so the sheet's 4-across grid wins. */
+.title__hp .hp-option { padding: 0.45rem 0.2rem; min-height: 2.9rem; justify-content: center; }
+
+/* --- ☰ menu, compact (ui/MenuPanel.tsx) --- */
+.menu-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; margin-top: 0.7rem; }
+.menu-tile {
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  min-height: 4.2rem;
+  padding: 0.55rem 0.65rem;
+  text-align: left;
+  border-radius: 12px;
+  border: 1px solid #3a3454;
+  background: linear-gradient(180deg, #2f2a47, #262139);
+  color: var(--fg);
+  font-weight: 800;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.1s;
+}
+.menu-tile:hover { border-color: #5a5180; }
+.menu-tile:active { transform: translateY(1px); }
+.menu-tile__icon { font-size: 1.25rem; line-height: 1; margin-bottom: 0.15rem; }
+.menu-tile small { font-weight: 500; font-size: 0.72rem; color: var(--muted); }
+.menu-group { display: grid; gap: 0.7rem; margin-top: 0.8rem; padding: 0.7rem; border-radius: 12px; background: #221e33; border: 1px solid #3a3454; }
+.menu-match { display: flex; flex-direction: column; gap: 0.1rem; margin: 0.7rem 0 0; padding: 0 0.2rem; font-size: 0.84rem; font-weight: 700; }
+.menu-match small { font-weight: 500; font-size: 0.72rem; color: var(--muted); }
+.menu-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; margin-top: 0.7rem; }
+.menu-actions--one { grid-template-columns: 1fr; }
+.menu-action {
+  font: inherit;
+  min-height: 3rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: 12px;
+  border: 1px solid #4a4370;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--fg);
+  font-weight: 800;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.menu-action small { display: block; font-weight: 500; font-size: 0.72rem; color: var(--muted); }
+.menu-action:hover { border-color: #7a6fb0; }
+.menu-action--danger { border-color: rgba(209, 72, 58, 0.55); }
+.menu-action--danger:hover { border-color: #d1483a; }
+.menu-confirm { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.7rem; padding: 0.6rem 0.7rem; border-radius: 12px; border: 1px solid #d1483a; font-weight: 800; font-size: 0.9rem; }
+.menu-confirm small { display: block; font-weight: 500; font-size: 0.74rem; color: var(--muted); }
+.menu-confirm__actions { display: flex; gap: 0.4rem; margin-left: auto; }
+.menu-about-box { margin-top: 0.8rem; border-top: 1px solid #3a3454; padding-top: 0.5rem; }
+.menu-about-box > summary { cursor: pointer; font-size: 0.8rem; font-weight: 700; color: var(--muted); padding: 0.2rem 0; display: flex; align-items: center; gap: 0.5rem; }
+.menu-about-box__new { color: #ffd666; font-size: 0.72rem; padding: 0.05rem 0.45rem; border-radius: 999px; background: rgba(240, 180, 41, 0.15); }
+.menu-about-box[open] > summary { margin-bottom: 0.4rem; }
+/* Short phones: the tutorial coach card covers less of the board. */
+@media (max-height: 600px) {
+  .tut__text { font-size: 0.82rem; line-height: 1.3; margin: 0.25rem 0 0.4rem; }
+}

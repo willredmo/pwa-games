@@ -9,9 +9,14 @@ import {
   type DeployInfo,
 } from "../pwa";
 
-// The ☰ menu: things you reach for now and then (codex, rules, a new match) plus an About section saying which build this device is running
-// and when the newest one was deployed — the same idea as the partner check-in
-// app's settings, but it also says whether this device is behind.
+// The ☰ menu: things you reach for now and then (codex, rules, a new match)
+// plus an About section saying which build this device is running and when the
+// newest one was deployed — the same idea as the partner check-in app's
+// settings, but it also says whether this device is behind.
+//
+// Compact enough to fit a 360×640 phone without scrolling: four tiles, two
+// switches, one line for this match's settings, the exits side by side, and
+// About folded away (open by itself when an update is waiting).
 
 export interface MenuPanelProps {
   onClose: () => void;
@@ -31,12 +36,14 @@ export interface MenuPanelProps {
   difficultyLabel: string;
   /** This match's settings that differ from the defaults, or "Standard". */
   rulesLabel: string;
+  /** An online duel: one "Leave duel" instead of Main menu / New match. */
+  online?: boolean;
 }
 
 type CheckState = "idle" | "checking" | "done";
 
 export function MenuPanel(props: MenuPanelProps) {
-  const { onClose, onCodex, onNotes, onHelp, onFeedback, onNewMatch, onExit, sound, onSound, battleLog, onBattleLog, difficultyLabel, rulesLabel } = props;
+  const { onClose, onCodex, onNotes, onHelp, onFeedback, onNewMatch, onExit, sound, onSound, battleLog, onBattleLog, difficultyLabel, rulesLabel, online } = props;
   const waiting = usePwaUpdate();
   const [latest, setLatest] = useState<DeployInfo | null>(null);
   const [check, setCheck] = useState<CheckState>("idle");
@@ -63,112 +70,122 @@ export function MenuPanel(props: MenuPanelProps) {
           <button className="close-btn" onClick={onClose} aria-label="Close">✕</button>
         </div>
 
-        <div className="menu-list">
-          <button className="menu-item" onClick={onCodex}>
-            <span className="menu-item__icon">📖</span>
-            <span>Codex<small>Every unit and upgrade, and how they fit together</small></span>
+        <div className="menu-tiles">
+          <button className="menu-tile" onClick={onCodex}>
+            <span className="menu-tile__icon" aria-hidden="true">📖</span>
+            Codex
+            <small>Units and upgrades</small>
           </button>
-          <button className="menu-item" onClick={onHelp}>
-            <span className="menu-item__icon">❓</span>
-            <span>How to play<small>Rounds, merging, upgrades</small></span>
+          <button className="menu-tile" onClick={onHelp}>
+            <span className="menu-tile__icon" aria-hidden="true">❓</span>
+            How to play
+            <small>Rounds, merging</small>
           </button>
-          <button className="menu-item" onClick={onNotes}>
-            <span className="menu-item__icon">✨</span>
-            <span>What's new<small>Patch notes for every version</small></span>
+          <button className="menu-tile" onClick={onNotes}>
+            <span className="menu-tile__icon" aria-hidden="true">✨</span>
+            What's new
+            <small>Patch notes</small>
           </button>
-          <button className="menu-item" onClick={onFeedback}>
-            <span className="menu-item__icon">🐞</span>
-            <span>Report a bug or suggest a feature<small>Sends a screenshot of the game with your note</small></span>
+          <button className="menu-tile" onClick={onFeedback}>
+            <span className="menu-tile__icon" aria-hidden="true">🐞</span>
+            Bugs &amp; ideas
+            <small>Sends a screenshot</small>
           </button>
-          {/* Also on the title screen, but a battle is exactly when you want
-              to silence it, and the title is a whole match away from here. */}
-          <button className="menu-item" onClick={() => onSound(!sound)} aria-pressed={sound}>
-            <span className="menu-item__icon">{sound ? "🔊" : "🔇"}</span>
-            <span>
-              Sound: {sound ? "on" : "off"}
-              <small>{sound ? "Tap to mute battle and menu sounds" : "Tap to turn sounds back on"}</small>
-            </span>
-          </button>
-          <button className="menu-item" onClick={() => onBattleLog(!battleLog)} aria-pressed={battleLog}>
-            <span className="menu-item__icon">{battleLog ? "📜" : "🚫"}</span>
-            <span>
-              Battle log: {battleLog ? "on" : "off"}
-              <small>
-                {battleLog
-                  ? "The blow-by-blow under the board during a battle"
-                  : "Hidden — the board and damage numbers still show everything"}
-              </small>
-            </span>
-          </button>
-          <div className="menu-item menu-item--locked">
-            <span className="menu-item__icon">🤖</span>
-            <span>
-              Opponent: {difficultyLabel}
-              <small>Chosen when the match started. New match to pick again.</small>
-            </span>
-          </div>
-          <div className="menu-item menu-item--locked">
-            <span className="menu-item__icon">⚙️</span>
-            <span>
-              Settings: {rulesLabel}
-              <small>Fixed for this match.</small>
-            </span>
-          </div>
-          {/* Leaving mid-match is safe — the save is written at the start of
-              every pick phase, so Continue picks this run back up. */}
-          <button className="menu-item" onClick={onExit}>
-            <span className="menu-item__icon">🏠</span>
-            <span>Main menu<small>This match is saved — continue it any time</small></span>
-          </button>
-          {confirmNew ? (
-            <div className="menu-item menu-item--confirm">
-              <span className="menu-item__icon">⚠️</span>
-              <span>Abandon this match?<small>Your current run is lost.</small></span>
-              <span className="menu-item__actions">
-                <button className="ghost-btn ghost-btn--sm" onClick={() => setConfirmNew(false)}>Cancel</button>
-                <button className="primary-btn primary-btn--danger" onClick={onNewMatch}>New match</button>
-              </span>
-            </div>
-          ) : (
-            <button className="menu-item" onClick={() => setConfirmNew(true)}>
-              <span className="menu-item__icon">🔄</span>
-              <span>New match<small>Start over and choose your opponent</small></span>
-            </button>
-          )}
         </div>
 
-        <h3 className="menu-heading">About</h3>
-        <dl className="menu-about">
-          <dt>Version</dt>
-          <dd>v{THIS_BUILD.version}</dd>
-          <dt>This build</dt>
-          <dd>deployed {formatDeploy(THIS_BUILD.deployedAt)}</dd>
-          <dt>Latest</dt>
-          <dd>{latest ? `v${latest.version} · deployed ${formatDeploy(latest.deployedAt)}` : "—"}</dd>
-        </dl>
-        <div className={`menu-status${behind ? " menu-status--behind" : ""}`}>
-          {behind ? (
-            <>
-              <span>✨ A newer version is available</span>
-              <button className="primary-btn" onClick={update}>Update now</button>
-            </>
-          ) : (
-            <>
-              <span>
-                {import.meta.env.DEV
-                  ? "Dev server — no deploy to compare"
-                  : check === "done" && latest
-                    ? "✓ You're on the latest version"
-                    : latest
-                      ? "✓ Up to date"
-                      : "Can't reach the server"}
-              </span>
-              <button className="ghost-btn ghost-btn--sm" onClick={() => void runCheck()} disabled={check === "checking"}>
-                {check === "checking" ? "Checking…" : "Check for updates"}
-              </button>
-            </>
-          )}
+        {/* Sound is also on the title screen, but a battle is exactly when you
+            want to silence it, and the title is a whole match away from here. */}
+        <div className="menu-group">
+          <label className="toggle">
+            <input type="checkbox" checked={sound} onChange={(e) => onSound(e.target.checked)} />
+            <span className="toggle__switch" aria-hidden="true" />
+            <span>
+              {sound ? "🔊" : "🔇"} Sound
+              <small>Battle and menu sounds</small>
+            </span>
+          </label>
+          <label className="toggle">
+            <input type="checkbox" checked={battleLog} onChange={(e) => onBattleLog(e.target.checked)} />
+            <span className="toggle__switch" aria-hidden="true" />
+            <span>
+              📜 Battle log
+              <small>{battleLog ? "The blow-by-blow under the board" : "Hidden — the board still shows everything"}</small>
+            </span>
+          </label>
         </div>
+
+        <p className="menu-match">
+          <span>
+            {online ? "🌐 Online duel" : `🤖 vs ${difficultyLabel}`} · ⚙️ {rulesLabel}
+          </span>
+          <small>Fixed for this match{online ? "" : ". New match to change them"}.</small>
+        </p>
+
+        {confirmNew ? (
+          <div className="menu-confirm" role="alert">
+            <span>
+              ⚠️ Abandon this match?<small>Your current run is lost.</small>
+            </span>
+            <span className="menu-confirm__actions">
+              <button className="ghost-btn ghost-btn--sm" onClick={() => setConfirmNew(false)}>Cancel</button>
+              <button className="primary-btn primary-btn--danger" onClick={onNewMatch}>New match</button>
+            </span>
+          </div>
+        ) : online ? (
+          <div className="menu-actions menu-actions--one">
+            <button className="menu-action" onClick={onExit}>
+              🚪 Leave duel<small>Ends it for both players</small>
+            </button>
+          </div>
+        ) : (
+          <div className="menu-actions">
+            {/* Leaving mid-match is safe — the save is written at the start of
+                every pick phase, so Continue picks this run back up. */}
+            <button className="menu-action" onClick={onExit}>
+              🏠 Main menu<small>This match is saved</small>
+            </button>
+            <button className="menu-action menu-action--danger" onClick={() => setConfirmNew(true)}>
+              🔄 New match<small>Start over</small>
+            </button>
+          </div>
+        )}
+
+        {/* Rarely needed, so folded away — except when an update is waiting. */}
+        <details className="menu-about-box" open={behind}>
+          <summary>
+            About · v{THIS_BUILD.version}
+            {behind && <span className="menu-about-box__new">Update available</span>}
+          </summary>
+          <dl className="menu-about">
+            <dt>This build</dt>
+            <dd>deployed {formatDeploy(THIS_BUILD.deployedAt)}</dd>
+            <dt>Latest</dt>
+            <dd>{latest ? `v${latest.version} · deployed ${formatDeploy(latest.deployedAt)}` : "—"}</dd>
+          </dl>
+          <div className={`menu-status${behind ? " menu-status--behind" : ""}`}>
+            {behind ? (
+              <>
+                <span>✨ A newer version is available</span>
+                <button className="primary-btn" onClick={update}>Update now</button>
+              </>
+            ) : (
+              <>
+                <span>
+                  {import.meta.env.DEV
+                    ? "Dev server — no deploy to compare"
+                    : check === "done" && latest
+                      ? "✓ You're on the latest version"
+                      : latest
+                        ? "✓ Up to date"
+                        : "Can't reach the server"}
+                </span>
+                <button className="ghost-btn ghost-btn--sm" onClick={() => void runCheck()} disabled={check === "checking"}>
+                  {check === "checking" ? "Checking…" : "Check for updates"}
+                </button>
+              </>
+            )}
+          </div>
+        </details>
       </div>
     </div>
   );

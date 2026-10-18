@@ -10,6 +10,17 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.6.0",
+    date: "Oct 18, 2026",
+    notes: [
+      "A new main menu: pick your opponent and press Play from one card, host or join a duel from another, and find everything else in the icon bar at the bottom. Match settings open in their own panel.",
+      "Built for small phones: the main menu, ☰ menu and in-game screen all fit a 320×568 screen, and the board is about a fifth bigger on phones.",
+      "In a match on a phone, the top bar is one line (☰, the round, and when the next upgrade comes), leaving more room for the board.",
+      "The upgrade choice no longer gets cut off on short phones: it takes the whole screen and scrolls if it has to.",
+      "The end screen keeps Rematch, Replay and New match pinned to the bottom, with the stats in a compact grid above.",
+    ],
+  },
+  {
     version: "1.5.0",
     date: "Oct 18, 2026",
     notes: [

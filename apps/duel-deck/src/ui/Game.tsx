@@ -2165,7 +2165,10 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
             ` · ${playerAug.current.active.length} upgrade${playerAug.current.active.length === 1 ? "" : "s"}`}
         </p>
         {upgradeIn !== null && upgradeIn > 0 && phase !== "over" && (
-          <p className={`next-upgrade${upgradeIn === 1 ? " next-upgrade--soon" : ""}`}>
+          <p
+            title={`Upgrade ${upgradeIn === 1 ? "next round" : `in ${upgradeIn} rounds`}`}
+            className={`next-upgrade${upgradeIn === 1 ? " next-upgrade--soon" : ""}`}
+          >
             <span className="next-upgrade__pips" aria-hidden="true">
               {Array.from({ length: AUGMENT_EVERY }, (_, i) => (
                 <span
@@ -2174,7 +2177,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
                 />
               ))}
             </span>
-            ⬆ Upgrade {upgradeIn === 1 ? "next round" : `in ${upgradeIn} rounds`}
+            ⬆<span className="hud__long"> Upgrade {upgradeIn === 1 ? "next round" : `in ${upgradeIn} rounds`}</span>
+            <span className="hud__short">{upgradeIn === 1 ? "next" : `in ${upgradeIn}`}</span>
           </p>
         )}
       </header>
@@ -2278,6 +2282,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
             onBattleLog={onBattleLog}
             difficultyLabel={DIFFICULTY_LABEL[difficulty]}
             rulesLabel={rulesSummary(rules).join(" · ") || "Standard"}
+            online={!!online}
           />
         )}
         {showHelp && <HelpPanel onClose={() => setShowHelp(false)} />}
@@ -2349,8 +2354,9 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           onClick={undo}
           disabled={phase !== "pick" || history.length === 0}
           title="Undo your last move this round (Ctrl/⌘+Z)"
+          aria-label="Undo"
         >
-          ↶ Undo
+          ↶<span className="hud__wide-only"> Undo</span>
         </button>
         <button className="ghost-btn" onClick={() => setShowAugments(true)} title="Upgrades: yours / the enemy's">
           <span className="hud__long">Upgrades </span>

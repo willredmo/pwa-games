@@ -914,6 +914,37 @@ for updates / Update now. Update state is shared via `src/pwa.ts`.
 `duel-deck-hosting` in `.claude/launch.json` serves `dist` through the Hosting
 emulator (port 5176) to test the service worker and headers locally.
 
+### Small screens (checked at 320×568, 360×640, 375×812)
+Every screen is meant to work on a 320×568 phone without anything important
+off screen. What that took, screen by screen:
+- **Title** (`ui/Title.tsx`): hero, Continue (gold) or the tutorial nudge, a
+  "vs CPU" card (opponent as a three-way segmented control, its blurb, one
+  Play button), an online card, match settings as a one-line chip that opens
+  a bottom sheet, and an icon dock (Tutorial, Rules, Codex, New, Sound,
+  Feedback). Fits 360×640 with no scroll; `max-height` 700px and 600px steps
+  drop the unit lineup, shrink the emblem, then hide the tagline. It still
+  scrolls itself if it must (`.title` is the scroller; the page never is).
+- **In a match** (phones, under 45rem): the header is one row — ☰, round and
+  phase (ellipsised), and the upgrade countdown as a pill ("⬆ in 2"); the
+  "Duel Deck" heading is hidden, since its line is worth more as board. Gaps
+  drop to 0.25rem below 740px tall. At 360×640 the board went from 255px to
+  300px tall. Under 23.75rem (380px) wide, Undo is just ↶ so the four HUD
+  buttons fit.
+- **Upgrade choice:** on phones the overlay is `position: fixed` over the
+  whole screen and scrolls (`overlay--augment`), instead of filling the
+  board's box, which at 320×568 is 234px tall and pushed the heading and View
+  board off the top. Card tags wrap under the name; Take sticks to the bottom.
+- **☰ menu:** a 2×2 tile grid, two switches, one line for this match's
+  settings, the exits side by side (online: one "Leave duel"), and About
+  folded into a `<details>` that opens itself when an update is waiting.
+  Fits 320×568.
+- **Result screen:** `.result-footer` (rematch block, actions, feedback link)
+  is `position: sticky; bottom: 0`, so the actions never sit a screen away;
+  under 520px the stats are two columns of short horizontal tiles and the
+  long labels shorten (`hud__long`: "↻ Replay", "Accept").
+- Lobby, Codex, Help, What's new and Feedback already fit; the tutorial card's
+  text shrinks below 600px tall.
+
 ### Layout
 
 > **Rule: units have a maximum drawn size.** A unit's contents (character,
