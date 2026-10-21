@@ -910,7 +910,7 @@ Retention is three weeks. Grouping by day makes a prune one delete per day:
 `.github/workflows/telemetry-prune.yml` does it daily once the repo secret
 `FIREBASE_SERVICE_ACCOUNT` (a service-account key) is set.
 ### Sound (game/sound.ts)
-Synthesized, no audio files (`?sounds` on the dev server plays every one). The
+Effects are synthesized, no audio files (`?sounds` on the dev server plays every one). The
 master chain is a compressor plus a short generated room reverb, and combat
 sounds vary ±4% in pitch per play; death is a cartoon \"poof\" and round won
 two bells (chosen 2026-10-13).  — oscillators and one noise buffer, like
@@ -927,6 +927,32 @@ read as noise rather than as a big blow. The clash picks a single sound from
 the loudest damage in the beat (`BIG_HIT` switches it to the heavier one), and
 death is delayed ~90ms so the fall reads as the consequence of the impact.
 Knighting deliberately overrides the merge sound that triggers it.
+
+**Music** (`game/music.ts`, added in 1.7.0) is the exception to "no audio
+files": two recorded loops in `src/assets/music`, `plan.mp3` (pick, augment
+and waiting; "Fun indie game type jazz" by idoberg) and `battle.mp3` (battle,
+replays too; a chiptune by tatamusic), chosen by the user from their
+downloads. Game.tsx calls `setMusic(track)` on every phase change, `null` on
+the result screen, and App sets `null` on the title. A change crossfades over
+`FADE` (1.2s, linear, so the two never sum above full); each phase starts its
+track from the top. Neither track loops sample-exactly, so each pass overlaps
+the next by `SEAM` (1.5s) with a crossfade, scheduled on the AudioContext
+clock `LOOKAHEAD` ahead. Both are decoded once into AudioBuffers (~50 MB of
+PCM in memory together); the other track is decoded in the background so the
+first switch is instant.
+
+Levels: both files were re-encoded with ffmpeg to 96 kbps stereo and levelled
+to the same loudness, about -20.4 LUFS (the jazz track was -16.5, the chiptune
+-10.7; plain gain, `volume=-3.5dB` and `-9.3dB`, so their dynamics are
+untouched); the chiptune's 2.5s of trailing silence was cut (`-t 78.97`).
+Re-encode any replacement the same way, then `MUSIC_VOLUME` (0.3) is the only
+knob and sets music against the effects. Music goes straight to the output, not
+through the effects' compressor and reverb, so a big clash doesn't pump it.
+It plays only when Sound *and* Music are on and the page is visible (a hidden
+tab or backgrounded install stops it rather than playing silently). Music
+on/off is `Settings.music`, a 🎵 button beside Sound in the title dock and a
+switch under Sound in ☰. The service worker precaches `**/*.mp3` (vite.config.ts;
+~1.7 MB together, under Workbox's 2 MB per-file limit), so music works offline.
 
 ### Tutorial (ui/Tutorial.tsx)
 A guided first match against Easy, offered first on the title screen until
@@ -1013,7 +1039,7 @@ off screen. What that took, screen by screen:
   "vs CPU" card (opponent as a three-way segmented control, its blurb, one
   Play button), an online card, match settings as a one-line chip that opens
   a bottom sheet, and an icon dock (Tutorial, Rules, Codex, New, Sound,
-  Feedback). Fits 360×640 with no scroll; `max-height` 700px and 600px steps
+  Music, Feedback). Fits 360×640 with no scroll; `max-height` 700px and 600px steps
   drop the unit lineup, shrink the emblem, then hide the tagline. It still
   scrolls itself if it must (`.title` is the scroller; the page never is).
 - **In a match** (phones, under 45rem): the header is one row — ☰, round and
@@ -1026,7 +1052,8 @@ off screen. What that took, screen by screen:
   whole screen and scrolls (`overlay--augment`), instead of filling the
   board's box, which at 320×568 is 234px tall and pushed the heading and View
   board off the top. Card tags wrap under the name; Take sticks to the bottom.
-- **☰ menu:** a 2×2 tile grid, two switches, one line for this match's
+- **☰ menu:** a 2×2 tile grid, three switches (Sound, Music, Battle log; their
+  subtitles hidden under 600px tall), one line for this match's
   settings, the exits side by side (online: one "Leave duel"), and About
   folded into a `<details>` that opens itself when an update is waiting.
   Fits 320×568.

@@ -88,6 +88,7 @@ import { emptyStats, mvpOf, recordRound, type MatchStats } from "../game/stats";
 import { MatchLog, rowLog, type PickLog } from "../game/telemetry";
 import { SPEEDS, clearMatch, saveMatch, type SavedMatch, type Speed } from "../game/save";
 import { sfx } from "../game/sound";
+import { setMusic } from "../game/music";
 import {
   askRematch,
   matchOf,
@@ -334,6 +335,8 @@ export interface GameProps {
   onSpeed: (speed: Speed) => void;
   sound: boolean;
   onSound: (on: boolean) => void;
+  music: boolean;
+  onMusic: (on: boolean) => void;
   battleLog: boolean;
   onBattleLog: (on: boolean) => void;
   /** Back to the title screen (New match, or leaving a finished one). */
@@ -350,7 +353,7 @@ export interface GameProps {
   onFeedback: (context: string) => void;
 }
 
-export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, sound, onSound, battleLog, onBattleLog, onExit, online, tutorial, rules: startRules, onRematch, onFeedback }: GameProps) {
+export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, sound, onSound, music, onMusic, battleLog, onBattleLog, onExit, online, tutorial, rules: startRules, onRematch, onFeedback }: GameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   /** The match being resumed, if any; resuming always lands in the pick phase. */
@@ -408,6 +411,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   /** The win's slow-motion HP-bar explosion is playing (and the bar stays gone). */
   const [barBlast, setBarBlast] = useState(false);
   const [phase, setPhase] = useState<Phase>(saved?.augmentPending ? "augment" : "pick");
+  // Calm music while planning, the driving loop in battle (a replay too), none on the result screen.
+  useEffect(() => setMusic(phase === "battle" ? "battle" : phase === "over" ? null : "plan"), [phase]);
   const [result, setResult] = useState<RoundResult | null>(null);
   const [frames, setFrames] = useState<Frame[]>([]);
   const [banner, setBanner] = useState<{ message: string | null; tone: BannerTone; nonce: number; sub?: string | null }>({
@@ -2302,6 +2307,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
             }}
             sound={sound}
             onSound={onSound}
+            music={music}
+            onMusic={onMusic}
             battleLog={battleLog}
             onBattleLog={onBattleLog}
             difficultyLabel={DIFFICULTY_LABEL[difficulty]}

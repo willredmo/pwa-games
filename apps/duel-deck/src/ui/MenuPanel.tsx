@@ -30,6 +30,8 @@ export interface MenuPanelProps {
   onExit: () => void;
   sound: boolean;
   onSound: (on: boolean) => void;
+  music: boolean;
+  onMusic: (on: boolean) => void;
   battleLog: boolean;
   onBattleLog: (on: boolean) => void;
   /** This match's opponent, for display (it's chosen on the title screen). */
@@ -43,7 +45,7 @@ export interface MenuPanelProps {
 type CheckState = "idle" | "checking" | "done";
 
 export function MenuPanel(props: MenuPanelProps) {
-  const { onClose, onCodex, onNotes, onHelp, onFeedback, onNewMatch, onExit, sound, onSound, battleLog, onBattleLog, difficultyLabel, rulesLabel, online } = props;
+  const { onClose, onCodex, onNotes, onHelp, onFeedback, onNewMatch, onExit, sound, onSound, music, onMusic, battleLog, onBattleLog, difficultyLabel, rulesLabel, online } = props;
   const waiting = usePwaUpdate();
   const [latest, setLatest] = useState<DeployInfo | null>(null);
   const [check, setCheck] = useState<CheckState>("idle");
@@ -102,6 +104,14 @@ export function MenuPanel(props: MenuPanelProps) {
             <span>
               {sound ? "🔊" : "🔇"} Sound
               <small>Battle and menu sounds</small>
+            </span>
+          </label>
+          <label className="toggle">
+            <input type="checkbox" checked={music} onChange={(e) => onMusic(e.target.checked)} />
+            <span className="toggle__switch" aria-hidden="true" />
+            <span>
+              {music ? "🎵" : "🔕"} Music
+              <small>{!sound ? "Needs Sound on" : music ? "Calm while picking, faster in battle" : "Off"}</small>
             </span>
           </label>
           <label className="toggle">

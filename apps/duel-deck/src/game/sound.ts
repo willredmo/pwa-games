@@ -42,10 +42,27 @@ let noise: AudioBuffer | null = null;
 let pitch = 1;
 /** How much of each sound goes to the room reverb (0 = dry). */
 const REVERB_SEND = 0.14;
+/** See `onSoundChange`. */
+const listeners: (() => void)[] = [];
 
 export function setSoundEnabled(on: boolean): void {
   enabled = on;
   if (master && ctx) master.gain.setTargetAtTime(on ? 1 : 0, ctx.currentTime, 0.01);
+  for (const fn of listeners) fn();
+}
+
+/** The shared context once a gesture has unlocked it, for game/music.ts. */
+export function audioContext(): AudioContext | null {
+  return ctx;
+}
+
+export function soundEnabled(): boolean {
+  return enabled;
+}
+
+/** Called after sound is unlocked or turned on/off (music follows both). */
+export function onSoundChange(fn: () => void): void {
+  listeners.push(fn);
 }
 
 export function unlockSound(): void {
@@ -83,6 +100,7 @@ export function unlockSound(): void {
   } catch {
     ctx = null; // no Web Audio (or blocked) — the game is silent, nothing else
   }
+  for (const fn of listeners) fn();
 }
 
 /** A small room's impulse response: stereo noise decaying over `seconds`. */

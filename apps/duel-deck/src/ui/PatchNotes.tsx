@@ -23,6 +23,7 @@ export const PATCH_NOTES: Release[] = [
       "Match settings: choose a level cap of 8, 10, 12 or 15. Units stop levelling at the cap, where their ability gets its Mastery form. Duels use the host's.",
       "More rare and epic upgrades. New rares: Phalanx, Undying and Twin fangs. New epics: Sanctum, Iron curtain, Colossus and Warlord. Battle fury, United front, Overwhelm, Mixed formation and Bloodpact are now rare.",
       "Retired upgrades nobody was taking: Steady footing, Counterstrike, Tank wall, Glass cannon pact, Last breath and Bounty. A match already holding one keeps it.",
+      "Music: a laid-back jazz loop while you plan and a chiptune loop in battle, crossfading between them. Turn it off with the new Music switch on the title screen or in ☰ (Sound off silences it too).",
       "The CPU places its support units behind the units they should help.",
       "Online duels need both players on this version.",
     ],

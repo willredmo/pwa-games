@@ -80,6 +80,8 @@ export interface Settings {
   /** Battle playback multiplier. */
   speed: Speed;
   sound: boolean;
+  /** Background music; only heard while `sound` is on too. */
+  music: boolean;
   /** The running blow-by-blow shown where the offer cards sit during a battle. */
   battleLog: boolean;
   /** Health both players start a match with (START_HP_OPTIONS). */
@@ -96,6 +98,7 @@ const DEFAULTS: Settings = {
   difficulty: "normal",
   speed: 1,
   sound: true,
+  music: true,
   battleLog: true,
   startHp: 200,
   easy: false,
@@ -135,6 +138,7 @@ export function loadSettings(): Settings {
     difficulty: saved.difficulty ?? (read("duel-deck:difficulty") as Difficulty | null) ?? DEFAULTS.difficulty,
     speed,
     sound: saved.sound ?? DEFAULTS.sound,
+    music: saved.music ?? DEFAULTS.music,
     battleLog: saved.battleLog ?? DEFAULTS.battleLog,
     startHp:
       Number.isInteger(saved.startHp) && saved.startHp! >= START_HP_RANGE[0] && saved.startHp! <= START_HP_RANGE[1]

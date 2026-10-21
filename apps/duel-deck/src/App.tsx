@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Difficulty, MatchRules } from "./game/match";
 import { loadMatch, loadSettings, saveSettings, type SavedMatch, type Settings } from "./game/save";
 import { setSoundEnabled, unlockSound } from "./game/sound";
+import { setMusic, setMusicEnabled } from "./game/music";
 import { Game } from "./ui/Game";
 import { Title } from "./ui/Title";
 import { Lobby, type LobbyProps } from "./ui/Lobby";
@@ -76,6 +77,11 @@ export default function App() {
 
   useEffect(() => saveSettings(settings), [settings]);
   useEffect(() => setSoundEnabled(settings.sound), [settings.sound]);
+  useEffect(() => setMusicEnabled(settings.music), [settings.music]);
+  // No music on the title screen; a match sets its own track per phase.
+  useEffect(() => {
+    if (screen !== "game") setMusic(null);
+  }, [screen]);
 
   const start = (difficulty: Difficulty, resume: SavedMatch | null) => {
     // Audio can only start from a gesture, and this click is one.
@@ -166,6 +172,11 @@ export default function App() {
             if (sound) unlockSound();
             setSettings((s) => ({ ...s, sound }));
           }}
+          music={settings.music}
+          onMusic={(music) => {
+            if (music && settings.sound) unlockSound();
+            setSettings((s) => ({ ...s, music }));
+          }}
           battleLog={settings.battleLog}
           onBattleLog={(battleLog) => setSettings((s) => ({ ...s, battleLog }))}
           onExit={toTitle}
@@ -183,6 +194,11 @@ export default function App() {
           onSound={(sound) => {
             if (sound) unlockSound();
             setSettings((s) => ({ ...s, sound }));
+          }}
+          music={settings.music}
+          onMusic={(music) => {
+            if (music && settings.sound) unlockSound();
+            setSettings((s) => ({ ...s, music }));
           }}
           onPlay={() => start(settings.difficulty, null)}
           onResume={() => saved && start(saved.difficulty ?? settings.difficulty, saved)}

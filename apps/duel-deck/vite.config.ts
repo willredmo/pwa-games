@@ -32,7 +32,9 @@ export default defineConfig({
       // registers the worker itself, so nothing is injected.
       registerType: "prompt",
       injectRegister: false,
-      workbox: { cleanupOutdatedCaches: true },
+      // mp3: the two music loops (src/assets/music, ~1.7 MB together), so an
+      // installed copy has its music offline too.
+      workbox: { cleanupOutdatedCaches: true, globPatterns: ["**/*.{js,css,html,mp3}"] },
       includeAssets: ["icon.svg", "apple-touch-icon.png"],
       manifest: {
         name: "Duel Deck",

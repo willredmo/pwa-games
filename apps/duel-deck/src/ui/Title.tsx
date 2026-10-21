@@ -35,6 +35,8 @@ export interface TitleProps {
   onRules: (r: Partial<MatchRules>) => void;
   sound: boolean;
   onSound: (on: boolean) => void;
+  music: boolean;
+  onMusic: (on: boolean) => void;
   onPlay: () => void;
   onResume: () => void;
   onHelp: () => void;
@@ -167,6 +169,12 @@ export function Title(props: TitleProps) {
           label={props.sound ? "Sound" : "Muted"}
           onClick={() => props.onSound(!props.sound)}
           pressed={props.sound}
+        />
+        <DockButton
+          icon={props.music ? "🎵" : "🔕"}
+          label="Music"
+          onClick={() => props.onMusic(!props.music)}
+          pressed={props.music}
         />
         <DockButton icon="🐞" label="Feedback" onClick={props.onFeedback} />
       </nav>
