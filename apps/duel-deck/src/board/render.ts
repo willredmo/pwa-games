@@ -61,10 +61,32 @@ const MAX_LANE_W_BATTLE = 560;
  * because `cellCenter` (where effects land) must agree with `draw`; Game sets it
  * as it renders and `draw` from `RenderState.battle` every frame.
  */
-let BATTLE_VIEW = false;
+let battleTarget = false;
+/**
+ * How far into battle view the board is drawn, 0 (picking) .. 1 (battle). It
+ * eases toward the target over BATTLE_VIEW_MS rather than switching, so the
+ * board and its units grow into a battle and shrink back out of it, in step
+ * with App.css collapsing the rows under the board. Advanced once per frame by
+ * `draw`; `cellCenter` reads the same value, so effects land where units are.
+ */
+let battleT = 0;
+let battleLast = -1;
+const BATTLE_VIEW_MS = 420;
 export function setBattleView(on: boolean): void {
-  BATTLE_VIEW = on;
+  battleTarget = on;
 }
+function stepBattleView(now: number): void {
+  const dt = battleLast < 0 ? 0 : Math.max(0, now - battleLast);
+  battleLast = now;
+  if (prefersReducedMotion()) {
+    battleT = battleTarget ? 1 : 0;
+    return;
+  }
+  const k = Math.min(1, dt / BATTLE_VIEW_MS);
+  battleT = battleTarget ? Math.min(1, battleT + k) : Math.max(0, battleT - k);
+}
+/** The eased battle-view amount the caps interpolate by. */
+const battleView = () => easeInOutSine(battleT);
 
 export interface Cell {
   side: Side;
@@ -180,7 +202,8 @@ function layout(canvas: HTMLCanvasElement, board: Board): Layout | null {
   if (cw <= 0 || ch <= 0) return null;
   const rows = board.depth * 2;
   const rowH = ch / rows;
-  const laneW = Math.min(cw / board.lanes, BATTLE_VIEW ? MAX_LANE_W_BATTLE : MAX_LANE_W, rowH * MAX_LANE_ASPECT);
+  const laneCap = MAX_LANE_W + (MAX_LANE_W_BATTLE - MAX_LANE_W) * battleView();
+  const laneW = Math.min(cw / board.lanes, laneCap, rowH * MAX_LANE_ASPECT);
   return { ox: (cw - laneW * board.lanes) / 2, oy: 0, laneW, rowH, rows };
 }
 
@@ -341,7 +364,7 @@ const UNIT_MAX_H = 52;
  */
 const UNIT_MAX_H_BATTLE = 96;
 /** Scale for a slot's contents: 1 up to the unit cap, smaller past it. */
-const contentScale = (h: number) => Math.min(1, (BATTLE_VIEW ? UNIT_MAX_H_BATTLE : UNIT_MAX_H) / h);
+const contentScale = (h: number) => Math.min(1, (UNIT_MAX_H + (UNIT_MAX_H_BATTLE - UNIT_MAX_H) * battleView()) / h);
 /** Character centre and text column, from the slot's left edge, in slot heights. */
 const CHAR_X = 0.56;
 const TEXT_X = 1.12;
@@ -424,7 +447,8 @@ export function draw(canvas: HTMLCanvasElement, state: RenderState): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   const { board } = state;
-  BATTLE_VIEW = !!state.battle;
+  battleTarget = !!state.battle;
+  stepBattleView(state.time ?? performance.now());
   const l = layout(canvas, board);
   if (!l) return;
 

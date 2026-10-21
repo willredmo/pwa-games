@@ -10,6 +10,11 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.7.3",
+    date: "Oct 21, 2026",
+    notes: ["The board grows smoothly into a battle and shrinks back when it's time to pick, instead of jumping."],
+  },
+  {
     version: "1.7.2",
     date: "Oct 21, 2026",
     notes: [
