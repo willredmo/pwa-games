@@ -92,6 +92,8 @@ export interface Settings {
   upgrades: boolean;
   /** Level cap (LEVEL_CAP_OPTIONS in match.ts). */
   levelCap: number;
+  /** Kawaii mode (hidden in the settings sheet): your units pink and cute, the battle uwu. */
+  kawaii: boolean;
 }
 
 const DEFAULTS: Settings = {
@@ -105,6 +107,7 @@ const DEFAULTS: Settings = {
   synergies: true,
   upgrades: true,
   levelCap: 10,
+  kawaii: false,
 };
 /** Mirrors LEVEL_CAP_OPTIONS in match.ts, for the same reason as START_HP_RANGE below. */
 const LEVEL_CAPS = [8, 10, 12, 15];
@@ -148,6 +151,7 @@ export function loadSettings(): Settings {
     synergies: saved.synergies ?? DEFAULTS.synergies,
     upgrades: saved.upgrades ?? DEFAULTS.upgrades,
     levelCap: LEVEL_CAPS.includes(saved.levelCap as number) ? (saved.levelCap as number) : DEFAULTS.levelCap,
+    kawaii: saved.kawaii === true,
   };
 }
 

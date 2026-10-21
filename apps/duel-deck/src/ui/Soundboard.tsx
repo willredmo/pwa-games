@@ -21,6 +21,7 @@ const SOUNDS: { kind: Sfx; name: string; when: string; unused?: boolean; scales?
   { kind: "defeat", name: "Defeat", when: "You lose the match." },
   { kind: "explode", name: "Explosion", when: "Your row blows up after losing the match." },
   { kind: "emote", name: "Emote", when: "Your online opponent sends an emoji." },
+  { kind: "relay", name: "Relay", when: "A Beacon bounces a support ability on to the unit in front of it." },
   { kind: "heal", name: "Heal", when: "Defined but never played (meant for Medic heals and lifesteal).", unused: true },
   { kind: "buff", name: "Buff", when: "Defined but never played (meant for stat gains).", unused: true },
   { kind: "pick", name: "Pick", when: "Defined but never played (meant for picking up a card).", unused: true },

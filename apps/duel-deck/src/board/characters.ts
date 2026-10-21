@@ -47,6 +47,20 @@ interface Palette {
 }
 
 const PLAYER: Palette = { fill: [0x3a, 0x86, 0xd6], edge: [0x9e, 0xcb, 0xf5], dark: [0x22, 0x55, 0x92] };
+/** Kawaii mode (a hidden setting): your units in pink. */
+const KAWAII_PLAYER: Palette = { fill: [0xff, 0x8f, 0xc8], edge: [0xff, 0xd6, 0xec], dark: [0xd9, 0x5a, 0xa0] };
+const BLUSH: RGB = [0xff, 0x5c, 0x9d];
+
+/**
+ * Kawaii mode: your units are pink, with sparkly eyes, blush, an ω mouth and
+ * a bow. Cosmetic and local (the opponent's screen is untouched), so it's a
+ * module flag the app sets from its settings rather than a per-call option
+ * threaded through every caller.
+ */
+let KAWAII = false;
+export function setKawaiiCharacters(on: boolean): void {
+  KAWAII = on;
+}
 const ENEMY: Palette = { fill: [0xd1, 0x48, 0x3a], edge: [0xf2, 0xa2, 0x94], dark: [0x8c, 0x27, 0x20] };
 const STEEL: RGB = [0xe2, 0xe7, 0xef];
 const STEEL_D: RGB = [0x8e, 0x98, 0xaa];
@@ -802,6 +816,33 @@ function weapon(
   }
 }
 
+/** Kawaii mode: a pink bow on the top-left of the head, clear of the crown. */
+function drawBow(ctx: CanvasRenderingContext2D, key: string, R: number, lw: number, sway: number): void {
+  const top = (TOP[key] ?? 0.9) * R;
+  ctx.save();
+  ctx.translate(-R * 0.5, -top * 0.78);
+  ctx.rotate(-0.35 + sway * 0.5);
+  const b = R * 0.26;
+  ctx.fillStyle = m([0xff, 0x3d, 0x8b]);
+  ctx.strokeStyle = m([0x9e, 0x1a, 0x55]);
+  ctx.lineWidth = lw * 0.6;
+  ctx.lineJoin = "round";
+  for (const d of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(d * b * 0.9, -b * 0.75, d * b * 1.05, 0);
+    ctx.quadraticCurveTo(d * b * 0.9, b * 0.75, 0, 0);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.arc(0, 0, b * 0.24, 0, Math.PI * 2);
+  ctx.fillStyle = m([0xff, 0xb3, 0xd4]);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawEyes(
   ctx: CanvasRenderingContext2D,
   key: string,
@@ -810,6 +851,8 @@ function drawEyes(
   mode: Eye,
   angry: number,
   lw: number,
+  /** Kawaii mode: bigger pupils with a sparkle, blush and an ω mouth. */
+  cute = false,
 ): void {
   const ey = (EYE_Y[key] ?? 0) * R;
   const ex = (EYE_X[key] ?? 0.28) * R;
@@ -825,9 +868,19 @@ function drawEyes(
         ctx.fillStyle = m(WHITE);
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(x, Y(ey - r * 0.25), r * (0.5 + angry * 0.1), 0, Math.PI * 2);
+        ctx.arc(x, Y(ey - r * 0.25), r * (cute ? 0.68 : 0.5 + angry * 0.1), 0, Math.PI * 2);
         ctx.fillStyle = m(INK);
         ctx.fill();
+        if (cute) {
+          // Two sparkles in each eye.
+          ctx.fillStyle = m(WHITE);
+          ctx.beginPath();
+          ctx.arc(x + r * 0.22, Y(ey - r * 0.5), r * 0.22, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(x - r * 0.18, Y(ey - r * 0.02), r * 0.1, 0, Math.PI * 2);
+          ctx.fill();
+        }
         break;
       }
       case Eye.Closed: {
@@ -916,8 +969,30 @@ function drawEyes(
       ctx.stroke();
     }
   }
+  if (cute) {
+    // Blush under each eye.
+    ctx.save();
+    ctx.globalAlpha *= 0.45;
+    ctx.fillStyle = m(BLUSH);
+    for (const i of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(i * ex * 1.15, Y(ey + r * 1.25), r * 0.75, r * 0.42, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
   // Mouth
-  if (mode === Eye.Happy) {
+  if (cute && (mode === Eye.Open || mode === Eye.Closed)) {
+    // ω
+    const my = ey + R * 0.32;
+    const mw = R * 0.085;
+    ctx.beginPath();
+    ctx.arc(-mw, Y(my), mw, 0, Math.PI, s < 0);
+    ctx.arc(mw, Y(my), mw, 0, Math.PI, s < 0);
+    ctx.strokeStyle = m(INK);
+    ctx.lineWidth = lw * 0.9;
+    ctx.stroke();
+  } else if (mode === Eye.Happy) {
     ctx.beginPath();
     ctx.arc(0, Y(ey + R * 0.3), R * 0.16, Math.PI * 0.1, Math.PI * 0.9, s < 0);
     ctx.strokeStyle = m(INK);
@@ -1005,7 +1080,8 @@ function drawLegs(
 
 export function drawCharacter(ctx: CanvasRenderingContext2D, o: CharacterOpts): void {
   const { key, pose, t, time, seed } = o;
-  const P = o.side === "player" ? PLAYER : ENEMY;
+  const cute = KAWAII && o.side === "player";
+  const P = o.side === "player" ? (cute ? KAWAII_PLAYER : PLAYER) : ENEMY;
   // Which way is forward on screen: up for the player, down for the enemy.
   // Only motion uses it (the lunge offset). Bodies, weapons, faces and legs are
   // drawn upright for both sides: with legs, a flipped enemy read as upside down.
@@ -1263,7 +1339,8 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: CharacterOpts): 
 
   // Weapon, then face.
   weapon(ctx, key, R, P, w, sway, str, lw);
-  drawEyes(ctx, key, R, 1, eye, angry, lw);
+  drawEyes(ctx, key, R, 1, eye, angry, lw, cute);
+  if (cute) drawBow(ctx, key, R, lw, sway);
 
   ctx.restore();
 }

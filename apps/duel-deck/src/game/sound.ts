@@ -28,7 +28,8 @@ export type Sfx =
   | "victory"
   | "defeat"
   | "explode"      // the losing row blows up
-  | "emote";       // the opponent sent an emote
+  | "emote"        // the opponent sent an emote
+  | "relay";       // a Beacon bounces a support ability on
 
 let ctx: AudioContext | null = null;
 /** Every sound connects here. On/off is this gain; it feeds the dry path and the reverb. */
@@ -288,6 +289,11 @@ export function sfx(kind: Sfx, strength = 0.5, rate = 1): void {
         { freq: 784, at: 0.28, dur: 0.2, gain: 0.08 },
         { freq: 1047, at: 0.42, dur: 0.6, gain: 0.1 },
       ]);
+      break;
+    case "relay":
+      // A springy "boing" rising: the bounce off a Beacon.
+      tone({ freq: 520, to: 1040, gain: 0.07, dur: 0.14, type: "triangle" });
+      tone({ freq: 1040, to: 1560, gain: 0.04, dur: 0.1, type: "sine", at: 0.06 });
       break;
     case "emote":
       // A soft pop: quiet, so it never talks over the battle.

@@ -54,6 +54,12 @@ export type FxKind =
   | "bodyguard"
   /** Pass the torch: flame arcing from the fallen Squire to `tx,ty`. */
   | "torch"
+  /**
+   * A support ability relayed by a Beacon: a glowing orb arcing to `tx,ty`,
+   * `amount` times its first size (it grows at each Beacon). With `text`, it
+   * lands on a Beacon and bounces: a squash ring, sparkles and `text` ("×1.5").
+   */
+  | "relay"
   /** Last rally: gold banner burst from the fallen Knight. */
   | "rally"
   /** Fortify: stone pulse on a surviving Bulwark and "+N♥ forever". */
@@ -83,6 +89,8 @@ export interface FxSpawn {
 }
 
 const MAX_PARTICLES = 400;
+/** One hop of a relayed support ability (source → Beacon → … → the unit it lands on). */
+export const RELAY_HOP_MS = 560;
 /** How long ability names and their numbers stay readable. */
 const ABILITY_LABEL_MS = 1800;
 const SHAKE_MS = 300;
@@ -406,6 +414,32 @@ export class FxLayer {
         const land = this.fx(ET.Ring, now + e.dur, 420, e.tx, e.ty, s * 0.8, col, col, 0, false, 0);
         land.done = false;
         if (variant === "beam") this.fx(ET.Shield, now + e.dur, 600, e.tx, e.ty, s, COL.blueWhite, COL.shield, 0, false, 0);
+        break;
+      }
+      case "relay": {
+        const e = this.fx(ET.Travel, now, RELAY_HOP_MS, x, y, s, COL.goldLight, "#fff", fx.amount ?? 1, false, 0);
+        e.tx = fx.tx ?? x;
+        e.ty = fx.ty ?? y;
+        e.text = "relay";
+        const at = now + e.dur;
+        if (fx.text) {
+          // Lands on a Beacon and bounces off it: a squashed ring, a spray of
+          // sparkles and the multiplier, so the boost is seen happening.
+          const ring = this.fx(ET.Ring, at, 380, e.tx, e.ty, s * 0.9, COL.goldLight, COL.gold, 0, false, 0);
+          ring.done = false;
+          this.fx(ET.Flash, at, 220, e.tx, e.ty, s * 0.6, "#fff", COL.goldLight, 0, false, 0);
+          const n = this.count(12);
+          for (let i = 0; i < n; i++) {
+            const a = -Math.PI / 2 + ((i / n) - 0.5) * Math.PI * 1.4;
+            const v = s * (2.2 + (i % 3) * 0.6);
+            this.emit(PT.Sparkle, at, 520, e.tx, e.ty, Math.cos(a) * v, Math.sin(a) * v, s * 3, s * 0.07, i % 2 ? COL.goldLight : "#fff");
+          }
+          const label = this.fx(ET.Label, at, 1100, e.tx, e.ty - s * 0.45, s * 1.05, COL.goldLight, INK, 0, false, 0);
+          label.text = fx.text;
+        } else {
+          const ring = this.fx(ET.Ring, at, 420, e.tx, e.ty, s * 1.0, COL.goldLight, COL.gold, 0, false, 0);
+          ring.done = false;
+        }
         break;
       }
       case "rally": {
@@ -917,6 +951,35 @@ export class FxLayer {
       ctx.strokeStyle = "#fff";
       ctx.lineWidth *= 0.35;
       ctx.stroke();
+    } else if (e.text === "relay") {
+      // A bouncing orb: an arc bulging to the side of its path (rows are
+      // stacked, so an upward arc would overshoot the target), a short comet
+      // tail, and bigger after every Beacon (`amount`), so the boost reads as growth.
+      const scale = e.amount || 1;
+      const dx = e.tx - e.x;
+      const dy = e.ty - e.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len;
+      const ny = dx / len;
+      const bulge = e.size * 0.8;
+      const at = (q: number) => {
+        const kq = easeOutCubic(clamp01(q));
+        const h = bulge * Math.sin(Math.PI * kq);
+        return { px: lerp(e.x, e.tx, kq) + nx * h, py: lerp(e.y, e.ty, kq) + ny * h };
+      };
+      for (let i = 4; i >= 0; i--) {
+        const { px, py } = at(t - i * 0.05);
+        const r = e.size * 0.17 * scale * (1 - i * 0.16);
+        const g = ctx.createRadialGradient(px, py, 0, px, py, r * 2.2);
+        g.addColorStop(0, "#fff");
+        g.addColorStop(0.4, e.color);
+        g.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.globalAlpha = (i === 0 ? 1 : 0.45 - i * 0.08) * (t > 0.9 ? (1 - t) * 10 : 1);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(px, py, r * 2.2, 0, 6.2832);
+        ctx.fill();
+      }
     } else {
       // A projectile: straight for the shockwave, an arc for the flame.
       const arc = e.text === "flame" ? -e.size * 0.9 * Math.sin(Math.PI * k) : 0;

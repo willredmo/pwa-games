@@ -762,7 +762,7 @@ export const AUGMENTS: AugmentDef[] = [
     id: "vengeance",
     icon: "⚖️",
     name: "Vengeance",
-    description: "Sentinels' Retaliate strikes back for 20% more of each blow.",
+    description: "Sentinels send back 20% more of each blow (60% at level 1: a 10-damage hit sends 6 back).",
     category: "class",
     traits: (u) => (has(u, "sentinel") ? { reflect: 20 } : {}),
   },

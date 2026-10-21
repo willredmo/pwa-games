@@ -67,7 +67,7 @@ const auraIcon = (id: string) =>
   (id === "herald" ? "📯" : id === "warden" ? "🔰" : id === "acolyte" ? "💞" : id === "drill" ? "🎯" : id.startsWith("syn-") ? (SYNERGIES[id.slice(4) as Archetype]?.icon ?? "✦") : "✦");
 import { cellCenter, draw, pixelToCell, type Cell, type TargetKind } from "../board/render";
 import { POSE_MS, prefersReducedMotion, type Pose, type PoseState } from "../board/anim";
-import { FxLayer, type FxKind } from "../board/fx";
+import { FxLayer, RELAY_HOP_MS, type FxKind } from "../board/fx";
 import { HpBar } from "./HpBar";
 import { EmoteBar } from "./EmoteBar";
 import { Tutorial } from "./Tutorial";
@@ -107,6 +107,7 @@ import {
   type Session,
 } from "../online/room";
 import { UpdatePrompt } from "./UpdatePrompt";
+import { isKawaii, uwu, uwuWords } from "../game/kawaii";
 import { MenuPanel } from "./MenuPanel";
 import { SidePanels } from "./SidePanels";
 
@@ -129,8 +130,6 @@ const BIG_HIT = 7;
 const ABILITY_MS = 1100;
 /** One supporting unit's start-of-round buff (each gets its own beat). */
 const OPENING_BEAT_MS = 800;
-/** A relayed buff's hop from one Beacon to the next unit ahead. */
-const HOP_MS = 360;
 /** A Beacon chain's multiplier for labels: "1.5", "2.25", "3". */
 const ampText = (amp: number) => String(Math.round(amp * 100) / 100);
 /** After the main blows, before the first side hit (Overflow, Thorns…) plays. */
@@ -506,7 +505,11 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   logRef.current = battleLog;
   const pushFeed = (tone: FeedItem["tone"], parts: FeedItem["parts"]) => {
     if (!logRef.current) return;
-    setFeed((f) => [...f.slice(-(FEED_MAX - 1)), { id: feedId.current++, tone, parts }]);
+    // Kawaii mode: the log goes uwu, unit names included.
+    const said = isKawaii()
+      ? parts.map((p) => (typeof p === "string" ? uwuWords(p) : { ...p, text: uwuWords(p.text) }))
+      : parts;
+    setFeed((f) => [...f.slice(-(FEED_MAX - 1)), { id: feedId.current++, tone, parts: said }]);
   };
   const nameOf = (u: Unit): FeedPart => ({ text: u.name, side: u.side });
 
@@ -534,7 +537,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   const viewRef = useRef<Parameters<typeof draw>[1] | null>(null);
 
   const showBanner = useCallback((message: string, tone: BannerTone, sub: string | null = null) => {
-    setBanner((b) => ({ message, tone, nonce: b.nonce + 1, sub }));
+    setBanner((b) => ({ message: uwuWords(message), tone, nonce: b.nonce + 1, sub: sub && uwuWords(sub) }));
   }, []);
 
   /** Scale a duration by playback speed, and halve it under reduced motion. */
@@ -594,11 +597,48 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
 
   /** Float an ability's name over the unit that used it, so players learn what fired. */
   /** Every named ability announces itself the same way. */
+  /**
+   * A support ability relayed by Beacons, made visible: an orb arcs from the
+   * source to the first Beacon, bounces off it (squash ring, sparkles, its
+   * "×1.5", a boing, the Beacon flaring) and flies on bigger, Beacon by Beacon,
+   * to the unit it lands on. `hops` is source, Beacons (nearest first), target.
+   */
+  const relayHops = (later: (ms: number, fn: () => void) => void, b: Board, hops: Cell[], start: number) => {
+    let scale = 1;
+    hops.slice(1).forEach((to, k) => {
+      const beacon = k + 1 < hops.length - 1 ? b.slots[to.side][to.lane][to.spot] : null;
+      const mult = beacon ? (beacon.traits?.relay ?? 150) / 100 : 1;
+      const size = scale;
+      later(start + k * RELAY_HOP_MS, () => {
+        const canvas = canvasRef.current;
+        const a = canvas && cellCenter(canvas, b, hops[k]);
+        const c = canvas && cellCenter(canvas, b, to);
+        if (a && c) {
+          fxRef.current.add(
+            { kind: "relay", x: a.x, y: a.y, size: a.size, side: hops[k].side, tx: c.x, ty: c.y, amount: size, ...(beacon ? { text: `×${ampText(mult)} ↑` } : {}) },
+            performance.now(),
+          );
+        }
+      });
+      if (beacon) {
+        later(start + (k + 1) * RELAY_HOP_MS, () => {
+          sfx("relay");
+          setPose(beacon.id, "attack", POSE_MS.attack);
+        });
+      }
+      // Grows at each Beacon, but stays readable over a long chain.
+      scale = Math.min(2, scale * (beacon ? mult : 1));
+    });
+  };
+  /** How long a relayed ability takes to arrive (before speed scaling, like `later`). */
+  const relayTime = (hops: Cell[]) => (hops.length - 1) * RELAY_HOP_MS;
+
   const abilityLabel = (b: Board, cell: Cell, name: string) => {
     sfx("ability");
-    fxAt(b, cell, "ability-label", { text: `✦ ${name}` });
+    const said = uwu(name);
+    fxAt(b, cell, "ability-label", { text: `✦ ${said}` });
     const u = b.slots[cell.side][cell.lane][cell.spot];
-    if (u) pushFeed("ability", [nameOf(u), ` ✦ ${name}`]);
+    if (u) pushFeed("ability", [nameOf(u), ` ✦ ${said}`]);
   };
 
   /** The unit (and its cell) with this id on a board, if it's there. */
@@ -1854,19 +1894,10 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         // Source → each Beacon it passed (nearest first) → the unit it lands on.
         const hops = [src.cell, ...(ev.via ?? []).flatMap((id) => findUnitCell(f.board, id) ?? []), cell];
         const kind = key === "guard" || key === "acolyte" || key === "warden" ? "bodyguard" : "torch";
-        if (travels) {
-          hops.slice(1).forEach((to, k) => {
-            later(at + k * HOP_MS, () => {
-              if (k > 0) {
-                fxAt(f.board, hops[k], "merge");
-                const beacon = f.board.slots[hops[k].side][hops[k].lane][hops[k].spot];
-                if (beacon) setPose(beacon.id, "attack", POSE_MS.attack);
-              }
-              fxBetween(f.board, hops[k], to, kind);
-            });
-          });
-        }
-        const lands = at + (travels ? HOP_MS * (hops.length - 2) + 520 : 0);
+        const relayedHops = travels && hops.length > 2;
+        if (relayedHops) relayHops(later, f.board, hops, at);
+        else if (travels) later(at, () => fxBetween(f.board, src.cell, cell, kind));
+        const lands = at + (relayedHops ? relayTime(hops) : travels ? 520 : 0);
         last = Math.max(last, lands);
         later(lands, () => {
           apply(ev);
@@ -2018,6 +2049,13 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         if (ev.type !== "heal") continue;
         const cell = findUnitCell(f.board, ev.unit);
         if (!cell) continue;
+        // A Mend relayed by Beacons travels there first, bouncing off each.
+        const healer = ev.source ? findUnitCell(f.board, ev.source) : null;
+        if (healer && ev.via?.length) {
+          const hops = [healer, ...ev.via.flatMap((id) => findUnitCell(f.board, id) ?? []), cell];
+          relayHops(later, f.board, hops, healAt);
+          healAt += relayTime(hops);
+        }
         later(healAt, () => {
           apply(ev);
           fxAt(f.board, cell, "heal", { amount: ev.amount });

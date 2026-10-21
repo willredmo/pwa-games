@@ -508,6 +508,18 @@ A Beacon with nobody ahead keeps what it gets. Buff and heal events carry
 Beacon (`HOP_MS`) and labels it "· Beacon ×1.5". Sanctuary doubles abilities
 before any Beacon amplifies them.
 
+**Relay playback** (`relayHops` in Game.tsx, fx kind `"relay"`): a relayed
+buff or Mend is shown hop by hop, `RELAY_HOP_MS` (560) each: a gold orb arcs
+from the source to the first Beacon (the arc bulges sideways, since rows are
+stacked and an upward arc overshot), bounces off it (squash ring, sparkles,
+"×1.5 ↑", `sfx("relay")`, the Beacon's attack pose) and flies on, bigger
+(`amount`, capped at 2×), to the next Beacon or the unit it lands on, where
+the buff applies. A relayed Mend's heal waits for the orb to arrive. The
+browser pane doesn't run animation frames while hidden, so it was checked by
+stepping an `FxLayer` by hand onto test canvases. Hover text (`UnitInfo`'s
+trait lines) says "the unit in front of it" for every support, explains the
+Beacon's bounce and gives the Sentinel's reflect with a 10-damage example.
+
 **Sentinel** (defense, pillar, 2/8), **Retaliate** (`reflect`, a percent):
 each blow it takes sends `floor(raw × reflect%)` back at the attacker, 40% +5%
 a level, 100% mastered. Based on the blow's full strength, before its own
@@ -863,6 +875,19 @@ reload takes `match` from the room. Telemetry ids get `-<match>` from the
 second match on (`MatchLog.online`), since the paths are create-only. The
 database rules allow `match` only to go up by one. `PROTOCOL` 9, so both
 sides of a duel have rematch.
+
+### Kawaii mode (game/kawaii.ts) — a hidden setting
+Tapping the settings sheet's "Match settings" heading 5 times within 3 s
+(`SECRET_TAPS`, `SECRET_WINDOW_MS` in Title.tsx) reveals a 🌸 Kawaii mode
+switch; it stays visible while the mode is on. Saved as `Settings.kawaii`.
+Your units only: a pink palette (`KAWAII_PLAYER`), bigger pupils with two
+sparkles, blush, an ω mouth and a bow (`drawBow`), all in board/characters.ts
+behind a module flag (`setKawaiiCharacters`, set by `setKawaii` from App), so
+the board, portraits and offer cards all follow it. Text goes uwu
+(`uwuWords`: r/l → w, n+vowel → ny; `uwu` adds a face): ability callouts, the
+battle log (unit names too) and round banners. Cosmetic and local: the
+engine, telemetry and the opponent's screen are untouched. The 1.7.1 patch
+note only hints at it.
 
 ### Feedback (game/feedback.ts, ui/Feedback.tsx, scripts/feedback.ts)
 "Report a bug or suggest a feature" in ☰, on the title screen (🐞 Bugs & ideas)

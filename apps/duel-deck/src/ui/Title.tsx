@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { DIFFICULTIES, LEVEL_CAP_OPTIONS, START_HP_MAX, START_HP_MIN, START_HP_OPTIONS, clampStartHp, type Difficulty, type MatchRules } from "../game/match";
 import type { SavedMatch } from "../game/save";
 import { DIFFICULTY_INFO } from "./Overlays";
@@ -56,11 +56,26 @@ export interface TitleProps {
   onRejoin: () => void;
   /** Report a bug or suggest a feature. */
   onFeedback: () => void;
+  /** Kawaii mode: a hidden switch in the settings sheet. */
+  kawaii: boolean;
+  onKawaii: (on: boolean) => void;
 }
+
+/** Taps on the settings sheet's heading that reveal the Kawaii switch, and the window they must land in. */
+const SECRET_TAPS = 5;
+const SECRET_WINDOW_MS = 3000;
 
 export function Title(props: TitleProps) {
   const { saved, difficulty } = props;
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // The hidden Kawaii switch: shown once found (this visit) or while it's on.
+  const [found, setFound] = useState(false);
+  const taps = useRef<number[]>([]);
+  const tapHeading = () => {
+    const now = Date.now();
+    taps.current = [...taps.current.filter((t) => now - t < SECRET_WINDOW_MS), now];
+    if (taps.current.length >= SECRET_TAPS) setFound(true);
+  };
   const info = DIFFICULTY_INFO[difficulty] ?? { icon: "🤖", blurb: "" };
   const savedLabel = saved
     ? `Round ${saved.round}${saved.difficulty ? ` · vs ${DIFFICULTY_LABEL[saved.difficulty]}` : ""}`
@@ -189,13 +204,24 @@ export function Title(props: TitleProps) {
             onKeyDown={(e) => e.key === "Escape" && setSettingsOpen(false)}
           >
             <div className="panel__head">
-              <h2 id="settings-title">Match settings</h2>
+              {/* Five quick taps here reveal Kawaii mode. Not a button on purpose: it's a secret. */}
+              <h2 id="settings-title" onClick={tapHeading}>Match settings</h2>
               <button className="close-btn" onClick={() => setSettingsOpen(false)} aria-label="Close">✕</button>
             </div>
             <p className="panel__hint">
               For both <strong>🤖 matches vs the CPU</strong> and <strong>🌐 duels you host</strong>. Joining a duel uses the host's.
             </p>
             <MatchSettings rules={props.rules} onRules={props.onRules} />
+            {(found || props.kawaii) && (
+              <label className="toggle kawaii-toggle">
+                <input type="checkbox" checked={props.kawaii} onChange={(e) => props.onKawaii(e.target.checked)} />
+                <span className="toggle__switch" aria-hidden="true" />
+                <span>
+                  🌸 Kawaii mode
+                  <small>{props.kawaii ? "Your units are pink, cute and very uwu" : "You found a secret ✨ Make your units pink and cute"}</small>
+                </span>
+              </label>
+            )}
             <button className="primary-btn primary-btn--wide sheet__done" onClick={() => setSettingsOpen(false)} autoFocus>
               Done
             </button>

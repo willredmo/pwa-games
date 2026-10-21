@@ -142,10 +142,11 @@ export const UNITS: Record<string, UnitStats> = {
     ability: {
       name: "Retaliate",
       trigger: "When hit",
-      text: "Strikes back at whoever hits it for 40% of the blow (before its own armour or shields).",
-      scaling: "+5% per level",
+      text:
+        "Every time it's hit, it deals 40% of that blow's damage straight back to the attacker, rounded down: a 10-damage hit sends 4 back. Counted before its own armour or shields, so the harder something hits it, the more it hurts itself.",
+      scaling: "+5% per level (85% at level 10: a 10-damage hit sends 8 back)",
     },
-    mastery: "Strikes back for 100% of every blow.",
+    mastery: "Sends back 100% of every blow: a 10-damage hit sends all 10 back.",
   },
   // Carries other supports forward: whatever reaches it goes on to the unit
   // ahead, stronger. Useless alone; the point is a chain from the back.
@@ -156,14 +157,15 @@ export const UNITS: Record<string, UnitStats> = {
     shape: "lantern",
     classes: ["beacon", "support"],
     archetype: "support",
-    role: "Support: passes support abilities forward, amplified",
+    role: "Support: boosts the support behind it and bounces it forward",
     ability: {
       name: "Relay",
-      trigger: "When a support ability reaches it",
-      text: "Passes Rally, Mend, Barrier and Lifebond on to the unit in front of it at ×1.5. Beacons in a row chain.",
-      scaling: "+×0.1 per level",
+      trigger: "When a support ability lands on it",
+      text:
+        "Does nothing on its own. Put a support unit (Herald, Medic, Warden or Acolyte) directly behind it: instead of keeping that unit's Rally, Mend, Barrier or Lifebond, the Beacon bounces it on to the unit in front of it, 1.5× stronger. Several Beacons in a row multiply it again each time, so a support at the back can power up your front unit.",
+      scaling: "Bounces it +0.1× stronger per level (×2.4 at level 10)",
     },
-    mastery: "Relays at ×3.",
+    mastery: "Bounces it on at 3×.",
   },
   // The late-game unit: the weakest body in the pool, but its merges escalate
   // (see SQUIRE_STEP) and at KNIGHT_AT merges it is promoted to a Knight.

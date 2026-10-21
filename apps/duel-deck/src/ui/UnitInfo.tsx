@@ -33,23 +33,36 @@ function describeTraits(t: UnitTraits): string[] {
     out.push(`+${what} permanently each round it survives`);
   }
   if (t.thorns) out.push(`reflects ${t.thorns} damage when hit`);
+  if (t.reflect)
+    out.push(`when hit, deals ${t.reflect}% of the blow back to the attacker (a 10-damage hit sends ${Math.floor((10 * t.reflect) / 100)} back)`);
   if (t.lifesteal) out.push(`heals ${Math.round(t.lifesteal * 100)}% of damage dealt`);
   if (t.damageReduction) out.push(`takes ${t.damageReduction} less damage per hit`);
+  if (t.minArmour && !t.damageReduction) out.push(`takes ${t.minArmour} less damage per hit (Unbreakable)`);
   if (t.executioner) out.push(`+${t.executioner} damage vs targets below half health`);
   if (t.lastBreath) out.push("parting blow of 2 if it's your first to fall");
   if (t.pierce)
     out.push(`each blow it lands also hits the ${DEPTH[t.pierceDeeper ?? 0] ?? `${1 + (t.pierceDeeper ?? 0)} units`} behind the front for ${t.pierce}`);
   if (t.mend)
     out.push(
-      `from behind the front: heals your front unit ${t.mend}♥ after each exchange (${3 + (t.mendMore ?? 0)} times a round)${t.mendAtk ? `, each time +${t.mendAtk}⚔` : ""}`,
+      `heals the unit in front of it ${t.mend}♥ after each exchange (${3 + (t.mendMore ?? 0)} times a round)${t.mendAtk ? `, each time +${t.mendAtk}⚔` : ""}; leading the row, heals itself`,
     );
-  if (t.rally) out.push(`from behind the front: your front unit gets +${t.rally}⚔${t.rallyHp ? ` +${t.rallyHp}♥` : ""}`);
-  if (t.barrier) out.push(`from behind the front: your front unit starts with a ${t.barrier}-damage shield${t.barrierReach ? ` (and the ${t.barrierReach === 1 ? "unit" : `${t.barrierReach} units`} behind it)` : ""}`);
+  if (t.rally) out.push(`start of round: the unit in front of it gets +${t.rally}⚔${t.rallyHp ? ` +${t.rallyHp}♥` : ""}`);
+  if (t.barrier)
+    out.push(
+      `start of round: the unit in front of it gets a ${t.barrier}-damage shield${t.barrierReach ? ` (and the ${t.barrierReach === 1 ? "unit" : `${t.barrierReach} units`} ahead of that)` : ""}${t.barrierSelf ? ", and so does the Warden" : ""}`,
+    );
+  if (t.relay) {
+    const x = String(Math.round(t.relay) / 100);
+    out.push(
+      `does nothing on its own; a Rally, Mend, Barrier or Lifebond from the unit directly behind it bounces on to the unit in front of it at ×${x}, and Beacons in a row each multiply it again`,
+    );
+  }
   if (t.shield) out.push(`shield: the first ${t.shield} damage it takes this round is absorbed`);
   if (t.lifebond)
-    out.push(`from behind the front: gives half its health to your front unit${t.lifebond > 1 ? ` (x${t.lifebond})` : ""}${t.lifebondAtk ? `, plus +${t.lifebondAtk}⚔` : ""}`);
+    out.push(`start of round: gives half its health to the unit in front of it${t.lifebond > 1 ? ` (x${t.lifebond})` : ""}${t.lifebondAtk ? `, plus +${t.lifebondAtk}⚔` : ""}`);
   if (t.trueStrike) out.push("its blows can't be dodged");
   if (t.endure) out.push("survives the first blow each round that would kill it, on 1♥");
+  if (t.barrierSelf && !t.barrier) out.push("shields itself with its Barrier too");
   return out;
 }
 

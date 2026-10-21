@@ -10,6 +10,15 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.7.1",
+    date: "Oct 21, 2026",
+    notes: [
+      "Beacons show what they do: a support's ability flies to the Beacon as a glowing orb, bounces off it with a ×1.5 and a boing, and flies on, bigger, to the unit in front.",
+      "Clearer hover text for every support unit (they help the unit directly in front of them), the Beacon (what it bounces and how much stronger) and the Sentinel (how much damage it sends back, with an example).",
+      "Psst: Match settings is hiding a secret. 🌸",
+    ],
+  },
+  {
     version: "1.7.0",
     date: "Oct 20, 2026",
     notes: [
