@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import "./overlays.css";
+import { kawaiiName } from "../game/kawaii";
 import type { AugmentDef, AugmentState } from "../game/augments";
 import { OFFERED_AUGMENTS as AUGMENTS, MAX_FROZEN_AUGMENTS, RALLY_CAP, getAugment, rarityOf, unitsAffectedBy, type Rarity } from "../game/augments";
 import { ARCHETYPES, KNIGHT_LEVEL, MAX_LEVEL, SYNERGIES, UNITS, UNIT_KEYS, levelOf } from "../engine/units";
@@ -590,7 +591,7 @@ function UnitLedger({ stats, winner, cap }: { stats: MatchStats; winner: "player
                     <UnitPortrait unitKey={t.key} side={tab} size={30} merges={t.merges ?? 0} pose={tab === winner ? "dance" : "sad"} bleed={8} />
                     <span className="ledger__name">
                       <span>
-                        {t.name} <LevelChip merges={t.merges ?? 0} cap={cap} />
+                        {tab === "player" ? kawaiiName(t.key, t.name) : t.name} <LevelChip merges={t.merges ?? 0} cap={cap} />
                       </span>
                       {t.rounds ? (
                         <small>
@@ -657,7 +658,7 @@ export function ResultPanel({ winner, round, stats, hp, startHp, upgrades, oppon
             <div>
               <span className="result-mvp__tag">★ MVP</span>
               <strong>
-                {mvp.name} <LevelChip merges={mvp.merges ?? 0} cap={levelCap} />
+                {kawaiiName(mvp.key, mvp.name)} <LevelChip merges={mvp.merges ?? 0} cap={levelCap} />
               </strong>
               <span>
                 {mvp.damage} damage · {mvp.kills} kill{mvp.kills === 1 ? "" : "s"}

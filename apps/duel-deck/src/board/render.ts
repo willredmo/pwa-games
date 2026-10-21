@@ -51,6 +51,20 @@ const COLORS = {
 const MAX_LANE_ASPECT = 8;
 /** Absolute cap on slot width (CSS px) so wide windows stay readable, not stretched. */
 const MAX_LANE_W = 320;
+/** The same cap during a battle, when the board takes the screen (battle view). */
+const MAX_LANE_W_BATTLE = 560;
+
+/**
+ * Battle view: while a battle plays, the rows under the board collapse (App.css
+ * `.app--battle`) and the board and its units may grow past their picking-phase
+ * caps, so the fight is easy to follow. A module flag rather than a parameter,
+ * because `cellCenter` (where effects land) must agree with `draw`; Game sets it
+ * as it renders and `draw` from `RenderState.battle` every frame.
+ */
+let BATTLE_VIEW = false;
+export function setBattleView(on: boolean): void {
+  BATTLE_VIEW = on;
+}
 
 export interface Cell {
   side: Side;
@@ -126,6 +140,8 @@ export interface RenderState {
    * the renderer stays generic over the game layer.
    */
   auraIcon?: (id: string) => string;
+  /** A unit's shown name (kawaii mode renames yours); defaults to `unit.name`. */
+  unitName?: (unit: Unit) => string;
   /** A unit's class glyph (⚔ 🛡 ✚), drawn before its name. Injected like `auraIcon`. */
   classIcon?: (unit: Unit) => string | undefined;
   /**
@@ -164,7 +180,7 @@ function layout(canvas: HTMLCanvasElement, board: Board): Layout | null {
   if (cw <= 0 || ch <= 0) return null;
   const rows = board.depth * 2;
   const rowH = ch / rows;
-  const laneW = Math.min(cw / board.lanes, MAX_LANE_W, rowH * MAX_LANE_ASPECT);
+  const laneW = Math.min(cw / board.lanes, BATTLE_VIEW ? MAX_LANE_W_BATTLE : MAX_LANE_W, rowH * MAX_LANE_ASPECT);
   return { ox: (cw - laneW * board.lanes) / 2, oy: 0, laneW, rowH, rows };
 }
 
@@ -318,8 +334,14 @@ const CHAR_SIZE = 0.58;
  * unit draws must respect it.
  */
 const UNIT_MAX_H = 52;
-/** Scale for a slot's contents: 1 up to UNIT_MAX_H, smaller past it. */
-const contentScale = (h: number) => Math.min(1, UNIT_MAX_H / h);
+/**
+ * The cap in battle view: the user asked for a board that's easy to watch, and
+ * during a battle nothing else competes for the screen. Picking keeps 52, so
+ * the rule above still holds where the board shares the screen with controls.
+ */
+const UNIT_MAX_H_BATTLE = 96;
+/** Scale for a slot's contents: 1 up to the unit cap, smaller past it. */
+const contentScale = (h: number) => Math.min(1, (BATTLE_VIEW ? UNIT_MAX_H_BATTLE : UNIT_MAX_H) / h);
 /** Character centre and text column, from the slot's left edge, in slot heights. */
 const CHAR_X = 0.56;
 const TEXT_X = 1.12;
@@ -402,6 +424,7 @@ export function draw(canvas: HTMLCanvasElement, state: RenderState): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   const { board } = state;
+  BATTLE_VIEW = !!state.battle;
   const l = layout(canvas, board);
   if (!l) return;
 
@@ -1039,7 +1062,8 @@ function drawUnit(
     const clsW = cls ? ctx.measureText(cls).width + h * 0.08 : 0;
     if (cls) ctx.fillText(cls, tx, y + h * 0.26);
     const nameX = tx + clsW;
-    ctx.fillText(unit.name, nameX, y + h * 0.26);
+    const shownName = state.unitName?.(unit) ?? unit.name;
+    ctx.fillText(shownName, nameX, y + h * 0.26);
 
     const statY = y + h * 0.66;
     ctx.font = `800 ${Math.round(Math.max(15, h * 0.44))}px system-ui, sans-serif`;
@@ -1109,7 +1133,7 @@ function drawUnit(
       const gap = h * 0.08;
       const right = mergeX - pad * 0.8;
       ctx.font = `${Math.round(size)}px system-ui, sans-serif`;
-      const nameRight = nameX + ctx.measureText(unit.name).width;
+      const nameRight = nameX + ctx.measureText(state.unitName?.(unit) ?? unit.name).width;
       const room = Math.max(0, right - nameRight - gap);
       const fits = Math.floor(room / (size + gap));
       const budget = Math.min(unit.auras.length, MAX_AURA_BADGES, fits);

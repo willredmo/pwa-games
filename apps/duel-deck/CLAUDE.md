@@ -886,8 +886,11 @@ behind a module flag (`setKawaiiCharacters`, set by `setKawaii` from App), so
 the board, portraits and offer cards all follow it. Text goes uwu
 (`uwuWords`: r/l → w, n+vowel → ny; `uwu` adds a face): ability callouts, the
 battle log (unit names too) and round banners. Cosmetic and local: the
-engine, telemetry and the opponent's screen are untouched. The 1.7.1 patch
-note only hints at it.
+engine, telemetry and the opponent's screen are untouched. Your units also
+get hand-picked names (`KAWAII_NAMES`: Guawd-kun, Sir Fwuffs, Bwinky…) through
+`displayName`/`kawaiiName`: on the board (`RenderState.unitName`), offer cards,
+info cards, the battle log and the result screen; the Codex keeps the real
+names. The 1.7.1 patch note only hints at it.
 
 ### Feedback (game/feedback.ts, ui/Feedback.tsx, scripts/feedback.ts)
 "Report a bug or suggest a feature" in ☰, on the title screen (🐞 Bugs & ideas)
@@ -1056,6 +1059,20 @@ build's version and deploy time beside the latest deploy's, and offers Check
 for updates / Update now. Update state is shared via `src/pwa.ts`.
 `duel-deck-hosting` in `.claude/launch.json` serves `dist` through the Hosting
 emulator (port 5176) to test the service worker and headers locally.
+
+### Battle view (1.7.2): the board takes the screen during a battle
+`.app--battle` on `.app` while `phase === "battle"` hides the round summary,
+pick row, offer row (where the battle log was) and hint; on wide screens the
+grid drops to one centred column (header, HP bars, board, HUD), and the header
+goes compact (one row, no title). In `board/render.ts`, `setBattleView` (set by
+Game as it renders, and by `draw` from `RenderState.battle`) raises the lane cap
+(`MAX_LANE_W_BATTLE` 560) and the unit cap (`UNIT_MAX_H_BATTLE` 96), so units
+really grow; picking keeps 320 / 52, so the "maximum drawn size" rule below
+still holds wherever the board shares the screen. Measured: 360×640 board 306 →
+498px tall; 1024×768 352×558 → 640×584 (rows are height-bound there). This
+deliberately trades the old "board never resizes between phases" rule for a
+bigger fight: the board grows at Battle and shrinks back for picks. The battle
+log is hidden for now (its ☰ switch removed; the setting and feed code stay).
 
 ### Small screens (checked at 320×568, 360×640, 375×812)
 Every screen is meant to work on a 320×568 phone without anything important

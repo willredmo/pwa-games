@@ -1,4 +1,5 @@
 import type { Unit, UnitTraits } from "../engine/types";
+import { displayName, kawaiiName } from "../game/kawaii";
 import { ARCHETYPES, MAX_LEVEL, SYNERGIES, UNITS, innateTraits, isMastered, levelOf } from "../engine/units";
 import { getAugment } from "../game/augments";
 
@@ -123,7 +124,7 @@ export function UnitInfo({
       <div className="unit-info__head">
         <strong>
           {unit.side === "enemy" ? "Enemy " : ""}
-          {unit.name}
+          {displayName(unit)}
         </strong>
         <span className="unit-info__stats">
           <span className="stat stat--atk">⚔{unit.atk}</span>
@@ -205,7 +206,7 @@ export function OfferInfo({
       role="tooltip"
     >
       <div className="unit-info__head">
-        <strong>{u.name}</strong>
+        <strong>{kawaiiName(unitKey, u.name)}</strong>
         <span className="unit-info__stats">
           <span className="stat stat--atk">⚔{u.atk}</span>
           <span className="stat stat--hp">♥{u.maxHp}</span>

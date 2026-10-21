@@ -10,6 +10,15 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.7.2",
+    date: "Oct 21, 2026",
+    notes: [
+      "During a battle the board takes over the screen: the cards, hint and battle log step aside and your units are drawn much bigger, so the fight is easy to follow. Everything comes back when it's time to pick.",
+      "The battle log is hidden for now, and its switch is gone from ☰.",
+      "Kawaii mode renames your units too. 🌸",
+    ],
+  },
+  {
     version: "1.7.1",
     date: "Oct 21, 2026",
     notes: [

@@ -68,6 +68,7 @@ const auraIcon = (id: string) =>
 import { cellCenter, draw, pixelToCell, type Cell, type TargetKind } from "../board/render";
 import { POSE_MS, prefersReducedMotion, type Pose, type PoseState } from "../board/anim";
 import { FxLayer, RELAY_HOP_MS, type FxKind } from "../board/fx";
+import { setBattleView } from "../board/render";
 import { HpBar } from "./HpBar";
 import { EmoteBar } from "./EmoteBar";
 import { Tutorial } from "./Tutorial";
@@ -107,7 +108,7 @@ import {
   type Session,
 } from "../online/room";
 import { UpdatePrompt } from "./UpdatePrompt";
-import { isKawaii, uwu, uwuWords } from "../game/kawaii";
+import { displayName, isKawaii, kawaiiName, uwu, uwuWords } from "../game/kawaii";
 import { MenuPanel } from "./MenuPanel";
 import { SidePanels } from "./SidePanels";
 
@@ -511,7 +512,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       : parts;
     setFeed((f) => [...f.slice(-(FEED_MAX - 1)), { id: feedId.current++, tone, parts: said }]);
   };
-  const nameOf = (u: Unit): FeedPart => ({ text: u.name, side: u.side });
+  const nameOf = (u: Unit): FeedPart => ({ text: displayName(u), side: u.side });
 
   /** The hint line: a click-selection's details card docks just above it. */
   const hintRef = useRef<HTMLParagraphElement>(null);
@@ -876,6 +877,9 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   const squireToGo = (u: Unit): number | null =>
     u.key === "squire" ? knightAt(u.side === PLAYER ? playerAug.current : enemyAug.current) - u.merges : null;
 
+  // Battle view: set while rendering, so effects placed this tick (`cellCenter`)
+  // use the same layout the board will be drawn with.
+  setBattleView(phase === "battle");
   viewRef.current = {
     board,
     validTargets,
@@ -890,6 +894,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     draggingId: drag?.kind === "unit" ? drag.unitId : null,
     selectedId: !drag && selected?.kind === "unit" ? selected.unitId : null,
     auraIcon,
+    unitName: displayName,
     classIcon: (u: Unit) => ARCHETYPES[UNITS[u.key]?.archetype]?.icon,
     promoteIn: squireToGo,
     battle: phase === "battle",
@@ -2212,7 +2217,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   const grabHint = grab ? (outcomeHint(grab) ?? optionsHint(grab)) : "";
 
   return (
-    <div className="app">
+    <div className={`app${phase === "battle" ? " app--battle" : ""}`}>
       <UpdatePrompt />
       <SidePanels
         player={playerAug.current}
@@ -2518,7 +2523,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
                   {ARCHETYPES[u.archetype].icon}
                 </span>
                 <UnitPortrait unitKey={key} side="player" size={compact ? 44 : 58} />
-                <span className="card__name">{u.name}</span>
+                <span className="card__name">{kawaiiName(key, u.name)}</span>
                 {taken ? (
                   <span className="card__stats">taken</span>
                 ) : (

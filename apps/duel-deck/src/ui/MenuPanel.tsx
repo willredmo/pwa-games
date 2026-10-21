@@ -45,7 +45,7 @@ export interface MenuPanelProps {
 type CheckState = "idle" | "checking" | "done";
 
 export function MenuPanel(props: MenuPanelProps) {
-  const { onClose, onCodex, onNotes, onHelp, onFeedback, onNewMatch, onExit, sound, onSound, music, onMusic, battleLog, onBattleLog, difficultyLabel, rulesLabel, online } = props;
+  const { onClose, onCodex, onNotes, onHelp, onFeedback, onNewMatch, onExit, sound, onSound, music, onMusic, difficultyLabel, rulesLabel, online } = props;
   const waiting = usePwaUpdate();
   const [latest, setLatest] = useState<DeployInfo | null>(null);
   const [check, setCheck] = useState<CheckState>("idle");
@@ -114,14 +114,8 @@ export function MenuPanel(props: MenuPanelProps) {
               <small>{!sound ? "Needs Sound on" : music ? "Calm while picking, faster in battle" : "Off"}</small>
             </span>
           </label>
-          <label className="toggle">
-            <input type="checkbox" checked={battleLog} onChange={(e) => onBattleLog(e.target.checked)} />
-            <span className="toggle__switch" aria-hidden="true" />
-            <span>
-              📜 Battle log
-              <small>{battleLog ? "The blow-by-blow under the board" : "Hidden — the board still shows everything"}</small>
-            </span>
-          </label>
+          {/* Battle log: hidden for now (battle view gives the board the screen),
+              so its switch is too. The setting and props stay for when it returns. */}
         </div>
 
         <p className="menu-match">

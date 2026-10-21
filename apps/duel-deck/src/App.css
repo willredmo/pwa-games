@@ -2011,3 +2011,36 @@ button.menu-item:hover { border-color: #5a5180; }
 /* Kawaii mode's hidden switch (Title.tsx), once found. */
 .kawaii-toggle { margin-top: 0.7rem; padding: 0.55rem 0.65rem; border-radius: 12px; border: 1px dashed #ff8fc8; background: rgba(255, 143, 200, 0.08); }
 .kawaii-toggle input:checked + .toggle__switch { background: #ff5ca8; }
+
+/* --- Battle view: during a battle the board takes the screen ---
+   The rows under it (round summary, pick label, offer cards / log, hint)
+   collapse, and render.ts lets the board and units grow (setBattleView). On
+   wide screens the controls column goes too: one centred column, with the HUD
+   (speed) under the board. Picking puts it all back. */
+.app--battle .app__log-row,
+.app--battle .pick-row,
+.app--battle .hand,
+.app--battle .app__hint { display: none; }
+@media (min-width: 45rem) and (min-height: 34rem) {
+  .app.app--battle {
+    grid-template-columns: minmax(20rem, 40rem);
+    grid-template-rows: auto auto 1fr auto auto;
+    grid-template-areas:
+      "header"
+      "ehp"
+      "stage"
+      "php"
+      "controls";
+  }
+  .app--battle .app__controls { justify-content: flex-start; }
+  .app--battle .app__controls .hud { width: auto; }
+}
+/* Battle view, wide screens: the header goes compact (one row, no title, as on
+   phones) so its height goes to the board too. */
+@media (min-width: 45rem) {
+  .app--battle .app__header { display: flex; align-items: center; gap: 0.6rem; min-height: 2.25rem; text-align: left; }
+  .app--battle .app__header h1 { display: none; }
+  .app--battle .app__subtitle { flex: 1; min-width: 0; margin: 0; font-weight: 700; color: #e9e4ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .app--battle .menu-btn { position: static; flex: none; }
+  .app--battle .next-upgrade { margin: 0; flex: none; }
+}
