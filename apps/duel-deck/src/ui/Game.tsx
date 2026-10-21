@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   capacityOf,
   cloneBoard,
@@ -876,6 +876,49 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   /** Merges a Squire still needs to be knighted, by its own side's threshold. */
   const squireToGo = (u: Unit): number | null =>
     u.key === "squire" ? knightAt(u.side === PLAYER ? playerAug.current : enemyAug.current) - u.merges : null;
+
+  // Battle view transition (FLIP): when the board's box changes as a battle
+  // starts or ends, animate it from where it was to where it is now, scaled
+  // uniformly from its top centre so units don't stretch. The rows around it
+  // and (on wide screens) the grid change instantly; only the board moves.
+  // Web Animations rather than CSS transitions, so it doesn't depend on which
+  // properties a layout happens to change. Reduced motion: a short fade.
+  const stageRef = useRef<HTMLDivElement>(null);
+  const stageRect = useRef<DOMRect | null>(null);
+  const battleView = phase === "battle";
+  useLayoutEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    // A board animation still running (a very short round) would skew the
+    // measurement with its transform: drop it and measure the real box.
+    for (const a of el.getAnimations()) a.cancel();
+    const last = el.getBoundingClientRect();
+    const first = stageRect.current;
+    stageRect.current = last;
+    if (!first || last.height <= 0 || (first.height === last.height && first.width === last.width && first.left === last.left && first.top === last.top)) return;
+    if (prefersReducedMotion()) {
+      el.animate([{ opacity: 0.35 }, { opacity: 1 }], { duration: 220, easing: "ease-out" });
+      return;
+    }
+    const s = first.height / last.height;
+    const dx = first.left + first.width / 2 - (last.left + last.width / 2);
+    const dy = first.top - last.top;
+    el.animate(
+      [
+        { transformOrigin: "50% 0", transform: `translate(${dx}px, ${dy}px) scale(${s})` },
+        { transformOrigin: "50% 0", transform: "none" },
+      ],
+      { duration: 460, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
+    );
+  }, [battleView]);
+  // Keep the "before" box current between battles (window resizes, rotation).
+  useEffect(() => {
+    const onResize = () => {
+      if (stageRef.current) stageRect.current = stageRef.current.getBoundingClientRect();
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   // Battle view: set while rendering, so effects placed this tick (`cellCenter`)
   // use the same layout the board will be drawn with.
@@ -2256,7 +2299,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
 
       <HpBar side={ENEMY} label="Enemy" hp={Math.max(0, board.hp.enemy)} max={startHpOf(board)} blown={barBlast} />
 
-      <div className="app__stage">
+      <div className="app__stage" ref={stageRef}>
         <canvas
           ref={canvasRef}
           className={`app__board${drag ? " app__board--dragging" : ""}`}

@@ -10,6 +10,11 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.7.4",
+    date: "Oct 21, 2026",
+    notes: ["The board now visibly zooms into place when a battle starts and back when it ends (1.7.3's version didn't show on most screens)."],
+  },
+  {
     version: "1.7.3",
     date: "Oct 21, 2026",
     notes: ["The board grows smoothly into a battle and shrinks back when it's time to pick, instead of jumping."],

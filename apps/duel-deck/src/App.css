@@ -2019,20 +2019,9 @@ button.menu-item:hover { border-color: #5a5180; }
    collapse, and render.ts lets the board and units grow (setBattleView). On
    wide screens the controls column goes too: one centred column, with the HUD
    (speed) under the board. Picking puts it all back. */
-/* The rows collapse rather than vanish, so the board (the canvas reads its
-   size every frame) grows into the space as it opens, and shrinks back as
-   they return; render.ts eases the board's caps over the same time. */
-.app__log-row,
-.pick-row,
-.hand,
-.app__hint {
-  max-height: 16rem;
-  transition:
-    max-height 0.42s cubic-bezier(0.45, 0, 0.25, 1),
-    min-height 0.42s cubic-bezier(0.45, 0, 0.25, 1),
-    margin 0.42s cubic-bezier(0.45, 0, 0.25, 1),
-    opacity 0.25s ease;
-}
+/* The rows collapse at once; the board's move is animated in Game.tsx (FLIP on
+   .app__stage) and render.ts eases its caps, so animating these too would
+   move it twice. */
 .app--battle .app__log-row,
 .app--battle .pick-row,
 .app--battle .hand,
@@ -2054,7 +2043,6 @@ button.menu-item:hover { border-color: #5a5180; }
 }
 @keyframes controls-in { from { opacity: 0; transform: translateX(24px); } }
 @media (prefers-reduced-motion: reduce) {
-  .app__log-row, .pick-row, .hand, .app__hint { transition: none; }
   .app__controls { animation: none !important; }
 }
 @media (min-width: 45rem) and (min-height: 34rem) {

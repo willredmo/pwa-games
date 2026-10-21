@@ -1074,18 +1074,21 @@ deliberately trades the old "board never resizes between phases" rule for a
 bigger fight: the board grows at Battle and shrinks back for picks. The battle
 log is hidden for now (its ☰ switch removed; the setting and feed code stay).
 
-**Animated (1.7.3).** The rows collapse rather than vanish: max-height,
-min-height, opacity and a negative top margin (`--app-gap`, so each collapsed
-row gives its flex gap back) transition over 0.42 s, and the canvas, which
-reads its size every frame, grows with them. `render.ts` eases the caps the
-same way: `battleT` steps toward `setBattleView`'s target over
-`BATTLE_VIEW_MS` (420) in `draw`, eased with `easeInOutSine`, and both
-`layout` and `contentScale` interpolate by it, so units grow rather than snap.
-On wide screens the grid's switch to one column is still instant; the board
-eases bigger inside it, and `.app__controls` slides back in (`controls-in`)
-when picking starts. Reduced motion skips all of it. A hidden browser pane runs
-no frames, so the transitions were checked by fast-forwarding them
-(`getAnimations().finish()`): battle 498px, back to 294px at 360×640.
+**Animated (1.7.4).** A FLIP animation on `.app__stage` (Game.tsx): when
+`phase === "battle"` flips, a layout effect compares the board's box before
+(`stageRect`, refreshed on resize) and after, and animates it from the old box
+with `translate` + a uniform `scale` (old height / new height, from its top
+centre, so units don't stretch) back to none, 460 ms, via Web Animations. Any
+board animation still running is cancelled before measuring, or its transform
+skews the box. The rows collapse instantly; `render.ts` still eases the lane
+and unit caps (`battleT`, `BATTLE_VIEW_MS` 420), which is what widens the
+board on desktop, where the stage's height barely changes and the FLIP is
+mostly a slide to the centre column. `.app__controls` slides back in
+(`controls-in`) when picking starts. Reduced motion: a 220 ms fade instead.
+1.7.3 animated the rows' max-height instead; it didn't show for the user, so
+it was replaced. A hidden browser pane runs no frames, so the animations were
+checked by reading `getAnimations()` keyframes: 360×640 scale 0.62 in / 1.62
+out; 1024×768 translate(−72, 38) in / (72, −38) out.
 
 ### Small screens (checked at 320×568, 360×640, 375×812)
 Every screen is meant to work on a 320×568 phone without anything important
