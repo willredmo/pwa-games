@@ -74,9 +74,9 @@ export const UNITS: Record<string, UnitStats> = {
     shape: "star",
     classes: ["herald", "support"],
     archetype: "support",
-    role: "Support: useless in front, lifts the front from behind",
-    ability: { name: "Rally", trigger: "Start of round", text: "If it isn't your front unit, your front unit gains +3 attack for the round.", scaling: "+1 attack every 2 levels" },
-    mastery: "Rally also gives your front unit as much health as attack.",
+    role: "Support: lifts the unit in front of it",
+    ability: { name: "Rally", trigger: "Start of round", text: "The unit directly in front of it gains +3 attack for the round.", scaling: "+1 attack every 2 levels" },
+    mastery: "Rally also gives that unit as much health as attack.",
   },
   // Reaches past the front: every blow it lands also stabs the unit behind.
   lancer: {
@@ -98,8 +98,8 @@ export const UNITS: Record<string, UnitStats> = {
     shape: "cross",
     classes: ["medic", "support"],
     archetype: "support",
-    role: "Support: heals your front unit from behind",
-    ability: { name: "Mend", trigger: "After each exchange", text: "If it isn't your front unit, your front unit heals 3 (up to 3 times a round).", scaling: "+1 healing every 2 levels" },
+    role: "Support: heals the unit in front of it",
+    ability: { name: "Mend", trigger: "After each exchange", text: "The unit directly in front of it heals 3 (up to 3 times a round). Leading the row, it heals itself.", scaling: "+1 healing every 2 levels" },
     mastery: "Mends 5 times a round instead of 3.",
   },
   // Burst protection from behind: soaks the first hits the front takes, but
@@ -112,9 +112,9 @@ export const UNITS: Record<string, UnitStats> = {
     shape: "octagon",
     classes: ["warden", "support"],
     archetype: "support",
-    role: "Support: shields your front unit from behind",
-    ability: { name: "Barrier", trigger: "Start of round", text: "If it isn't your front unit, your front unit gets a shield that absorbs the first 4 damage it takes.", scaling: "+1 shield per level" },
-    mastery: "The unit behind the front gets the same shield.",
+    role: "Support: shields the unit in front of it",
+    ability: { name: "Barrier", trigger: "Start of round", text: "The unit directly in front of it gets a shield that absorbs the first 4 damage it takes.", scaling: "+1 shield per level" },
+    mastery: "The unit in front of that one gets the same shield.",
   },
   // Gives itself away: half its health moves to the front each round. Big
   // health, no other use, so it wants the back of the row.
@@ -125,9 +125,45 @@ export const UNITS: Record<string, UnitStats> = {
     shape: "drop",
     classes: ["acolyte", "support"],
     archetype: "support",
-    role: "Support: gives half its health to your front unit",
-    ability: { name: "Lifebond", trigger: "Start of round", text: "If it isn't your front unit, it gives half its health to your front unit for the round.", scaling: "Its health grows with levels, so the gift does too" },
-    mastery: "Your front unit also gains +2 attack.",
+    role: "Support: gives half its health to the unit in front of it",
+    ability: { name: "Lifebond", trigger: "Start of round", text: "It gives half its health to the unit directly in front of it for the round.", scaling: "Its health grows with levels, so the gift does too" },
+    mastery: "That unit also gains +2 attack.",
+  },
+  // The answer to a runaway hitter: the harder it's struck, the harder it
+  // strikes back, so a unit stacked with attack hurts itself on it.
+  sentinel: {
+    name: "Sentinel",
+    atk: 2,
+    maxHp: 8,
+    shape: "pillar",
+    classes: ["sentinel"],
+    archetype: "defense",
+    role: "Counter: punishes big hitters",
+    ability: {
+      name: "Retaliate",
+      trigger: "When hit",
+      text: "Strikes back at whoever hits it for 40% of the blow (before its own armour or shields).",
+      scaling: "+5% per level",
+    },
+    mastery: "Strikes back for 100% of every blow.",
+  },
+  // Carries other supports forward: whatever reaches it goes on to the unit
+  // ahead, stronger. Useless alone; the point is a chain from the back.
+  beacon: {
+    name: "Beacon",
+    atk: 1,
+    maxHp: 6,
+    shape: "lantern",
+    classes: ["beacon", "support"],
+    archetype: "support",
+    role: "Support: passes support abilities forward, amplified",
+    ability: {
+      name: "Relay",
+      trigger: "When a support ability reaches it",
+      text: "Passes Rally, Mend, Barrier and Lifebond on to the unit in front of it at ×1.5. Beacons in a row chain.",
+      scaling: "+×0.1 per level",
+    },
+    mastery: "Relays at ×3.",
   },
   // The late-game unit: the weakest body in the pool, but its merges escalate
   // (see SQUIRE_STEP) and at KNIGHT_AT merges it is promoted to a Knight.
@@ -175,7 +211,7 @@ export const SYNERGIES: Record<Archetype, { name: string; icon: string; text: st
   support: {
     name: "Sanctuary",
     icon: "🕊",
-    text: "Every support ability counts twice: rally, mend, barrier and lifebond are doubled.",
+    text: "Every support ability counts twice: rally, mend, barrier and lifebond are doubled (before any Beacon amplifies them).",
   },
 };
 /** Smallest row a synergy needs: a single unit (Ascendant) is no "row of one class". */
@@ -222,7 +258,8 @@ export const KNIGHT_LEVEL = levelOf(KNIGHT_AT);
 export const MAX_LEVEL = 10;
 export const MAX_MERGES = MAX_LEVEL - 1;
 /** Whether a unit with this many merges has reached its Mastery. */
-export const isMastered = (merges: number) => levelOf(merges) >= MAX_LEVEL;
+/** At the level cap, which is a match setting (`levelCapOf`); MAX_LEVEL is the default. */
+export const isMastered = (merges: number, cap = MAX_LEVEL) => levelOf(merges) >= cap;
 
 /**
  * Whether odies more bodies of type incoming can be folded into a unit of
@@ -269,6 +306,8 @@ export function mergesInto(target: string, incoming: string): boolean {
 
 /** Mends a mastered Medic gets each round (combat's default is 3). */
 export const MASTER_MEND_MORE = 2;
+/** A mastered Beacon's Relay, in percent. */
+export const BEACON_MASTER_RELAY = 300;
 
 export function unitsOfClass(units: { classes: string[] }[], cls: string): number {
   return units.filter((u) => u.classes.includes(cls)).length;
@@ -280,9 +319,9 @@ export function unitsOfClass(units: { classes: string[] }[], cls: string): numbe
  * the Units screen, so they can't disagree. `merges` counts every body folded
  * in, so a Knight's includes the Squires that made it.
  */
-export function innateTraits(key: string, merges = 0): UnitTraits {
+export function innateTraits(key: string, merges = 0, cap = MAX_LEVEL): UnitTraits {
   const m = Math.max(0, merges);
-  const master = isMastered(m);
+  const master = isMastered(m, cap);
   switch (key) {
     // At MAX_LEVEL each ability takes its Mastery form (UNITS[key].mastery).
     case "guard":
@@ -300,22 +339,28 @@ export function innateTraits(key: string, merges = 0): UnitTraits {
     case "lancer":
       return master ? { pierce: 1 + Math.floor(m / 2), pierceDeeper: 1 } : { pierce: 1 + Math.floor(m / 2) };
     case "medic":
-      // Read by combat, which only heals from behind the front.
+      // Read by combat (mendHeals): heals the unit directly ahead.
       return master ? { mend: 3 + Math.floor(m / 2), mendMore: MASTER_MEND_MORE } : { mend: 3 + Math.floor(m / 2) };
     case "herald": {
-      // Read by applyAugments, which only credits Heralds behind the front.
+      // Read by combat (openingBuffs): lands on the unit directly ahead.
       const rally = 3 + Math.floor(m / 2);
       return master ? { rally, rallyHp: rally } : { rally };
     }
     case "warden": {
-      // Read by applyAugments, which only credits Wardens behind the front.
+      // Read by combat (openingBuffs): lands on the unit directly ahead.
       // 3 + 1 every 2 levels measured 41% (sim, --aug=random); 4 + 1 a level 52%.
       const barrier = 4 + m;
       return master ? { barrier, barrierReach: 1 } : { barrier };
     }
+    case "sentinel":
+      // Percent of each blow: 40% at level 1, 85% at 10, 100% mastered.
+      return { reflect: master ? 100 : 40 + 5 * m };
+    case "beacon":
+      // Percent, so chains multiply exactly: ×1.5 at level 1, ×2.4 at 10, ×3 mastered.
+      return { relay: master ? BEACON_MASTER_RELAY : 150 + 10 * m };
     case "acolyte":
       // `lifebond` multiplies the gift (Sanctuary doubles it); the Acolyte
-      // always loses half its own health. Read by applyAugments.
+      // always loses half its own health. Read by combat (openingBuffs).
       return master ? { lifebond: 1, lifebondAtk: 2 } : { lifebond: 1 };
     case "squire":
       return { deathBuff: { target: "behind", atk: 1 + Math.floor(m / 2) } };

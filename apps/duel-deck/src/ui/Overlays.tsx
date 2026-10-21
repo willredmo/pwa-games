@@ -379,6 +379,8 @@ interface ResultPanelProps {
   rematch?: RematchState;
   /** Report a bug or suggest a feature. */
   onFeedback?: () => void;
+  /** The match's level cap, for the level chips. */
+  levelCap?: number;
 }
 
 export interface RematchState {
@@ -527,12 +529,12 @@ export function DifficultyPanel<D extends string>({
 }
 
 /** A level chip in the board's tier colours. */
-function LevelChip({ merges }: { merges: number }) {
+function LevelChip({ merges, cap = MAX_LEVEL }: { merges: number; cap?: number }) {
   const lv = levelOf(merges);
-  const tier = levelTier(lv);
+  const tier = levelTier(lv, cap);
   return (
     <span className="result-mvp__level" style={{ background: tier.fill, color: tier.ink }}>
-      {levelLabel(lv)}
+      {levelLabel(lv, cap)}
     </span>
   );
 }
@@ -542,7 +544,7 @@ function LevelChip({ merges }: { merges: number }) {
  * falls. Units that left the row (merged into another, or replaced) stay
  * listed, faded, so the totals add up.
  */
-function UnitLedger({ stats, winner }: { stats: MatchStats; winner: "player" | "enemy" }) {
+function UnitLedger({ stats, winner, cap }: { stats: MatchStats; winner: "player" | "enemy"; cap?: number }) {
   const [tab, setTab] = useState<"player" | "enemy">("player");
   const total = roundsPlayed(stats);
   const bookFor = (s: "player" | "enemy") => (s === "player" ? stats.units : (stats.foes ?? {}));
@@ -588,7 +590,7 @@ function UnitLedger({ stats, winner }: { stats: MatchStats; winner: "player" | "
                     <UnitPortrait unitKey={t.key} side={tab} size={30} merges={t.merges ?? 0} pose={tab === winner ? "dance" : "sad"} bleed={8} />
                     <span className="ledger__name">
                       <span>
-                        {t.name} <LevelChip merges={t.merges ?? 0} />
+                        {t.name} <LevelChip merges={t.merges ?? 0} cap={cap} />
                       </span>
                       {t.rounds ? (
                         <small>
@@ -621,7 +623,7 @@ function UnitLedger({ stats, winner }: { stats: MatchStats; winner: "player" | "
   );
 }
 
-export function ResultPanel({ winner, round, stats, hp, startHp, upgrades, opponent, onNewMatch, newMatchLabel, onReplay, rematch, onFeedback }: ResultPanelProps) {
+export function ResultPanel({ winner, round, stats, hp, startHp, upgrades, opponent, onNewMatch, newMatchLabel, onReplay, rematch, onFeedback, levelCap }: ResultPanelProps) {
   const won = winner === "player";
   const mvp = mvpOf(stats);
   const rounds = stats.won + stats.lost + stats.drawn;
@@ -655,7 +657,7 @@ export function ResultPanel({ winner, round, stats, hp, startHp, upgrades, oppon
             <div>
               <span className="result-mvp__tag">★ MVP</span>
               <strong>
-                {mvp.name} <LevelChip merges={mvp.merges ?? 0} />
+                {mvp.name} <LevelChip merges={mvp.merges ?? 0} cap={levelCap} />
               </strong>
               <span>
                 {mvp.damage} damage · {mvp.kills} kill{mvp.kills === 1 ? "" : "s"}
@@ -680,7 +682,7 @@ export function ResultPanel({ winner, round, stats, hp, startHp, upgrades, oppon
           <Stat i={7} label="Best win streak" value={stats.bestStreak} sub={stats.healed > 0 ? `healed ${stats.healed} HP` : undefined} />
         </div>
 
-        <UnitLedger stats={stats} winner={winner} />
+        <UnitLedger stats={stats} winner={winner} cap={levelCap} />
 
         {upgrades.length > 0 && (
           <div className="result-upgrades">
@@ -852,7 +854,7 @@ function CodexUnits({ onUnit, onAug }: { onUnit: (key: string) => void; onAug: (
                       {u.ability.scaling && <span className="unit-entry__ability-scaling">↑ {u.ability.scaling}</span>}
                       {u.mastery && (
                         <span className="unit-entry__ability-scaling">
-                          ★ Level {MAX_LEVEL} (max): {u.mastery}
+                          ★ At the level cap ({MAX_LEVEL} unless the match sets another): {u.mastery}
                         </span>
                       )}
                     </p>
@@ -1005,7 +1007,7 @@ export function HelpPanel({ onClose }: HelpPanelProps) {
 
         <h3>Getting stronger</h3>
         <ul className="rules">
-          <li><strong>Merging</strong> adds half the card's stats and a level. At level {MAX_LEVEL} (MAX) a unit's ability gets stronger.</li>
+          <li><strong>Merging</strong> adds half the card's stats and a level. At the level cap (MAX, {MAX_LEVEL} unless the match settings change it) a unit's ability gets stronger.</li>
           <li><strong>Upgrades</strong>: every {AUGMENT_EVERY} rounds, pick one that lasts the whole match.</li>
           <li>
             <strong>Classes</strong>: field 5 or more units, all one class, for a bonus each round:{" "}

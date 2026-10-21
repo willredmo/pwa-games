@@ -8,7 +8,7 @@ export function otherSide(side: Side): Side {
   return side === "player" ? "enemy" : "player";
 }
 
-export type Shape = "circle" | "square" | "triangle" | "diamond" | "hexagon" | "shield" | "star" | "kite" | "cross" | "octagon" | "drop";
+export type Shape = "circle" | "square" | "triangle" | "diamond" | "hexagon" | "shield" | "star" | "kite" | "cross" | "octagon" | "drop" | "lantern" | "pillar";
 
 /**
  * A unit's class. A row whose every slot holds one class gets that class's
@@ -127,33 +127,54 @@ export interface UnitTraits {
   /** If it survives a round, permanently gains this (Bulwark's Fortify). */
   growOnSurvive?: { atk?: number; hp?: number };
   /**
-   * Start of round: the front unit gains this much attack for the round, if
-   * this unit isn't the front itself (Herald's Rally). Several stack.
+   * Start of round: the unit directly in front of this one gains this much
+   * attack for the round (Herald's Rally). Several stack. Every support
+   * ability lands on the unit directly ahead (`supportTarget` in combat.ts);
+   * a Beacon there passes it on.
    */
   rally?: number;
   /** Each landed main blow also hits the enemy unit behind the front for this much (Lancer's Impale). */
   pierce?: number;
-  /** After each exchange, if this unit isn't the front, it heals the front for this much (Medic's Mend). */
+  /** After each exchange, it heals the unit directly in front of it for this much (Medic's Mend). */
   mend?: number;
   /** Mends per round beyond the usual 3 (a mastered Medic, Triage). */
   mendMore?: number;
-  /** Each Mend also gives the front this much attack for the round (Stimulant). */
+  /** Each Mend also gives the unit it heals this much attack for the round (Stimulant). */
   mendAtk?: number;
   /** Charge fires on the first blow against each new enemy (a mastered Striker). */
   chargeEach?: boolean;
   /** Impale reaches this many more units behind the first (a mastered Lancer, Skewer). */
   pierceDeeper?: number;
-  /** Rally also gives the front this much health (a mastered Herald). */
+  /** Rally also gives the unit it lands on this much health (a mastered Herald). */
   rallyHp?: number;
-  /** From behind the front: the front starts the round with a shield of this much (Warden's Barrier). */
+  /** The unit directly in front starts the round with a shield of this much (Warden's Barrier). */
   barrier?: number;
-  /** How many units behind the front Barrier also covers (a mastered Warden, Aegis). */
+  /** How many more units ahead of that one Barrier also covers (a mastered Warden). */
   barrierReach?: number;
-  /** Damage absorbed before health this round (set on the front by Barrier). */
+  /** Barrier also shields the Warden itself (Aegis), for when it steps up to the front. */
+  barrierSelf?: boolean;
+  /**
+   * A support ability reaching this unit goes on to the unit in front of it,
+   * amplified to this percent (Beacon's Relay: 150 + 10 a level). Beacons in
+   * a row chain, multiplying. One with nobody ahead keeps what it gets.
+   */
+  relay?: number;
+  /**
+   * Percent of every blow it takes (the blow's full strength, before armour
+   * or shields) struck back at the attacker (Sentinel's Retaliate). Played as
+   * thorns, so a reflected blow never reflects again.
+   */
+  reflect?: number;
+  /**
+   * Armour counts as at least this much (Unbreakable). A floor, not a bonus:
+   * a Knight's or Bastion's armour doesn't stack with it.
+   */
+  minArmour?: number;
+  /** Damage absorbed before health this round (set by Barrier). */
   shield?: number;
-  /** From behind the front: gives half its health to the front, times this (Acolyte's Lifebond; Sanctuary doubles). */
+  /** Gives half its health to the unit directly in front, times this (Acolyte's Lifebond; Sanctuary doubles). */
   lifebond?: number;
-  /** A mastered Acolyte: the front also gains this much attack. */
+  /** A mastered Acolyte: the unit it gives to also gains this much attack. */
   lifebondAtk?: number;
   /** Its blows can't be dodged (Full Assault). */
   trueStrike?: boolean;
@@ -204,6 +225,8 @@ export interface Board {
    * maxed unit doesn't take its slot away.
    */
   earnedSlots?: Partial<Record<Side, number>>;
+  /** The match's level cap (a match setting; absent = MAX_LEVEL, 10). Read through `levelCapOf`. */
+  levelCap?: number;
   /** Match settings beyond the pool (absent = the defaults: no easy mode, synergies and upgrades on). */
   rules?: { easy?: boolean; synergies?: boolean; upgrades?: boolean };
   /** Side-wide augment modifiers (bounty, capacity). Absent = none. */
@@ -239,6 +262,9 @@ export interface BuffEvent {
   hp: number;
   /** Shield it gains for the round (Warden's Barrier). */
   shield?: number;
+  /** Beacons it passed through on the way, nearest the source first, and what they multiplied it by. */
+  via?: string[];
+  amp?: number;
 }
 export interface HealEvent {
   type: "heal";
@@ -246,6 +272,9 @@ export interface HealEvent {
   amount: number;
   /** Who healed it, when it wasn't its own lifesteal (a Medic's Mend). */
   source?: string;
+  /** Beacons a Mend passed through (see BuffEvent.via). */
+  via?: string[];
+  amp?: number;
 }
 export interface DeathEvent {
   type: "death";

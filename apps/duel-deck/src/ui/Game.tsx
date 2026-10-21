@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   capacityOf,
   cloneBoard,
+  levelCapOf,
   mergeCapFor,
   emptySpotCount,
   findUnitCell,
@@ -18,7 +19,7 @@ import {
   writeLane,
 } from "../engine/board";
 import { resolveRound } from "../engine/combat";
-import { ARCHETYPES, KNIGHTING_BONUS, MAX_LEVEL, SYNERGIES, SYNERGY_MIN, UNITS, canAbsorb, isMastered, levelOf, mergesInto, synergyOf } from "../engine/units";
+import { ARCHETYPES, KNIGHTING_BONUS, SYNERGIES, SYNERGY_MIN, UNITS, canAbsorb, isMastered, levelOf, mergesInto, synergyOf } from "../engine/units";
 import type { Archetype, AttackEvent, BattleEvent, Board, RoundResult, Side, Tick, Unit } from "../engine/types";
 import {
   AUGMENT_EVERY,
@@ -127,6 +128,10 @@ const BIG_HIT = 7;
 const ABILITY_MS = 1100;
 /** One supporting unit's start-of-round buff (each gets its own beat). */
 const OPENING_BEAT_MS = 800;
+/** A relayed buff's hop from one Beacon to the next unit ahead. */
+const HOP_MS = 360;
+/** A Beacon chain's multiplier for labels: "1.5", "2.25", "3". */
+const ampText = (amp: number) => String(Math.round(amp * 100) / 100);
 /** After the main blows, before the first side hit (Overflow, Thorns…) plays. */
 const EXTRA_GAP_MS = 450;
 /** Overflow's shockwave travel: its damage lands on the second target on arrival. */
@@ -780,7 +785,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     if (kind === "place" && target) return `↧ INSERT ${UNITS[grab.key].name} at #${dropCell.spot + 1}`;
     if (kind === "place") return `＋ ADD ${UNITS[grab.key].name}`;
     if (kind === "reorder") return `MOVE TO #${dropCell.spot + 1}`;
-    if (target && mergesInto(target.key, grab.key) && !ascendant) return `MAX LEVEL ${MAX_LEVEL}`;
+    if (target && mergesInto(target.key, grab.key) && !ascendant) return `MAX LEVEL ${levelCapOf(board)}`;
     return null;
   })();
 
@@ -1256,7 +1261,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   };
   /** Whether a merge carried a unit from below the cap to it (or past it: Ascendant). */
   const justMastered = (before: Unit | null | undefined, after: Unit | null | undefined) =>
-    !!before && !!after && !isMastered(before.merges) && isMastered(after.merges);
+    !!before && !!after && !isMastered(before.merges, levelCapOf(board)) && isMastered(after.merges, levelCapOf(board));
 
   /** Place a new unit from the offer into the queue at `cell`. */
   const placeFromOffer = useCallback(
@@ -1831,8 +1836,9 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           const gain = statText(ev.atk, ev.hp, ev.shield);
           const name = ev.label ?? (key === "guard" ? "Bodyguard" : key === "squire" ? "Pass the torch" : "Last rally");
           const scope = !ev.label && key === "knight" ? " all" : "";
+          const via = ev.via?.length ? ` · Beacon ×${ampText(ev.amp ?? 1)}` : "";
           if (key === "knight" || ev.label) fxAt(f.board, src.cell, "rally");
-          abilityLabel(f.board, src.cell, `${name} ${gain}${scope}`);
+          abilityLabel(f.board, src.cell, `${name} ${gain}${scope}${via}`);
         }
         // Allies receive one after another, so a Last rally can be followed.
         const at = 300 + n++ * 140;
@@ -1840,12 +1846,22 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         // nothing to travel: it lands at once. Others fly from the source.
         const self = ev.source === ev.unit;
         const travels = !self && (key === "guard" || key === "squire" || key === "herald" || key === "acolyte" || key === "warden" || key === "medic");
-        later(at, () => {
-          if (!travels) return;
-          if (key === "guard" || key === "acolyte" || key === "warden") fxBetween(f.board, src.cell, cell, "bodyguard");
-          else fxBetween(f.board, src.cell, cell, "torch");
-        });
-        const lands = at + (travels ? 520 : 0);
+        // Source → each Beacon it passed (nearest first) → the unit it lands on.
+        const hops = [src.cell, ...(ev.via ?? []).flatMap((id) => findUnitCell(f.board, id) ?? []), cell];
+        const kind = key === "guard" || key === "acolyte" || key === "warden" ? "bodyguard" : "torch";
+        if (travels) {
+          hops.slice(1).forEach((to, k) => {
+            later(at + k * HOP_MS, () => {
+              if (k > 0) {
+                fxAt(f.board, hops[k], "merge");
+                const beacon = f.board.slots[hops[k].side][hops[k].lane][hops[k].spot];
+                if (beacon) setPose(beacon.id, "attack", POSE_MS.attack);
+              }
+              fxBetween(f.board, hops[k], to, kind);
+            });
+          });
+        }
+        const lands = at + (travels ? HOP_MS * (hops.length - 2) + 520 : 0);
         last = Math.max(last, lands);
         later(lands, () => {
           apply(ev);
@@ -1957,7 +1973,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         const lethal = dying.has(ev.target);
         const overflow = ev.tag === "cleave" && src.unit.key === "berserker";
         const riposte = ev.tag === "thorns" && src.unit.key === "skirmisher" && (src.unit.traits?.riposte ?? 0) > 0;
-        if (overflow || riposte) abilityFired = true;
+        const retaliate = ev.tag === "thorns" && (src.unit.traits?.reflect ?? 0) > 0;
+        if (overflow || riposte || retaliate) abilityFired = true;
         const start = t;
         const lands = overflow ? start + OVERFLOW_TRAVEL_MS : start;
         later(start, () => {
@@ -1968,6 +1985,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
             fxBetween(f.board, from, cell, "overflow");
             abilityLabel(f.board, src.cell, `Overflow ${ev.damage} carries on`);
           } else if (riposte) abilityLabel(f.board, src.cell, `Riposte ${ev.damage} dmg`);
+          else if (retaliate) abilityLabel(f.board, src.cell, `Retaliate ${ev.damage} dmg`);
           else if (ev.tag === "pierce") abilityLabel(f.board, src.cell, `Impale ${ev.damage}`);
         });
         later(lands, () => {
@@ -2003,7 +2021,12 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           const target = f.board.slots[cell.side][cell.lane][cell.spot];
           if (healer && target) {
             fxAt(f.board, findUnitCell(f.board, healer.id) ?? cell, "rally");
-            pushFeed("ability", [nameOf(healer), " mends ", nameOf(target), ` +${ev.amount}♥`]);
+            for (const id of ev.via ?? []) {
+              const at = findUnitCell(f.board, id);
+              if (at) fxAt(f.board, at, "merge");
+            }
+            const via = ev.via?.length ? ` (Beacon ×${ampText(ev.amp ?? 1)})` : "";
+            pushFeed("ability", [nameOf(healer), " mends ", nameOf(target), ` +${ev.amount}♥${via}`]);
           }
         });
         healAt += 120;
@@ -2224,6 +2247,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         )}
         {phase === "over" && result?.matchWinner && (
           <ResultPanel
+            levelCap={levelCapOf(board)}
             onReplay={lastFight.current ? startReplay : undefined}
             winner={result.matchWinner}
             round={round}
@@ -2557,7 +2581,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       )}
 
       {/* What's making a hovered unit's numbers what they are. */}
-      {info && !grab && <UnitInfo unit={info.unit} x={info.x} y={info.y} toKnight={squireToGo(info.unit)} />}
+      {info && !grab && <UnitInfo unit={info.unit} x={info.x} y={info.y} toKnight={squireToGo(info.unit)} cap={levelCapOf(board)} />}
 
       {/* Picked up by a click or tap: its details, docked over the offer row
           and just above the hint (which carries the outcome warnings), so it
@@ -2566,11 +2590,11 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         const dockBottom = window.innerHeight - (hintRef.current?.getBoundingClientRect().top ?? window.innerHeight) + 6;
         if (selected.kind === "offer") return <OfferInfo unitKey={selected.key} dockBottom={dockBottom} />;
         const unit = board.slots.player[selected.lane]?.[selected.from];
-        return unit && unit.id === selected.unitId ? <UnitInfo unit={unit} dockBottom={dockBottom} toKnight={squireToGo(unit)} /> : null;
+        return unit && unit.id === selected.unitId ? <UnitInfo unit={unit} dockBottom={dockBottom} toKnight={squireToGo(unit)} cap={levelCapOf(board)} /> : null;
       })()}
 
       {/* Touch: the long-pressed (or tapped) unit or offer, until the next tap. */}
-      {pinnedUnit && pinned && <UnitInfo unit={pinnedUnit} x={pinned.x} y={pinned.y} pinned toKnight={squireToGo(pinnedUnit)} />}
+      {pinnedUnit && pinned && <UnitInfo unit={pinnedUnit} x={pinned.x} y={pinned.y} pinned toKnight={squireToGo(pinnedUnit)} cap={levelCapOf(board)} />}
       {pinned?.kind === "offer" && phase === "pick" && (
         <OfferInfo unitKey={pinned.key} x={pinned.x} y={pinned.y} />
       )}

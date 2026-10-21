@@ -22,7 +22,7 @@ import "./App.css";
 type Screen = "title" | "game";
 
 /** The title screen's match settings, as the rules a match is built with. */
-const rulesFrom = (s: Settings): MatchRules => ({ startHp: s.startHp, easy: s.easy, synergies: s.synergies, upgrades: s.upgrades });
+const rulesFrom = (s: Settings): MatchRules => ({ startHp: s.startHp, easy: s.easy, synergies: s.synergies, upgrades: s.upgrades, levelCap: s.levelCap });
 
 /** What `Game` was mounted with. `key` forces a remount when this changes. */
 interface Run {

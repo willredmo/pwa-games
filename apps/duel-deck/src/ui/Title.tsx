@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { DIFFICULTIES, START_HP_MAX, START_HP_MIN, START_HP_OPTIONS, clampStartHp, type Difficulty, type MatchRules } from "../game/match";
+import { DIFFICULTIES, LEVEL_CAP_OPTIONS, START_HP_MAX, START_HP_MIN, START_HP_OPTIONS, clampStartHp, type Difficulty, type MatchRules } from "../game/match";
 import type { SavedMatch } from "../game/save";
 import { DIFFICULTY_INFO } from "./Overlays";
 import { UnitPortrait } from "./UnitPortrait";
@@ -288,6 +288,24 @@ function MatchSettings({ rules, onRules }: { rules: MatchRules; onRules: (r: Par
           </small>
         </label>
       )}
+      <span className="match-settings__label">Level cap</span>
+      <div className="title__hp" role="radiogroup" aria-label="Level cap">
+        {LEVEL_CAP_OPTIONS.map((cap) => (
+          <button
+            key={cap}
+            role="radio"
+            aria-checked={cap === rules.levelCap}
+            className={`hp-option${cap === rules.levelCap ? " hp-option--on" : ""}`}
+            onClick={() => onRules({ levelCap: cap })}
+          >
+            Lv {cap}
+            <small>{cap < 10 ? "Short" : cap > 10 ? "Long" : "Standard"}</small>
+          </button>
+        ))}
+      </div>
+      <small className="match-settings__note">
+        Units stop levelling at the cap, where their ability gets its Mastery form. Higher caps make Knights stronger.
+      </small>
       <div className="match-settings__toggles">
         {TOGGLES.map((t) => (
           <label key={t.key} className="toggle">
@@ -311,6 +329,7 @@ function settingsText(r: MatchRules): string {
     r.easy ? "Easy mode" : null,
     r.synergies ? null : "No class bonuses",
     r.upgrades ? null : "No upgrades",
+    r.levelCap !== 10 ? `Lv cap ${r.levelCap}` : null,
   ].filter(Boolean);
   return parts.length === 1 ? `${parts[0]} · Standard` : parts.join(" · ");
 }

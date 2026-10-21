@@ -71,8 +71,7 @@ export function UnitInfo({
   y = 0,
   pinned = false,
   dockBottom,
-  toKnight,
-}: {
+  toKnight, cap = MAX_LEVEL }: {
   unit: Unit;
   x?: number;
   y?: number;
@@ -80,9 +79,11 @@ export function UnitInfo({
   dockBottom?: number;
   /** Merges this Squire still needs to be knighted (null/undefined if not a Squire). */
   toKnight?: number | null;
+  /** The match's level cap (a match setting). */
+  cap?: number;
 }) {
   // Grown by merges: what the ability does for *this* unit right now.
-  const innateRaw = innateTraits(unit.key, unit.merges);
+  const innateRaw = innateTraits(unit.key, unit.merges, cap);
   const innate = Object.keys(innateRaw).length > 0 ? innateRaw : undefined;
   const details = unit.auraDetails ?? [];
   // Keep the card on screen: flip to the left of the pointer near the right edge.
@@ -118,12 +119,12 @@ export function UnitInfo({
       </div>
       <div className="unit-info__base">
         Level {levelOf(unit.merges)}
-        {levelOf(unit.merges) === MAX_LEVEL ? " (max)" : ""} · Base ⚔{unit.baseAtk} ♥{unit.baseMaxHp}
+        {levelOf(unit.merges) === cap ? " (max)" : ""} · Base ⚔{unit.baseAtk} ♥{unit.baseMaxHp}
         {UNITS[unit.key] && ` · ${ARCHETYPES[UNITS[unit.key].archetype].icon} ${ARCHETYPES[UNITS[unit.key].archetype].name}`}
       </div>
       {UNITS[unit.key]?.mastery && (
-        <div className={`unit-info__mastery${isMastered(unit.merges) ? " unit-info__mastery--on" : ""}`}>
-          ★ {isMastered(unit.merges) ? "Mastery" : `At level ${MAX_LEVEL}`}: {UNITS[unit.key].mastery}
+        <div className={`unit-info__mastery${isMastered(unit.merges, cap) ? " unit-info__mastery--on" : ""}`}>
+          ★ {isMastered(unit.merges, cap) ? "Mastery" : `At level ${cap}`}: {UNITS[unit.key].mastery}
         </div>
       )}
       {toKnight != null && toKnight > 0 && (

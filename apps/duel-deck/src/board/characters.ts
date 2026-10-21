@@ -66,12 +66,12 @@ function m(c: RGB): string {
 }
 
 /** Top (most forward) extent of each body, in units of R — used for crowns. */
-const TOP: Record<string, number> = { guard: 0.82, striker: 1, skirmisher: 1, bulwark: 0.87, berserker: 1, squire: 0.66, knight: 0.86, herald: 0.98, lancer: 1, medic: 0.88, warden: 0.88, acolyte: 1 };
+const TOP: Record<string, number> = { guard: 0.82, striker: 1, skirmisher: 1, bulwark: 0.87, berserker: 1, squire: 0.66, knight: 0.86, herald: 0.98, lancer: 1, medic: 0.88, warden: 0.88, acolyte: 1, beacon: 1, sentinel: 0.95 };
 /** Lowest (rearmost) extent of each body in local space, in R — where legs go. */
-const BOTTOM: Record<string, number> = { guard: 0.82, striker: 0.8, skirmisher: 1, bulwark: 0.87, berserker: 0.9, squire: 0.78, knight: 0.92, herald: 0.79, lancer: 0.85, medic: 0.88, warden: 0.88, acolyte: 0.86 };
+const BOTTOM: Record<string, number> = { guard: 0.82, striker: 0.8, skirmisher: 1, bulwark: 0.87, berserker: 0.9, squire: 0.78, knight: 0.92, herald: 0.79, lancer: 0.85, medic: 0.88, warden: 0.88, acolyte: 0.86, beacon: 0.78, sentinel: 0.9 };
 /** Eye line (local y, in R) and half-spacing. */
-const EYE_Y: Record<string, number> = { guard: -0.1, striker: 0.16, skirmisher: 0.02, bulwark: -0.04, berserker: -0.06, squire: -0.06, knight: -0.12, herald: 0.02, lancer: 0.02, medic: -0.04, warden: -0.06, acolyte: 0.18 };
-const EYE_X: Record<string, number> = { guard: 0.3, striker: 0.24, skirmisher: 0.27, bulwark: 0.25, berserker: 0.32, squire: 0.24, knight: 0.26, herald: 0.17, lancer: 0.24, medic: 0.19, warden: 0.28, acolyte: 0.24 };
+const EYE_Y: Record<string, number> = { guard: -0.1, striker: 0.16, skirmisher: 0.02, bulwark: -0.04, berserker: -0.06, squire: -0.06, knight: -0.12, herald: 0.02, lancer: 0.02, medic: -0.04, warden: -0.06, acolyte: 0.18, beacon: 0.12, sentinel: -0.12 };
+const EYE_X: Record<string, number> = { guard: 0.3, striker: 0.24, skirmisher: 0.27, bulwark: 0.25, berserker: 0.32, squire: 0.24, knight: 0.26, herald: 0.17, lancer: 0.24, medic: 0.19, warden: 0.28, acolyte: 0.24, beacon: 0.22, sentinel: 0.26 };
 
 const enum Eye {
   Open,
@@ -178,6 +178,33 @@ function bodyPath(ctx: CanvasRenderingContext2D, key: string, R: number): void {
       }
       break;
     }
+    case "sentinel": {
+      // Pillar: a tall block with battlements along its forward edge.
+      const w = R * 0.72;
+      ctx.moveTo(-w, R * 0.9);
+      ctx.lineTo(-w, -R * 0.7);
+      for (let i = 0; i < 3; i++) {
+        const x0 = -w + (i * 2 * w) / 3;
+        const x1 = x0 + (2 * w) / 3;
+        ctx.lineTo(x0, -R * 0.95);
+        ctx.lineTo(x0 + (x1 - x0) * 0.55, -R * 0.95);
+        ctx.lineTo(x0 + (x1 - x0) * 0.55, -R * 0.7);
+        ctx.lineTo(x1, -R * 0.7);
+      }
+      ctx.lineTo(w, R * 0.9);
+      break;
+    }
+    case "beacon":
+      // Lantern: a narrow body under a pointed roof, the point forward, the
+      // way whatever it carries goes.
+      ctx.moveTo(0, -R);
+      ctx.lineTo(R * 0.64, -R * 0.42);
+      ctx.lineTo(R * 0.64, R * 0.58);
+      ctx.quadraticCurveTo(R * 0.64, R * 0.78, R * 0.44, R * 0.78);
+      ctx.lineTo(-R * 0.44, R * 0.78);
+      ctx.quadraticCurveTo(-R * 0.64, R * 0.78, -R * 0.64, R * 0.58);
+      ctx.lineTo(-R * 0.64, -R * 0.42);
+      break;
     case "acolyte": {
       // Teardrop, point forward: a drop of what it gives away.
       ctx.moveTo(0, -R);
@@ -319,6 +346,87 @@ function weapon(
         ctx.beginPath();
         ctx.arc(0, 0, R * 1.35, -Math.PI * 0.85, -Math.PI * 0.15);
         ctx.stroke();
+        ctx.restore();
+      }
+      break;
+    }
+    case "sentinel": {
+      // A round shield ringed with spikes; when it strikes back the spikes flare.
+      ctx.save();
+      ctx.translate(R * 0.8, R * 0.15);
+      ctx.rotate(sway * 0.3);
+      const flare = Math.max(0, w) + str * 0.6;
+      ctx.fillStyle = m(STEEL);
+      ctx.strokeStyle = m(STEEL_D);
+      ctx.lineWidth = lw * 0.7;
+      for (let i = 0; i < 8; i++) {
+        const a = (i * Math.PI) / 4;
+        const r0 = R * 0.34;
+        const r1 = R * (0.5 + 0.08 * Math.min(1, flare));
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a - 0.22) * r0, Math.sin(a - 0.22) * r0);
+        ctx.lineTo(Math.cos(a) * r1, Math.sin(a) * r1);
+        ctx.lineTo(Math.cos(a + 0.22) * r0, Math.sin(a + 0.22) * r0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.arc(0, 0, R * 0.36, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, 0, R * 0.12, 0, Math.PI * 2);
+      ctx.fillStyle = m(GOLD);
+      ctx.fill();
+      ctx.restore();
+      break;
+    }
+    case "beacon": {
+      // A lantern on a pole; when it relays (an "attack" pose), it flares and
+      // two chevrons flash ahead of it, pointing the way the buff goes.
+      const lift = Math.max(0, w) * R * 0.2;
+      ctx.save();
+      ctx.translate(R * 0.82, R * 0.42 - lift);
+      ctx.rotate(sway * 0.45);
+      ctx.strokeStyle = m(WOOD);
+      ctx.lineWidth = lw * 1.1;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, -R * 0.95);
+      ctx.stroke();
+      ctx.fillStyle = m(GOLD);
+      ctx.strokeStyle = m([0x8a, 0x5a, 0x00]);
+      ctx.lineWidth = lw * 0.7;
+      ctx.beginPath();
+      ctx.rect(-R * 0.17, -R * 1.32, R * 0.34, R * 0.34);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-R * 0.22, -R * 1.32);
+      ctx.lineTo(0, -R * 1.5);
+      ctx.lineTo(R * 0.22, -R * 1.32);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+      const glow = Math.max(0, w) + str * 0.5;
+      if (glow > 0.05) {
+        ctx.save();
+        ctx.globalAlpha *= Math.min(1, glow) * 0.7;
+        ctx.strokeStyle = m(GOLD);
+        ctx.lineWidth = lw * 1.3;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        for (const k of [0, 1]) {
+          const y = -R * (1.25 + k * 0.28);
+          ctx.beginPath();
+          ctx.moveTo(-R * 0.3, y + R * 0.18);
+          ctx.lineTo(0, y);
+          ctx.lineTo(R * 0.3, y + R * 0.18);
+          ctx.stroke();
+        }
         ctx.restore();
       }
       break;

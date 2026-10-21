@@ -1,6 +1,7 @@
 import {
   capacityOf,
   createBoard,
+  levelCapOf,
   mergeCapFor,
   ensureDepth,
   promoteToKnight,
@@ -15,7 +16,7 @@ import {
   cloneBoard,
 } from "../engine/board";
 import { resolveRound } from "../engine/combat";
-import { KNIGHT_AT, OFFER_KEYS, UNITS, canAbsorb, isMastered, synergyOf } from "../engine/units";
+import { KNIGHT_AT, MAX_LEVEL, OFFER_KEYS, UNITS, canAbsorb, innateTraits, isMastered, synergyOf } from "../engine/units";
 import type { Archetype, Board, Side, Unit } from "../engine/types";
 import {
   SABOTAGE_ATK,
@@ -117,13 +118,23 @@ export interface MatchRules {
   synergies: boolean;
   /** Upgrade choices every AUGMENT_EVERY rounds. */
   upgrades: boolean;
+  /** Highest level a unit can reach, where its ability takes its Mastery form (LEVEL_CAP_OPTIONS). */
+  levelCap: number;
 }
 
-export const DEFAULT_RULES: MatchRules = { startHp: START_HP, easy: false, synergies: true, upgrades: true };
+export const DEFAULT_RULES: MatchRules = { startHp: START_HP, easy: false, synergies: true, upgrades: true, levelCap: MAX_LEVEL };
+
+/**
+ * Level caps a match can be played at. Not below 8: a Squire is knighted at
+ * level 7. Higher caps strengthen Knights most (sim: Knight rows 62% at 10,
+ * 69% at 12, 72% at 13), so the title screen says so.
+ */
+export const LEVEL_CAP_OPTIONS = [8, 10, 12, 15] as const;
 
 export function newBoard(rules: Partial<MatchRules> = {}): Board {
   const r = { ...DEFAULT_RULES, ...rules };
   const board = createBoard(LANES, DEPTH, r.startHp);
+  if (r.levelCap && r.levelCap !== MAX_LEVEL) board.levelCap = r.levelCap;
   // Only the switches that differ from the defaults are stored.
   if (r.easy || !r.synergies || !r.upgrades) {
     board.rules = {
@@ -142,6 +153,7 @@ export function rulesOf(board: Board): MatchRules {
     easy: board.rules?.easy === true,
     synergies: board.rules?.synergies !== false,
     upgrades: board.rules?.upgrades !== false,
+    levelCap: levelCapOf(board),
   };
 }
 
@@ -152,6 +164,7 @@ export function rulesSummary(r: MatchRules): string[] {
     ...(r.easy ? ["Easy mode"] : []),
     ...(!r.synergies ? ["No class bonuses"] : []),
     ...(!r.upgrades ? ["No upgrades"] : []),
+    ...(r.levelCap && r.levelCap !== MAX_LEVEL ? [`Level cap ${r.levelCap}`] : []),
   ];
 }
 
@@ -247,12 +260,35 @@ export function deployToBack(
   return false;
 }
 
-/** Sort every lane highest-ATK-first (sim: beats random 59.7%; tanks-first loses). */
+const byAttack = (a: Unit, b: Unit) => b.baseAtk - a.baseAtk || b.baseMaxHp - a.baseMaxHp;
+
+/**
+ * Highest-ATK-first (sim: beats random 59.7%; tanks-first loses), with
+ * supports placed where they help. A support buffs the unit directly in front
+ * of it, so sorted by attack they all sat at the back buffing each other. Now:
+ * the strongest fighter, then every Beacon, then a support (so its buff is
+ * relayed to the front, amplified); then each further fighter followed by one
+ * more support. Supports left over go at the back.
+ */
+function supportOrder(row: Unit[]): Unit[] {
+  const arch = (u: Unit) => UNITS[u.key]?.archetype;
+  const fighters = row.filter((u) => arch(u) !== "support").sort(byAttack);
+  const beacons = row.filter((u) => (u.traits?.relay ?? innateTraits(u.key, u.merges).relay ?? 0) > 0);
+  const supports = row.filter((u) => arch(u) === "support" && !beacons.includes(u)).sort(byAttack);
+  if (!fighters.length) return [...supports, ...beacons];
+  const out: Unit[] = [];
+  fighters.forEach((f, i) => {
+    out.push(f);
+    if (i === 0) out.push(...beacons);
+    const s = supports.shift();
+    if (s) out.push(s);
+  });
+  return [...out, ...supports];
+}
+
 function sortByAttack(board: Board, side: Side): void {
   for (let lane = 0; lane < board.lanes; lane++) {
-    const row = occupants(board, side, lane);
-    row.sort((a, b) => b.baseAtk - a.baseAtk || b.baseMaxHp - a.baseMaxHp);
-    writeLane(board, side, lane, row);
+    writeLane(board, side, lane, supportOrder(occupants(board, side, lane)));
   }
 }
 
@@ -284,19 +320,20 @@ function easyCommit(board: Board, side: Side, state?: AugmentState): string[] {
   return picked;
 }
 
-/** Reorder a side's row by a comparator (front first). */
-function arrange(board: Board, side: Side, cmp: (a: Unit, b: Unit) => number): void {
+/** Reorder a side's row (front first). */
+function arrange(board: Board, side: Side, order: (row: Unit[]) => Unit[]): void {
   for (let lane = 0; lane < board.lanes; lane++) {
-    writeLane(board, side, lane, occupants(board, side, lane).sort(cmp));
+    writeLane(board, side, lane, order(occupants(board, side, lane)));
   }
 }
 
-/** Formations Hard tries for every pick: hitters first, walls first, as placed. */
-const FORMATIONS: ((a: Unit, b: Unit) => number)[] = [
-  (a, b) => b.baseAtk - a.baseAtk || b.baseMaxHp - a.baseMaxHp,
-  (a, b) => b.baseMaxHp - a.baseMaxHp || b.baseAtk - a.baseAtk,
-  (a, b) => b.baseAtk + b.baseMaxHp - (a.baseAtk + a.baseMaxHp),
-  () => 0,
+/** Formations Hard tries for every pick: hitters first with supports placed, plain hitters first, walls first, as placed. */
+const FORMATIONS: ((row: Unit[]) => Unit[])[] = [
+  supportOrder,
+  (row) => row.sort(byAttack),
+  (row) => row.sort((a, b) => b.baseMaxHp - a.baseMaxHp || b.baseAtk - a.baseAtk),
+  (row) => row.sort((a, b) => b.baseAtk + b.baseMaxHp - (a.baseAtk + a.baseMaxHp)),
+  (row) => row,
 ];
 
 /**
@@ -756,7 +793,7 @@ export function refreshForRound(
   // that unit is later replaced), so a long match never stalls on a row of
   // maxed units with nowhere to put a pick.
   const earned = (side: Side) => {
-    const now = Math.min(MAX_EARNED_SLOTS, sideUnits(board, side).filter((u) => isMastered(u.merges)).length);
+    const now = Math.min(MAX_EARNED_SLOTS, sideUnits(board, side).filter((u) => isMastered(u.merges, levelCapOf(board))).length);
     return Math.max(board.earnedSlots?.[side] ?? 0, now);
   };
   board.earnedSlots = { player: earned(PLAYER), enemy: earned(ENEMY) };
@@ -778,8 +815,8 @@ export function refreshForRound(
   const pCap = board.mods.player!.capacity!;
   const eCap = board.mods.enemy!.capacity!;
   const { startHp, synergies } = rulesOf(board);
-  applyAugments(p, playerAug, board.hp.player, e.length, pCap, synergies ? synergyOf(p, pCap) : null, startHp);
-  applyAugments(e, enemyAug, board.hp.enemy, p.length, eCap, synergies ? synergyOf(e, eCap) : null, startHp);
+  applyAugments(p, playerAug, board.hp.player, e.length, pCap, synergies ? synergyOf(p, pCap) : null, startHp, levelCapOf(board));
+  applyAugments(e, enemyAug, board.hp.enemy, p.length, eCap, synergies ? synergyOf(e, eCap) : null, startHp, levelCapOf(board));
   // Sabotage reaches across: each side's holds the other's front down. After
   // both sides are computed, since it acts on the opponent's finished stats.
   if (hasAugment(playerAug, "sabotage")) sabotage(e[0]);

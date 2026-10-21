@@ -88,6 +88,8 @@ export interface Settings {
   easy: boolean;
   synergies: boolean;
   upgrades: boolean;
+  /** Level cap (LEVEL_CAP_OPTIONS in match.ts). */
+  levelCap: number;
 }
 
 const DEFAULTS: Settings = {
@@ -99,7 +101,10 @@ const DEFAULTS: Settings = {
   easy: false,
   synergies: true,
   upgrades: true,
+  levelCap: 10,
 };
+/** Mirrors LEVEL_CAP_OPTIONS in match.ts, for the same reason as START_HP_RANGE below. */
+const LEVEL_CAPS = [8, 10, 12, 15];
 /** Mirrors START_HP_MIN/MAX in match.ts (not imported: match.ts would pull the engine into this module's type-only import). */
 const START_HP_RANGE = [20, 999];
 
@@ -138,6 +143,7 @@ export function loadSettings(): Settings {
     easy: saved.easy ?? DEFAULTS.easy,
     synergies: saved.synergies ?? DEFAULTS.synergies,
     upgrades: saved.upgrades ?? DEFAULTS.upgrades,
+    levelCap: LEVEL_CAPS.includes(saved.levelCap as number) ? (saved.levelCap as number) : DEFAULTS.levelCap,
   };
 }
 

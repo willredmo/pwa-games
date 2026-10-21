@@ -1,6 +1,7 @@
 import type { Board, Shape, Side, Unit } from "../engine/types";
 import { capacityOf } from "../engine/board";
 import { MAX_LEVEL, levelOf } from "../engine/units";
+import { levelCapOf } from "../engine/board";
 import {
   activePose,
   clamp01,
@@ -885,18 +886,25 @@ function drawSplitSlot(
  * gold is the cap itself (shown as "MAX") and red is past it, which only
  * Ascendant allows.
  */
-export const LEVEL_TIERS: { from: number; fill: string; ink: string; glow?: string }[] = [
+const TIERS_BELOW_CAP: { from: number; fill: string; ink: string; glow?: string }[] = [
   { from: 1, fill: "rgba(255, 255, 255, 0.10)", ink: "rgba(236, 232, 245, 0.55)" },
   { from: 2, fill: "#3fae6a", ink: "#06240f" },
   { from: 5, fill: "#3a86d6", ink: "#04182c" },
   { from: 8, fill: "#9a5cf0", ink: "#fff", glow: "rgba(200, 160, 255, 0.9)" },
-  { from: MAX_LEVEL, fill: "#f0b429", ink: "#2a1f05", glow: "rgba(255, 226, 122, 0.95)" },
-  { from: MAX_LEVEL + 1, fill: "#e5483a", ink: "#fff", glow: "rgba(255, 150, 120, 0.95)" },
 ];
+/** The tiers for a cap: the fixed ones below it, gold at the cap, red past it. */
+export const levelTiers = (cap = MAX_LEVEL) => [
+  ...TIERS_BELOW_CAP.filter((t) => t.from < cap),
+  { from: cap, fill: "#f0b429", ink: "#2a1f05", glow: "rgba(255, 226, 122, 0.95)" },
+  { from: cap + 1, fill: "#e5483a", ink: "#fff", glow: "rgba(255, 150, 120, 0.95)" },
+];
+export const LEVEL_TIERS = levelTiers();
 /** A level as its badge reads: "Lv7", "MAX" at the cap, "Lv14" past it. */
-export const levelLabel = (level: number) => (level === MAX_LEVEL ? "MAX" : `Lv${level}`);
-export const levelTier = (level: number) =>
-  [...LEVEL_TIERS].reverse().find((t) => level >= t.from) ?? LEVEL_TIERS[0];
+export const levelLabel = (level: number, cap = MAX_LEVEL) => (level === cap ? "MAX" : `Lv${level}`);
+export const levelTier = (level: number, cap = MAX_LEVEL) => {
+  const tiers = levelTiers(cap);
+  return [...tiers].reverse().find((t) => level >= t.from) ?? tiers[0];
+};
 
 function drawUnit(
   ctx: CanvasRenderingContext2D,
@@ -1075,13 +1083,14 @@ function drawUnit(
 
     // Level badge, coloured by tier (LEVEL_TIERS): every unit starts at a faint Lv1.
     ctx.font = `800 ${Math.round(h * 0.22)}px system-ui, sans-serif`;
-    const badge = levelLabel(levelOf(unit.merges));
+    const cap = levelCapOf(state.board);
+    const badge = levelLabel(levelOf(unit.merges), cap);
     const mergeW = Math.max(h * 0.4, ctx.measureText(badge).width + h * 0.16);
     const mergeX = x + w - mergeW - pad * 0.5;
     {
       const by = y + h * 0.12;
       roundRect(ctx, mergeX, by, mergeW, h * 0.3, h * 0.1);
-      const tier = levelTier(levelOf(unit.merges));
+      const tier = levelTier(levelOf(unit.merges), cap);
       ctx.fillStyle = tier.fill;
       ctx.fill();
       if (tier.glow) {

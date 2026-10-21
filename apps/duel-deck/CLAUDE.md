@@ -491,6 +491,98 @@ attack (`RoundResult.ascendantHit`). Sim (12k, `--aug=random`): holder 47%,
   numbers. Playback gives each supporting unit its own beat
   (`OPENING_BEAT_MS`), one after another. `openingBuffs` replaces a unit's `traits` rather than mutating it:
   `resolveRound`'s clone shares traits objects with the caller's board.
+### Supports help the unit directly in front (1.7.0); Beacon and Sentinel
+Since 1.7.0 every support ability lands on the unit **directly in front** of
+the supporter, not the row's front unit (`supportTarget` in combat.ts, used by
+`openingBuffs` for Rally, Barrier and Lifebond, and by `mendHeals`). A support
+leading the row does nothing. Supporters act front to back, so one gift never
+feeds a later one. Barrier's reach (a mastered Warden, Aegis) now extends
+*ahead* of the shielded unit, so it adds nothing when the target is the front.
+
+**Beacon** (support, lantern, 1/6), **Relay** (`relay`, a percent): a support
+ability reaching it goes on to the unit in front of it at ×1.5 (+0.1 a level,
+×3 mastered, `BEACON_MASTER_RELAY`). Beacons in a row chain and multiply; the
+product is applied once and rounded once (`boost`, never below the original).
+A Beacon with nobody ahead keeps what it gets. Buff and heal events carry
+`via` (the Beacons passed) and `amp`, so playback hops the effect through each
+Beacon (`HOP_MS`) and labels it "· Beacon ×1.5". Sanctuary doubles abilities
+before any Beacon amplifies them.
+
+**Sentinel** (defense, pillar, 2/8), **Retaliate** (`reflect`, a percent):
+each blow it takes sends `floor(raw × reflect%)` back at the attacker, 40% +5%
+a level, 100% mastered. Based on the blow's full strength, before its own
+armour or shields, so it scales with the attacker's attack: the counter to a
+runaway hitter. Played as a thorns blow (never reflects again, so two
+Sentinels can't loop), labelled "Retaliate". Its own class tag (`sentinel`, not
+`tank`), so the tank upgrades whose text names Guards and Bulwarks don't
+silently cover it.
+
+**CPU arrangement** (`supportOrder` in match.ts): sorted by attack, supports
+sat at the back buffing each other. Now: the strongest fighter, every Beacon,
+then a support; then each further fighter followed by one support. Normal uses
+it; Hard tries it alongside its other formations. `PROTOCOL` 10.
+
+Medic is structurally weaker under this rule: to heal the fighting unit it
+must stand right behind it, so when that unit falls the Medic is next in line.
+A bigger heal (5) barely moved it (38% → 42%). The fix: **a Medic leading the
+row heals itself** (`mendHeals` falls back to the Medic when `supportTarget`
+finds nobody ahead). Aegis became the Warden's equivalent (`barrierSelf`).
+
+### Upgrade review (2026-10-20, telemetry Oct 14–20 + sim)
+Telemetry is thin (104 matches, one device played 74), so a change needed the
+sim and real players to agree, or real players ignoring an upgrade outright:
+- **Legion** (sim 58%, real 83% n=40, most taken): +1/+1 now only for units
+  of the row's most common class (`legionClass`; a tie goes to the front
+  unit's class). Sim 52.6%.
+- **Unbreakable** (sim 57%, real 86% n=35): stacked with Knight armour and
+  Bastion. Now `minArmour` 1, a floor `reduced()` takes the max of rather than
+  a sum. Sim 56%. Armour already never takes a hit below 1.
+- **Desperate measures** (taken 0 of 23 offers): below 50% HP, +2 attack
+  (was 30%, +3). Sim 54.5%.
+- **Aegis**: Barrier's reach ahead was mostly wasted under the new rule; now
+  the Warden shields itself (`barrierSelf`). **Bastion** covers Sentinels.
+- **Retired** (`retired: true`, code kept for saves): Steady footing (0 of 19),
+  Glass cannon pact (0 of 15), Tank wall (4%), Last breath (5%), Bounty (6%, a
+  weaker War chest), Counterstrike (4%).
+- **New**: Duelist (Skirmishers +1/+2, Riposte +2; replaces Steady footing and
+  Counterstrike), Signal fire (Beacons' `relay` +50), Vengeance (Sentinels'
+  `reflect` +20). Sim 45–48%, where unit upgrades always read (the CPU rarely
+  builds around them).
+Left alone: Bloodpact (sim 62% but taken 4% for real; its HP cost was accepted
+in an earlier pass), United front and Overwhelm (57-58% sim, no real signal).
+
+Sim after all of it (12000, `--aug=random`): units Knight 63%, Sentinel 50%,
+Acolyte 49%, Warden 46%, Herald 46%, Medic 42%, Beacon 40% (n=592); median
+match 23 rounds.
+
+**More rares and epics** (same day): there were 38 commons, 12 rares and 5
+epics, so from round 9 the same epics kept coming up. Now 33 / 20 / 9.
+Promoted to rare (the strongest commons in the sim): Battle fury, United front,
+Overwhelm, Mixed formation, Bloodpact. New rares: Phalanx (first two units −1
+damage per hit, 47%), Undying (the *back* unit endures once a round; on the
+front it measured 61%, now 45%), Twin fangs (Strikers and Berserkers +1 attack
+per other one, up to +3; 45%). New epics: Sanctum (Sanctuary's doubling without
+the full row, not stacking with it; `doubleSupport`, shared), Iron curtain
+(shield of a tenth of base health, at least 2: a quarter measured 71%, an
+eighth 59%), Colossus (highest-level unit +3/+6: +4/+8 was 58%), Warlord (+1
+attack per 4 upgrades held, up to +2, via `AugmentContext.upgrades`: per 2 up to
++3 was 68%). All four epics now 56–58%, beside Champion and Unbreakable.
+
+**Level cap 12 or 13** was re-tested the same day (8000 games each): Knight
+rows 62% at 10, 69% at 12, 72% at 13; match length unchanged (median 23).
+So rather than raise the default, the cap became a **match setting**
+(`MatchRules.levelCap`, `LEVEL_CAP_OPTIONS` 8/10/12/15, not below 8 because a
+Squire is knighted at 7). It rides on the board (`Board.levelCap`, absent = 10,
+read through `levelCapOf` in engine/board.ts) like `startHp`, and everything
+that read `MAX_LEVEL` now takes the board's cap: `mergeCapFor` (cap − 1
+merges), `isMastered`/`innateTraits` (Mastery at the cap, passed into
+`applyAugments`), earned slots, the board's level badge (`levelTiers(cap)`:
+fixed tiers below, gold at the cap, red past it), `UnitInfo`, the result
+screen's chips and the "MAX LEVEL N" drop label. `MAX_LEVEL` stays as the
+default. The settings sheet has a Level cap row; the chip and `rulesSummary`
+show a non-default cap. Duels use the host's: `rules.levelCap` is create-only
+in the database rules (8/10/12/15).
+
 ### Third-wave upgrades (one or two for every unit)
 Lancer, the four supports and the Skirmisher had no upgrades built around
 them. Added 2026-10-14, each leaning on the unit's ability: Long reach (Impale

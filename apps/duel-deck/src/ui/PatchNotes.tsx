@@ -10,6 +10,24 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.7.0",
+    date: "Oct 20, 2026",
+    notes: [
+      "Support units now help the unit directly in front of them, not the unit at the front of the row. Where you place a Herald, Medic, Warden or Acolyte matters.",
+      "New support unit, the Beacon: whatever support reaches it is passed on to the unit in front of it, 1.5× stronger (more with levels, 3× when mastered). Beacons in a row chain, so a Herald at the back can reach the front through them.",
+      "New defense unit, the Sentinel: strikes back at whoever hits it for 40% of the blow (more with levels, 100% when mastered). The bigger the hit, the bigger the answer, so it's the counter to a unit stacked with attack.",
+      "A Medic leading the row now heals itself, so it isn't helpless when the unit it was healing falls.",
+      "A mastered Warden's Barrier now also covers the unit ahead of the one it lands on.",
+      "Upgrade changes, based on what players pick and win with: Legion now buffs only units of your row's most common class. Unbreakable gives every unit at least 1 armour instead of adding to armour they already have. Desperate measures kicks in below half your HP, for +2 attack. Aegis makes Wardens shield themselves too. Bastion also covers Sentinels.",
+      "New upgrades: Duelist (Skirmishers), Signal fire (Beacons relay more) and Vengeance (Sentinels strike back harder).",
+      "Match settings: choose a level cap of 8, 10, 12 or 15. Units stop levelling at the cap, where their ability gets its Mastery form. Duels use the host's.",
+      "More rare and epic upgrades. New rares: Phalanx, Undying and Twin fangs. New epics: Sanctum, Iron curtain, Colossus and Warlord. Battle fury, United front, Overwhelm, Mixed formation and Bloodpact are now rare.",
+      "Retired upgrades nobody was taking: Steady footing, Counterstrike, Tank wall, Glass cannon pact, Last breath and Bounty. A match already holding one keeps it.",
+      "The CPU places its support units behind the units they should help.",
+      "Online duels need both players on this version.",
+    ],
+  },
+  {
     version: "1.6.0",
     date: "Oct 18, 2026",
     notes: [

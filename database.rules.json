@@ -173,6 +173,7 @@
             "easy": { ".validate": "newData.isBoolean() && (!data.exists() || data.val() === newData.val())" },
             "synergies": { ".validate": "newData.isBoolean() && (!data.exists() || data.val() === newData.val())" },
             "upgrades": { ".validate": "newData.isBoolean() && (!data.exists() || data.val() === newData.val())" },
+            "levelCap": { ".validate": "(newData.val() === 8 || newData.val() === 10 || newData.val() === 12 || newData.val() === 15) && (!data.exists() || data.val() === newData.val())" },
             "$other": { ".validate": false }
           },
           "proto": { ".validate": "newData.isNumber()" },

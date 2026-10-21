@@ -1,5 +1,5 @@
 import type { Archetype, AuraDetail, SideMods, Side, Unit, UnitTraits } from "../engine/types";
-import { KNIGHT_LEVEL, SYNERGIES, UNITS, UNIT_KEYS, innateTraits } from "../engine/units";
+import { KNIGHT_LEVEL, MAX_LEVEL, SYNERGIES, UNITS, UNIT_KEYS, innateTraits } from "../engine/units";
 
 // Persistent upgrades ("augments") — the tracker doc's separate offer track.
 //
@@ -35,6 +35,8 @@ export interface AugmentContext {
   capacity: number;
   /** The pool the match started with, for HP thresholds (Desperate measures). */
   startHp: number;
+  /** Upgrades this side holds, for Warlord. */
+  upgrades: number;
 }
 
 /** A flat stat delta applied to one unit for the coming round. */
@@ -179,6 +181,8 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Steady footing",
     description: "+1 attack and +2 health to all Skirmishers.",
     category: "class",
+    // Retired 2026-10-20: taken 0 of 19 times offered. Duelist replaces it.
+    retired: true,
     effect: (u) => (has(u, "skirmisher") ? { atk: 1, hp: 2 } : {}),
   },
   {
@@ -213,6 +217,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Battle fury",
     description: "+1 attack to every unit on your board.",
     category: "global",
+    rarity: "rare",
     effect: () => ({ atk: 1 }),
   },
   {
@@ -244,9 +249,9 @@ export const AUGMENTS: AugmentDef[] = [
     id: "desperate-measures",
     icon: "💢",
     name: "Desperate measures",
-    description: "While your HP is below 30% of what you started with (60 of 200), all units gain +3 attack.",
+    description: "While your HP is below half of what you started with (100 of 200), all units gain +2 attack.",
     category: "global",
-    effect: (_u, _i, ctx) => (ctx.ownHp < ctx.startHp * 0.3 ? { atk: 3 } : {}),
+    effect: (_u, _i, ctx) => (ctx.ownHp < ctx.startHp * 0.5 ? { atk: 2 } : {}),
   },
   {
     id: "united-front",
@@ -254,6 +259,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "United front",
     description: "+1 health to all units for every 2 units on your board (rounded down).",
     category: "global",
+    rarity: "rare",
     effect: (_u, _i, ctx) => ({ hp: Math.floor(ctx.units.length / 2) }),
   },
   {
@@ -262,6 +268,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Overwhelm",
     description: "+1 attack to all units for every 3 enemy units you killed last round.",
     category: "global",
+    rarity: "rare",
     effect: (_u, _i, ctx) => ({ atk: Math.floor(ctx.kills / 3) }),
   },
   {
@@ -270,6 +277,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Bloodpact",
     description: "All units gain +2 attack, but you lose 40% of your starting HP (80 of 200).",
     category: "global",
+    rarity: "rare",
     effect: () => ({ atk: 2 }),
     hpCostShare: 0.4,
   },
@@ -281,6 +289,8 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Tank wall",
     description: "+1 health to Guards/Bulwarks per Guard or Bulwark you have.",
     category: "synergy",
+    // Retired 2026-10-20: taken 4% of the time; Reinforced plating does the same job.
+    retired: true,
     effect: (u, _i, ctx) =>
       has(u, "tank") ? { hp: countClass(ctx.units, "tank") } : {},
   },
@@ -290,6 +300,8 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Glass cannon pact",
     description: "+3 attack and -1 health to all Strikers and Berserkers.",
     category: "synergy",
+    // Retired 2026-10-20: taken 0 of 15 times offered; Sharpened edge covers it.
+    retired: true,
     effect: (u) => (has(u, "aggro") ? { atk: 3, hp: -1 } : {}),
   },
   {
@@ -307,6 +319,7 @@ export const AUGMENTS: AugmentDef[] = [
     // 5 types, not 4: with nine offered types 4 came too easily (54.7%).
     description: "+1 attack/+1 health to all units, if you have 5+ unit types.",
     category: "synergy",
+    rarity: "rare",
     effect: (_u, _i, ctx) => {
       const types = new Set(ctx.units.map((x) => x.key));
       return types.size >= 5 ? { atk: 1, hp: 1 } : {};
@@ -387,6 +400,8 @@ export const AUGMENTS: AugmentDef[] = [
     description:
       "Your first fallen unit each round strikes the enemy front for 2 damage as it falls.",
     category: "combat",
+    // Retired 2026-10-20: taken 5% of the time.
+    retired: true,
     traits: () => ({ lastBreath: true }),
   },
 
@@ -424,11 +439,11 @@ export const AUGMENTS: AugmentDef[] = [
     id: "bastion",
     icon: "🏯",
     name: "Bastion",
-    description: "Guards, Bulwarks and Knights take 1 less damage per hit.",
+    description: "Guards, Bulwarks, Knights and Sentinels take 1 less damage per hit.",
     category: "combat",
     rarity: "rare",
-    units: ["guard", "bulwark", "knight"],
-    traits: (u) => (has(u, "tank") || has(u, "knight") ? { damageReduction: 1 } : {}),
+    units: ["guard", "bulwark", "knight", "sentinel"],
+    traits: (u) => (has(u, "tank") || has(u, "knight") || has(u, "sentinel") ? { damageReduction: 1 } : {}),
   },
   {
     id: "bloodthirst",
@@ -464,10 +479,12 @@ export const AUGMENTS: AugmentDef[] = [
     id: "legion",
     icon: "🦅",
     name: "Legion",
-    description: "+1 attack and +1 health to every unit.",
+    description: "+1 attack and +1 health to every unit of your row's most common class (Attack, Defense or Support; a tie goes to your front unit's).",
     category: "global",
     rarity: "epic",
-    effect: () => ({ atk: 1, hp: 1 }),
+    // Was every unit: 58% in the sim and 83% for real players (n=40), the
+    // most taken upgrade. Now it rewards a focused row.
+    effect: (u, _i, ctx) => (UNITS[u.key]?.archetype === legionClass(ctx.units) ? { atk: 1, hp: 1 } : {}),
   },
   {
     id: "champion",
@@ -483,10 +500,12 @@ export const AUGMENTS: AugmentDef[] = [
     id: "unbreakable",
     icon: "🗿",
     name: "Unbreakable",
-    description: "Every unit takes 1 less damage per hit.",
+    description: "Every unit has at least 1 armour (takes 1 less damage per hit). Doesn't add to armour a unit already has.",
     category: "combat",
     rarity: "epic",
-    traits: () => ({ damageReduction: 1 }),
+    // Was +1 armour on top of everything: Knight + Bastion + Unbreakable took
+    // 3 less per hit (real players 86%, n=35). Now a floor.
+    traits: () => ({ minArmour: 1 }),
   },
 
   // --- Strategy ---
@@ -536,6 +555,8 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Bounty",
     description: "Winning a round deals 4 extra damage.",
     category: "strategy",
+    // Retired 2026-10-20: taken 6% of the time; a weaker War chest.
+    retired: true,
     mods: { bounty: 4 },
   },
 
@@ -643,7 +664,7 @@ export const AUGMENTS: AugmentDef[] = [
     id: "banner-of-hope",
     icon: "🏳️",
     name: "Banner of hope",
-    description: "Heralds' Rally also gives the front unit that much health.",
+    description: "Heralds' Rally also gives the unit it lands on that much health.",
     category: "class",
     rarity: "rare",
     traits: (u) => (has(u, "herald") ? { rallyHp: innateTraits(u.key, u.merges).rally ?? 0 } : {}),
@@ -660,7 +681,7 @@ export const AUGMENTS: AugmentDef[] = [
     id: "stimulant",
     icon: "💉",
     name: "Stimulant",
-    description: "Each time a Medic mends, the front unit also gains +2 attack for the round.",
+    description: "Each time a Medic mends, the unit it heals also gains +2 attack for the round.",
     category: "combat",
     rarity: "rare",
     traits: (u) => (has(u, "medic") ? { mendAtk: 2 } : {}),
@@ -677,10 +698,10 @@ export const AUGMENTS: AugmentDef[] = [
     id: "aegis",
     icon: "🔮",
     name: "Aegis",
-    description: "Wardens' Barrier also covers one more unit behind the front (stacks with a mastered Warden's).",
+    description: "Wardens shield themselves with their Barrier too, so a Warden that steps up to the front is protected.",
     category: "combat",
     rarity: "rare",
-    traits: (u) => (has(u, "warden") ? { barrierReach: 1 } : {}),
+    traits: (u) => (has(u, "warden") ? { barrierSelf: true } : {}),
   },
   {
     id: "devotion",
@@ -694,7 +715,7 @@ export const AUGMENTS: AugmentDef[] = [
     id: "blessing",
     icon: "😇",
     name: "Blessing",
-    description: "Acolytes' Lifebond also gives the front unit +3 attack.",
+    description: "Acolytes' Lifebond also gives the unit it lands on +3 attack.",
     category: "class",
     rarity: "rare",
     traits: (u) => (has(u, "acolyte") ? { lifebondAtk: 3 } : {}),
@@ -705,18 +726,140 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Counterstrike",
     description: "Skirmishers' Riposte deals +3 damage.",
     category: "combat",
+    // Retired 2026-10-20: taken 4% of the time. Duelist replaces it.
+    retired: true,
     traits: (u) => (has(u, "skirmisher") ? { riposte: 3 } : {}),
   },
   {
     id: "choir",
     icon: "🎶",
     name: "Choir",
-    description: "+1 attack and +3 health to all Support units (Herald, Medic, Warden, Acolyte).",
+    description: "+1 attack and +3 health to all Support units (Herald, Medic, Warden, Acolyte, Beacon).",
     category: "class",
     rarity: "rare",
     effect: (u) => (has(u, "support") ? { atk: 1, hp: 3 } : {}),
   },
+
+  // --- 1.7.0: for the Skirmisher, Beacon and Sentinel ---
+  {
+    id: "duelist",
+    icon: "🥋",
+    name: "Duelist",
+    description: "Skirmishers gain +1 attack and +2 health, and their Riposte deals +2 damage.",
+    category: "class",
+    effect: (u) => (has(u, "skirmisher") ? { atk: 1, hp: 2 } : {}),
+    traits: (u) => (has(u, "skirmisher") ? { riposte: 2 } : {}),
+  },
+  {
+    id: "signal-fire",
+    icon: "🏮",
+    name: "Signal fire",
+    description: "Beacons relay at ×0.5 more (×2 at level 1).",
+    category: "class",
+    traits: (u) => (has(u, "beacon") ? { relay: 50 } : {}),
+  },
+  {
+    id: "vengeance",
+    icon: "⚖️",
+    name: "Vengeance",
+    description: "Sentinels' Retaliate strikes back for 20% more of each blow.",
+    category: "class",
+    traits: (u) => (has(u, "sentinel") ? { reflect: 20 } : {}),
+  },
+
+  // --- 1.7.0: more rares and epics (there were 38 commons to 5 epics) ---
+  {
+    id: "phalanx",
+    icon: "🏛️",
+    name: "Phalanx",
+    description: "The first two units in your row take 1 less damage per hit.",
+    category: "combat",
+    rarity: "rare",
+    traits: (_u, i) => (i < 2 ? { damageReduction: 1 } : {}),
+  },
+  {
+    id: "undying",
+    icon: "♾️",
+    name: "Undying",
+    description: "The unit at the back of your row survives the first blow that would kill it each round, on 1 health.",
+    category: "combat",
+    rarity: "rare",
+    // On the front unit it measured 61%: an extra life every round where it matters most.
+    traits: (_u, i, ctx) => (i === ctx.units.length - 1 ? { endure: true } : {}),
+  },
+  {
+    id: "twin-fangs",
+    icon: "🐺",
+    name: "Twin fangs",
+    description: "Strikers and Berserkers gain +1 attack for each other Striker or Berserker in your row (up to +3).",
+    category: "synergy",
+    rarity: "rare",
+    effect: (u, _i, ctx) => (has(u, "aggro") ? { atk: Math.min(3, countClass(ctx.units, "aggro") - 1) } : {}),
+  },
+  {
+    id: "sanctum",
+    icon: "⛪",
+    name: "Sanctum",
+    description: "Every support ability counts twice (Rally, Mend, Barrier, Lifebond), as if your row were all Support. Doesn't stack with that bonus.",
+    category: "synergy",
+    rarity: "epic",
+    units: ["herald", "medic", "warden", "acolyte"],
+  },
+  {
+    id: "iron-curtain",
+    icon: "⛓️",
+    name: "Iron curtain",
+    description: "Every unit starts each round with a shield of a tenth of its health (at least 2), so it keeps up as your units grow.",
+    category: "combat",
+    rarity: "epic",
+    // A flat 3 was worth a lot at level 1 and nothing at level 10; a quarter
+    // of health measured 71% (sim, --aug=random), an eighth 59-60%.
+    traits: (u) => ({ shield: Math.max(2, Math.ceil(u.baseMaxHp / 10)) }),
+  },
+  {
+    id: "colossus",
+    icon: "🗻",
+    name: "Colossus",
+    description: "Your highest-level unit (the front-most on a tie) gains +3 attack and +6 health.",
+    category: "global",
+    rarity: "epic",
+    // +4/+8 measured 58%.
+    effect: (u, _i, ctx) => (u === colossusOf(ctx.units) ? { atk: 3, hp: 6 } : {}),
+  },
+  {
+    id: "warlord",
+    icon: "🦁",
+    name: "Warlord",
+    description: "Every unit gains +1 attack for every 4 upgrades you hold, this one included (up to +2).",
+    category: "global",
+    rarity: "epic",
+    // Per 2 up to +3 measured 68%; per 3 up to +2, 60-61%.
+    effect: (_u, _i, ctx) => ({ atk: Math.min(2, Math.floor(ctx.upgrades / 4)) }),
+  },
 ];
+
+/** Colossus's unit: the most merged, front-most on a tie. */
+function colossusOf(units: Unit[]): Unit | undefined {
+  let best: Unit | undefined;
+  for (const u of units) if (!best || u.merges > best.merges) best = u;
+  return best;
+}
+
+/**
+ * The class most of a row's units share (Legion's). A tie goes to the front
+ * unit's class, as the synergy meter does.
+ */
+function legionClass(units: Unit[]): Archetype | undefined {
+  const count = new Map<Archetype, number>();
+  for (const u of units) {
+    const a = UNITS[u.key]?.archetype;
+    if (a) count.set(a, (count.get(a) ?? 0) + 1);
+  }
+  const top = Math.max(0, ...count.values());
+  const front = units[0] && UNITS[units[0].key]?.archetype;
+  if (front && count.get(front) === top) return front;
+  return [...count.entries()].find(([, n]) => n === top)?.[0];
+}
 
 /** Attack the enemy front loses to Sabotage. */
 export const SABOTAGE_ATK = 4;
@@ -798,6 +941,8 @@ export function applyAugments(
   /** This side's full-row synergy this round (`synergyOf`), if any. */
   synergy: Archetype | null = null,
   startHp = 200,
+  /** The match's level cap, where abilities take their Mastery form. */
+  levelCap = MAX_LEVEL,
 ): void {
   const ctx: AugmentContext = {
     units,
@@ -808,6 +953,7 @@ export function applyAugments(
     momentum: state.momentum,
     rally: state.rally,
     kills: state.kills ?? 0,
+    upgrades: state.active.length,
   };
   const defs = state.active.map(getAugment).filter((d): d is AugmentDef => !!d);
 
@@ -821,7 +967,7 @@ export function applyAugments(
     const details: AuraDetail[] = [];
     // Innate keywords first (the Knight's armour), so augments add to them
     // rather than the per-round rebuild wiping them out.
-    const traits: UnitTraits = innateTraits(unit.key, unit.merges);
+    const traits: UnitTraits = innateTraits(unit.key, unit.merges, levelCap);
     for (const def of defs) {
       const d = def.effect?.(unit, index, ctx) ?? {};
       atk += d.atk ?? 0;
@@ -856,6 +1002,19 @@ export function applyAugments(
     delete unit.shieldLeft; // a fresh round, a fresh shield
   });
 
+  // Sanctum: Sanctuary's doubling without the full row (and not on top of it).
+  if (synergy !== "support" && state.active.includes("sanctum")) {
+    for (const u of units) {
+      const gained: UnitTraits = {};
+      doubleSupport(u.traits ?? (u.traits = {}), gained);
+      if (Object.keys(gained).length === 0) continue;
+      const det = u.auraDetails?.find((d) => d.id === "sanctum");
+      if (det) det.traits = { ...det.traits, ...gained };
+      else u.auraDetails = [...(u.auraDetails ?? []), { id: "sanctum", atk: 0, hp: 0, traits: gained }];
+      if (!u.auras.includes("sanctum")) u.auras.push("sanctum");
+    }
+  }
+
   // Full-row synergy: a row of one class, badged and itemised like an augment.
   // Tuned two ways. Head to head (same row, synergy on vs off, one round vs
   // random rows): Assault +6-7 points; Sanctuary (support doubled) +5 at level
@@ -885,18 +1044,8 @@ export function applyAugments(
         t.shield = (t.shield ?? 0) + IRON_LINE_SHIELD;
         gained.shield = IRON_LINE_SHIELD;
       } else {
-        // Sanctuary: every support ability counts twice. `gained` holds the
-        // extra, so the info card itemises what the synergy added.
-        if (t.rally) gained.rally = t.rally;
-        if (t.rallyHp) gained.rallyHp = t.rallyHp;
-        if (t.mend) gained.mend = t.mend;
-        if (t.barrier) gained.barrier = t.barrier;
-        if (t.lifebond) gained.lifebond = t.lifebond;
-        if (t.barrier) t.barrier *= 2;
-        if (t.lifebond) t.lifebond *= 2;
-        if (t.rally) t.rally *= 2;
-        if (t.rallyHp) t.rallyHp *= 2;
-        if (t.mend) t.mend *= 2;
+        // Sanctuary: every support ability counts twice.
+        doubleSupport(t, gained);
       }
       u.atk += atk;
       u.maxHp += hp;
@@ -922,6 +1071,19 @@ export function applyAugments(
 }
 
 /** Merge `t` into `into`: booleans OR, numbers add, lifesteal takes the max. */
+/**
+ * Every support ability counts twice (Sanctuary, Sanctum). `gained` gets the
+ * extra, so the info card itemises what was added.
+ */
+function doubleSupport(t: UnitTraits, gained: UnitTraits): void {
+  for (const k of ["rally", "rallyHp", "mend", "barrier", "lifebond"] as const) {
+    if (t[k]) {
+      gained[k] = t[k];
+      t[k] = t[k]! * 2;
+    }
+  }
+}
+
 function mergeTraits(into: UnitTraits, t: UnitTraits): void {
   const out = into as Record<string, boolean | number | undefined>;
   for (const [k, v] of Object.entries(t)) {
@@ -1028,7 +1190,7 @@ function probeAffected(def: AugmentDef): string[] {
       atk: st.atk, maxHp: st.maxHp, hp: st.maxHp, auras: [],
     };
   });
-  const ctx: AugmentContext = { units, ownHp: 1, enemyUnitCount: 0, momentum: 99, rally: 99, kills: 99, capacity: 0, startHp: 200 };
+  const ctx: AugmentContext = { units, ownHp: 1, enemyUnitCount: 0, momentum: 99, rally: 99, kills: 99, capacity: 0, startHp: 200, upgrades: 99 };
   const hit = new Set<string>();
   units.forEach((u, i) => {
     // Front (index 0) and its real queue position, for front-only augments.

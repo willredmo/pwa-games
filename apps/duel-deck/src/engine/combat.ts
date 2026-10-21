@@ -115,7 +115,8 @@ function reduced(raw: number, target: Unit, board: Board): number {
   // Holdout: a side's last unit standing shrugs off a little more.
   const holdout = board.mods?.[target.side]?.holdout ?? 0;
   const last = holdout > 0 && livingCount(board, target.side) === 1 ? holdout : 0;
-  const dr = (target.traits?.damageReduction ?? 0) + last;
+  // Unbreakable is a floor on armour, not a bonus, so it doesn't stack with a Knight's or Bastion's.
+  const dr = Math.max(target.traits?.damageReduction ?? 0, target.traits?.minArmour ?? 0) + last;
   return dr > 0 && raw > 0 ? Math.max(1, raw - dr) : raw;
 }
 
@@ -221,6 +222,13 @@ function strike(
   const thorns = target.traits?.thorns ?? 0;
   if (thorns > 0 && tag !== "thorns") {
     ctx.after.push(() => strike(ctx, lane, target, attacker, thorns, "thorns"));
+  }
+  // Retaliate (Sentinel): a share of the blow's full strength goes back, so
+  // the harder it's hit the more it returns. Same rule as thorns: never twice.
+  const reflect = target.traits?.reflect ?? 0;
+  if (reflect > 0 && tag !== "thorns") {
+    const back = Math.floor((raw * reflect) / 100);
+    if (back > 0) ctx.after.push(() => strike(ctx, lane, target, attacker, back, "thorns"));
   }
 }
 
@@ -365,32 +373,63 @@ function lastLight(board: Board, round: RoundState, events: BattleEvent[]): void
 }
 
 /**
- * Mend (Medic): each living Medic behind its lane's front heals that front,
- * up to its max HP. After lifesteal, so the front's own healing comes first.
+ * Where a support ability from `queue[i]` lands: the unit directly in front of
+ * it. A Beacon there passes it one step further, multiplied by its Relay, and
+ * Beacons in a row chain; one with nobody ahead keeps it. Null when nothing
+ * stands in front (a support leading the row does nothing). `amp` is the
+ * product of the relays, applied once to each amount (`boost`), so a chain
+ * rounds once rather than at every hop.
+ */
+function supportTarget(queue: Unit[], i: number): { unit: Unit; index: number; amp: number; via: string[] } | null {
+  if (i <= 0) return null;
+  let j = i - 1;
+  let amp = 1;
+  const via: string[] = [];
+  while (j > 0 && (queue[j].traits?.relay ?? 0) > 0) {
+    amp *= queue[j].traits!.relay! / 100;
+    via.push(queue[j].id);
+    j--;
+  }
+  return { unit: queue[j], index: j, amp, via };
+}
+
+/** An amount after a chain of Beacons: rounded once, never below what it started as. */
+const boost = (n: number, amp: number) => (amp === 1 ? n : Math.max(n, Math.round(n * amp)));
+
+/** Relay details for an event, only when Beacons were involved. */
+const relayed = (t: { amp: number; via: string[] }) => (t.via.length ? { via: t.via, amp: t.amp } : {});
+
+/**
+ * Mend (Medic): each living Medic heals the living unit directly in front of
+ * it (through any Beacons, amplified), up to its max HP. A Medic leading the
+ * row heals itself: to help the fighting unit it has to stand right behind
+ * it, so it's next in line when that unit falls. After lifesteal, so a unit's
+ * own healing comes first.
  */
 function mendHeals(ctx: TickCtx): void {
   const { board, events } = ctx;
   for (const side of SIDES) {
     for (let lane = 0; lane < board.lanes; lane++) {
-      const front = livingFront(board, side, lane);
-      if (!front) continue;
-      for (const u of occupants(board, side, lane)) {
+      const queue = occupants(board, side, lane).filter((u) => u.hp > 0);
+      queue.forEach((u, i) => {
         const mend = u.traits?.mend ?? 0;
-        if (u === front || u.hp <= 0 || mend <= 0) continue;
+        if (mend <= 0) return;
+        const t = supportTarget(queue, i) ?? { unit: u, index: i, amp: 1, via: [] };
         const used = ctx.round.mends.get(u.id) ?? 0;
-        if (used >= MEND_USES + (u.traits?.mendMore ?? 0)) continue;
-        const gain = Math.min(mend, front.maxHp - front.hp);
-        if (gain <= 0) continue;
+        if (used >= MEND_USES + (u.traits?.mendMore ?? 0)) return;
+        const target = t.unit;
+        const gain = Math.min(boost(mend, t.amp), target.maxHp - target.hp);
+        if (gain <= 0) return;
         ctx.round.mends.set(u.id, used + 1);
-        front.hp += gain;
-        events.push({ type: "heal", unit: front.id, amount: gain, source: u.id });
+        target.hp += gain;
+        events.push({ type: "heal", unit: target.id, amount: gain, source: u.id, ...relayed(t) });
         // Stimulant: the heal comes with a jolt of attack for the round.
-        const jolt = u.traits?.mendAtk ?? 0;
+        const jolt = boost(u.traits?.mendAtk ?? 0, t.amp);
         if (jolt > 0) {
-          front.atk += jolt;
-          events.push({ type: "buff", unit: front.id, source: u.id, atk: jolt, hp: 0, label: "Stimulant" });
+          target.atk += jolt;
+          events.push({ type: "buff", unit: target.id, source: u.id, atk: jolt, hp: 0, label: "Stimulant", ...relayed(t) });
         }
-      }
+      });
     }
   }
 }
@@ -441,37 +480,50 @@ function mendHeals(ctx: TickCtx): void {
 }
 
 /**
- * Start-of-round support: Herald's Rally and Acolyte's Lifebond. Applied as
- * the round opens rather than baked into the pre-round stats (they used to be,
- * in applyAugments), so while picking every unit shows its own numbers and the
- * gift plays out as a beat before the first blow. Returns the buff events,
- * which playback shows; the board is changed in place.
+ * Start-of-round support: Herald's Rally, Warden's Barrier and Acolyte's
+ * Lifebond, each landing on the unit directly in front of the supporter (or
+ * further, through Beacons: `supportTarget`). Applied as the round opens
+ * rather than baked into the pre-round stats, so while picking every unit
+ * shows its own numbers and the gift plays out as a beat before the first
+ * blow. Supporters act front to back, so a gift never feeds a later one.
+ * Returns the buff events, which playback shows; the board is changed in place.
  */
 function openingBuffs(board: Board): BattleEvent[] {
   const events: BattleEvent[] = [];
   for (const side of SIDES) {
     for (let lane = 0; lane < board.lanes; lane++) {
       const queue = occupants(board, side, lane);
-      const front = queue[0];
-      if (!front) continue;
-      for (const u of queue.slice(1)) {
+      queue.forEach((u, i) => {
+        // Aegis: the Warden shields itself too, wherever it stands.
+        if (u.traits?.barrierSelf && (u.traits?.barrier ?? 0) > 0) {
+          const own = u.traits.barrier!;
+          u.traits = { ...u.traits, shield: (u.traits.shield ?? 0) + own };
+          events.push({ type: "buff", unit: u.id, source: u.id, atk: 0, hp: 0, shield: own, label: "Aegis" });
+        }
+        const t = supportTarget(queue, i);
+        if (!t) return;
+        const target = t.unit;
+        const via = relayed(t);
         const rally = u.traits?.rally ?? 0;
         if (rally > 0) {
-          const hp = u.traits?.rallyHp ?? 0;
-          front.atk += rally;
-          front.maxHp += hp;
-          front.hp += hp;
-          events.push({ type: "buff", unit: front.id, source: u.id, atk: rally, hp, label: "Rally" });
+          const atk = boost(rally, t.amp);
+          const hp = boost(u.traits?.rallyHp ?? 0, t.amp);
+          target.atk += atk;
+          target.maxHp += hp;
+          target.hp += hp;
+          events.push({ type: "buff", unit: target.id, source: u.id, atk, hp, label: "Rally", ...via });
         }
-        // Warden's Barrier: a shield on the front, and on `barrierReach`
-        // units behind it (a mastered Warden 1, Aegis +1). `traits` is shared with the caller's
-        // board (cloneBoard is shallow there), so it's replaced, not mutated.
+        // Warden's Barrier: a shield on that unit, and on `barrierReach` more
+        // ahead of it (a mastered Warden 1, Aegis +1). `traits` is shared with
+        // the caller's board (cloneBoard is shallow there), so it's replaced, not mutated.
         const barrier = u.traits?.barrier ?? 0;
         if (barrier > 0) {
-          const shielded = [front, ...queue.slice(1, 1 + (u.traits?.barrierReach ?? 0))];
+          const amount = boost(barrier, t.amp);
+          const reach = u.traits?.barrierReach ?? 0;
+          const shielded = queue.slice(Math.max(0, t.index - reach), t.index + 1).reverse();
           for (const s of shielded) {
-            s.traits = { ...s.traits, shield: (s.traits?.shield ?? 0) + barrier };
-            events.push({ type: "buff", unit: s.id, source: u.id, atk: 0, hp: 0, shield: barrier, label: "Barrier" });
+            s.traits = { ...s.traits, shield: (s.traits?.shield ?? 0) + amount };
+            events.push({ type: "buff", unit: s.id, source: u.id, atk: 0, hp: 0, shield: amount, label: "Barrier", ...via });
           }
         }
         const mult = u.traits?.lifebond ?? 0;
@@ -479,14 +531,15 @@ function openingBuffs(board: Board): BattleEvent[] {
         if (gift > 0) {
           u.maxHp -= gift;
           u.hp = Math.min(u.hp, u.maxHp);
-          const atk = u.traits?.lifebondAtk ?? 0;
-          front.atk += atk;
-          front.maxHp += gift * mult;
-          front.hp += gift * mult;
+          const atk = boost(u.traits?.lifebondAtk ?? 0, t.amp);
+          const hp = boost(gift * mult, t.amp);
+          target.atk += atk;
+          target.maxHp += hp;
+          target.hp += hp;
           events.push({ type: "buff", unit: u.id, source: u.id, atk: 0, hp: -gift, label: "Lifebond" });
-          events.push({ type: "buff", unit: front.id, source: u.id, atk, hp: gift * mult, label: "Lifebond" });
+          events.push({ type: "buff", unit: target.id, source: u.id, atk, hp, label: "Lifebond", ...via });
         }
-      }
+      });
     }
   }
   return events;

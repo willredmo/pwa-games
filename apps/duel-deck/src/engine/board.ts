@@ -1,4 +1,4 @@
-import { KNIGHTING_BONUS, KNIGHT_AT, MAX_MERGES, SQUIRE_STEP, UNITS, canAbsorb } from "./units";
+import { KNIGHTING_BONUS, KNIGHT_AT, MAX_LEVEL, SQUIRE_STEP, UNITS, canAbsorb } from "./units";
 import type { Board, Side, Unit } from "./types";
 
 // Board construction and slot access. Generic over `lanes` and `depth`.
@@ -39,9 +39,14 @@ export function makeUnit(key: string, side: Side): Unit {
   };
 }
 
-/** Most merges a unit on side may hold: MAX_MERGES, unless Ascendant lifts it. */
+/** This match's level cap (a match setting; absent = MAX_LEVEL). */
+export function levelCapOf(board: Board): number {
+  return board.levelCap ?? MAX_LEVEL;
+}
+
+/** Most merges a unit on side may hold: one short of the level cap, unless Ascendant lifts it. */
 export function mergeCapFor(board: Board, side: Side): number {
-  return board.mods?.[side]?.uncapped ? Infinity : MAX_MERGES;
+  return board.mods?.[side]?.uncapped ? Infinity : levelCapOf(board) - 1;
 }
 
 /**

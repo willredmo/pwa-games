@@ -9,19 +9,35 @@ export interface UnitLore {
 }
 
 export const UNIT_LORE: Record<string, UnitLore> = {
+  sentinel: {
+    title: "The Answer",
+    story:
+      "Sentinels are pillars because pillars hold things up and do not move. A Sentinel " +
+      "has never started a fight. It simply stands there, and whatever hits it gets a good " +
+      "share of the blow straight back. The bigger the hit, the bigger the answer. Berserkers " +
+      "learn this once.",
+  },
+  beacon: {
+    title: "The Passing Light",
+    story:
+      "A Beacon has nothing of its own to give. It holds up a lantern, catches whatever " +
+      "the unit behind it sends forward, and passes it on brighter than it arrived. Line " +
+      "three of them up and a Herald's shout at the back reaches the front as a roar. " +
+      "Beacons find this very satisfying, and say so, at length.",
+  },
   warden: {
     title: "The Quiet Wall",
     story:
       "Wardens are octagons because a circle rolled away and a square looked too eager. " +
       "A Warden never blocks a blow itself. It stands one step back, lifts its staff, and " +
-      "the light it throws over the front unit takes the first hits instead. Ask a Warden " +
+      "the light it throws over the unit ahead of it takes the first hits instead. Ask a Warden " +
       "why it doesn't just stand in front, and it will tell you the light reaches further than it does.",
   },
   acolyte: {
     title: "The Open Hand",
     story:
       "An Acolyte is a single drop of something kind, poured into a body that keeps " +
-      "giving it away. Every round it hands half of itself to whoever stands at the front, " +
+      "giving it away. Every round it hands half of itself to whoever stands just ahead of it, " +
       "and every round it is somehow whole again by the next. Nobody has asked where the " +
       "other half goes. The Acolyte would only say: to where it was needed.",
   },
@@ -46,7 +62,7 @@ export const UNIT_LORE: Record<string, UnitLore> = {
     story:
       "Heralds are stars because they were cut to be seen from far away. A Herald has " +
       "never won a fight and doesn't plan to start. It stands at the back of the queue with " +
-      "its banner up and shouts the front unit's name until the front unit believes it. " +
+      "its banner up and shouts the name of the unit ahead of it until that unit believes it. " +
       "Put a Herald in front and it simply waves the flag at the enemy, which helps nobody.",
   },
   guard: {
