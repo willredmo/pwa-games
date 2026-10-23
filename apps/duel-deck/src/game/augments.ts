@@ -667,7 +667,9 @@ export const AUGMENTS: AugmentDef[] = [
     description: "Heralds' Rally also gives the unit it lands on that much health.",
     category: "class",
     rarity: "rare",
-    traits: (u) => (has(u, "herald") ? { rallyHp: innateTraits(u.key, u.merges).rally ?? 0 } : {}),
+    units: ["herald"],
+    // Applied after every upgrade (`applyAugments`), so "that much" is the
+    // whole Rally: War horn's +3 and the match's level cap included.
   },
   {
     id: "triage",
@@ -1001,6 +1003,19 @@ export function applyAugments(
     unit.auraDetails = details;
     delete unit.shieldLeft; // a fresh round, a fresh shield
   });
+
+  // Banner of hope: a Herald's Rally also gives that much health. After the
+  // loop, so it reads the finished Rally (War horn adds to it, whichever was
+  // taken first), and before any doubling, which then doubles both.
+  if (state.active.includes("banner-of-hope")) {
+    for (const u of units) {
+      const rally = u.traits?.rally ?? 0;
+      if (!has(u, "herald") || rally <= 0) continue;
+      u.traits!.rallyHp = (u.traits!.rallyHp ?? 0) + rally;
+      u.auraDetails = [...(u.auraDetails ?? []), { id: "banner-of-hope", atk: 0, hp: 0, traits: { rallyHp: rally } }];
+      if (!u.auras.includes("banner-of-hope")) u.auras.push("banner-of-hope");
+    }
+  }
 
   // Sanctum: Sanctuary's doubling without the full row (and not on top of it).
   if (synergy !== "support" && state.active.includes("sanctum")) {

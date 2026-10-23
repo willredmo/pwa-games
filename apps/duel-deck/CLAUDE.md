@@ -595,6 +595,32 @@ default. The settings sheet has a Level cap row; the chip and `rulesSummary`
 show a non-default cap. Duels use the host's: `rules.levelCap` is create-only
 in the database rules (8/10/12/15).
 
+**Fixed 2026-10-21:** `cloneBoard` didn't copy `levelCap`, and the board is
+cloned every round (the respawn snapshot), so from round 2 every match fell
+back to cap 10: at cap 8 units never mastered, at 12/15 they mastered and
+stopped at 10. Any new `Board` field must be added to `cloneBoard`.
+
+### Upgrade check (`pnpm upgrades`, scripts/upgrades.ts)
+One small scenario per offered upgrade, through the real engine
+(`refreshForRound`, `resolveRound`, `settleRound`), asserting what its
+description says, plus the level cap surviving a round at every cap. It fails
+if an offered upgrade has no check, so a new upgrade needs one. Run it with
+netcheck after any change to upgrades or the engine. The first run
+(2026-10-21) found:
+- the level cap bug above;
+- **Bloodpact online:** the cost was only charged on the taker's device, so
+  the two devices disagreed about their health from then on (and about
+  Desperate measures). `chargeNewUpgrades` charges it on the other device
+  when the commit first shows it; netcheck now keeps one view of both pools
+  per device and takes Bloodpact often, and found 238 desyncs without it;
+- **Banner of hope** read the Herald's Rally without War horn and at cap 10
+  whatever the match's cap. It's now a post-pass in `applyAugments` that reads
+  the finished Rally (before any doubling, which then doubles both). Sim 51%;
+- the info card wrote nothing for upgrades that only add to an ability
+  (Skewer, Stimulant, Blessing, Banner of hope): `describeTraits` has lines
+  for those now.
+`PROTOCOL` 11.
+
 ### Third-wave upgrades (one or two for every unit)
 Lancer, the four supports and the Skirmisher had no upgrades built around
 them. Added 2026-10-14, each leaning on the unit's ability: Long reach (Impale

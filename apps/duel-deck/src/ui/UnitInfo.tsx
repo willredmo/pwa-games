@@ -64,6 +64,14 @@ function describeTraits(t: UnitTraits): string[] {
   if (t.trueStrike) out.push("its blows can't be dodged");
   if (t.endure) out.push("survives the first blow each round that would kill it, on 1♥");
   if (t.barrierSelf && !t.barrier) out.push("shields itself with its Barrier too");
+  // Upgrades that only add to an ability (the ability's own line covers them
+  // when both come from the same source, as in the totals).
+  if (t.pierceDeeper && !t.pierce) out.push(`its Impale reaches ${t.pierceDeeper === 1 ? "one unit" : `${t.pierceDeeper} units`} deeper`);
+  if (t.mendMore && !t.mend) out.push(`mends ${t.mendMore} more time${t.mendMore === 1 ? "" : "s"} a round`);
+  if (t.mendAtk && !t.mend) out.push(`each Mend also gives +${t.mendAtk}⚔ for the round`);
+  if (t.rallyHp && !t.rally) out.push(`its Rally also gives +${t.rallyHp}♥`);
+  if (t.lifebondAtk && !t.lifebond) out.push(`its Lifebond also gives +${t.lifebondAtk}⚔`);
+  if (t.barrierReach && !t.barrier) out.push(`its Barrier also covers ${t.barrierReach === 1 ? "the unit" : `${t.barrierReach} units`} ahead`);
   return out;
 }
 

@@ -13,6 +13,7 @@
     "sim": "esbuild scripts/sim.ts --bundle --platform=node --format=cjs --log-level=error --outfile=node_modules/.cache/sim.cjs && node node_modules/.cache/sim.cjs",
     "telemetry": "esbuild scripts/telemetry.ts --bundle --platform=node --format=cjs --log-level=error --outfile=node_modules/.cache/telemetry.cjs && node node_modules/.cache/telemetry.cjs",
     "feedback": "esbuild scripts/feedback.ts --bundle --platform=node --format=cjs --log-level=error --outfile=node_modules/.cache/feedback.cjs && node node_modules/.cache/feedback.cjs",
+    "upgrades": "esbuild scripts/upgrades.ts --bundle --platform=node --format=cjs --log-level=error --outfile=node_modules/.cache/upgrades.cjs && node node_modules/.cache/upgrades.cjs",
     "release": "pnpm build && firebase deploy --only hosting:duel-deck"
   },
   "dependencies": {

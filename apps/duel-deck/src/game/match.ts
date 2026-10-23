@@ -689,6 +689,21 @@ export function aiTakeAugment(
 }
 
 /**
+ * Online: charge `side`'s pool for upgrades it holds now but didn't before
+ * (Bloodpact). The opponent pays on their own device as they take it; this is
+ * the same charge on ours, made when their commit shows the new upgrade, or
+ * the two devices would disagree about their health from then on.
+ */
+export function chargeNewUpgrades(board: Board, side: Side, before: string[], now: string[]): void {
+  for (const id of now) {
+    if (before.includes(id)) continue;
+    const def = getAugment(id);
+    const cost = def ? hpCostOf(def, startHpOf(board)) : 0;
+    if (cost) board.hp[side] = Math.max(1, board.hp[side] - cost);
+  }
+}
+
+/**
  * Refresh both sides for the coming round: recompute augment-modified stats and
  * heal survivors to full. Player augments only affect the player's units; the
  * enemy gets its own state.

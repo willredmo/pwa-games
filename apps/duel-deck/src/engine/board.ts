@@ -249,6 +249,7 @@ export function cloneBoard(board: Board): Board {
     },
     hp: { ...board.hp },
     ...(board.startHp !== undefined ? { startHp: board.startHp } : {}),
+    ...(board.levelCap !== undefined ? { levelCap: board.levelCap } : {}),
     ...(board.rules ? { rules: { ...board.rules } } : {}),
     ...(board.earnedSlots ? { earnedSlots: { ...board.earnedSlots } } : {}),
     ...(board.mods

@@ -17,10 +17,9 @@
 // does, and fails if the two ever disagree about a round.
 
 import { insertUnit, makeUnit, occupants, writeLane } from "../src/engine/board";
-import { MAX_MERGES } from "../src/engine/units";
 import { resolveRound } from "../src/engine/combat";
 import type { Side, Unit } from "../src/engine/types";
-import { ENEMY, PLAYER, newBoard, refreshForRound } from "../src/game/match";
+import { ENEMY, LEVEL_CAP_OPTIONS, PLAYER, chargeNewUpgrades, newBoard, refreshForRound } from "../src/game/match";
 import { OFFERED_AUGMENTS as AUGMENTS, createAugmentState, takeAugment, type AugmentState } from "../src/game/augments";
 import { settleRound } from "../src/game/roundEnd";
 import { packCommit, unpackCommit, type Commit } from "../src/online/room";
@@ -36,23 +35,35 @@ const wire = <T,>(v: T): T =>
   JSON.parse(JSON.stringify(v, (_k, x) => (Array.isArray(x) && x.length === 0 ? undefined : x))) as T;
 
 /** One device's view of the round: its own row as `player`, theirs as `enemy`. */
-function assemble(mine: Unit[], myAug: AugmentState, theirs: Commit, myHp: number, theirHp: number) {
-  const board = newBoard();
-  board.hp = { player: myHp, enemy: theirHp };
+function assemble(mine: Unit[], myAug: AugmentState, theirs: Commit, view: View, cap: number) {
+  const board = newBoard({ levelCap: cap });
+  board.hp = { player: view.mine, enemy: view.theirs };
   mine.forEach((u, i) => insertUnit(board, PLAYER, 0, i, u));
   const { lanes, aug } = unpackCommit(theirs, ENEMY, board.lanes);
   for (let lane = 0; lane < board.lanes; lane++) writeLane(board, ENEMY, lane, lanes[lane]);
+  // As in Game's resolveOnline: an upgrade with a pool cost (Bloodpact) is
+  // charged here when the opponent's commit first shows it.
+  chargeNewUpgrades(board, ENEMY, view.theirUpgrades, aug.active);
+  view.theirUpgrades = [...aug.active];
   refreshForRound(board, myAug, aug);
   return board;
 }
 
+/** One device's idea of both pools, and the opponent's upgrades it has seen. */
+interface View {
+  mine: number;
+  theirs: number;
+  theirUpgrades: string[];
+}
+
 /**
  * A unit with a random level up to the cap, so Mastery abilities (which only
- * switch on at MAX_LEVEL) are exercised as well as the plain ones.
+ * switch on at the match's level cap) are exercised as well as the plain ones.
  */
-function grown(key: string): Unit {
+function grown(key: string, cap: number): Unit {
   const u = makeUnit(key, PLAYER);
-  u.merges = Math.random() < 0.3 ? MAX_MERGES : Math.floor(Math.random() * MAX_MERGES);
+  const most = cap - 1;
+  u.merges = Math.random() < 0.3 ? most : Math.floor(Math.random() * most);
   u.baseAtk += Math.round(u.merges * u.baseAtk * 0.5);
   u.baseMaxHp += Math.round(u.merges * u.baseMaxHp * 0.5);
   return u;
@@ -66,26 +77,32 @@ for (let m = 0; m < MATCHES; m++) {
   const bAug = createAugmentState();
   let aRow: Unit[] = [];
   let bRow: Unit[] = [];
-  let hp = { a: 200, b: 200 };
+  // Each device keeps its own view of both pools, as the app does, so an HP
+  // change only one of them makes (Bloodpact's cost) shows up as a desync.
+  const viewA: View = { mine: 200, theirs: 200, theirUpgrades: [] };
+  const viewB: View = { mine: 200, theirs: 200, theirUpgrades: [] };
+  const cap = pick(LEVEL_CAP_OPTIONS);
 
   for (let round = 1; round <= ROUND_CAP; round++) {
     // Each side builds its row privately, as a player would.
     for (let i = 0; i < 2; i++) {
-      if (aRow.length < 5) aRow.push(grown(pick(KEYS)));
-      if (bRow.length < 5) bRow.push(grown(pick(KEYS)));
+      if (aRow.length < 5) aRow.push(grown(pick(KEYS), cap));
+      if (bRow.length < 5) bRow.push(grown(pick(KEYS), cap));
     }
     // Drill now and then, so it's covered by the round trip too.
     aAug.drill = Math.random() < 0.2 ? 1 + Math.floor(Math.random() * 2) : 0;
     bAug.drill = Math.random() < 0.2 ? 1 + Math.floor(Math.random() * 2) : 0;
     if (round % 3 === 0) {
-      takeAugment(aAug, pick(AUGMENTS).id, aRow);
-      takeAugment(bAug, pick(AUGMENTS).id, bRow);
+      // Bloodpact more often than chance, so its pool cost is always covered.
+      const choose = () => (Math.random() < 0.25 ? "bloodpact" : pick(AUGMENTS).id);
+      viewA.mine = Math.max(1, viewA.mine - takeAugment(aAug, choose(), aRow));
+      viewB.mine = Math.max(1, viewB.mine - takeAugment(bAug, choose(), bRow));
     }
 
     const aCommit = wire(packCommit(round, [aRow.map((u) => ({ ...u }))], aAug));
     const bCommit = wire(packCommit(round, [bRow.map((u) => ({ ...u }))], bAug));
-    const aBoard = assemble(aRow.map((u) => ({ ...u })), aAug, bCommit, hp.a, hp.b);
-    const bBoard = assemble(bRow.map((u) => ({ ...u })), bAug, aCommit, hp.b, hp.a);
+    const aBoard = assemble(aRow.map((u) => ({ ...u })), aAug, bCommit, viewA, cap);
+    const bBoard = assemble(bRow.map((u) => ({ ...u })), bAug, aCommit, viewB, cap);
 
     const ra = resolveRound(aBoard);
     const rb = resolveRound(bBoard);
@@ -110,7 +127,10 @@ for (let m = 0; m < MATCHES; m++) {
       break;
     }
 
-    hp = { a: ra.board.hp.player, b: ra.board.hp.enemy };
+    viewA.mine = ra.board.hp.player;
+    viewA.theirs = ra.board.hp.enemy;
+    viewB.mine = rb.board.hp.player;
+    viewB.theirs = rb.board.hp.enemy;
     settleRound(ra, PLAYER, aAug, aBoard);
     settleRound(rb, PLAYER, bAug, bBoard);
     // Fallen units respawn, carrying any Fortify growth, as in the app.

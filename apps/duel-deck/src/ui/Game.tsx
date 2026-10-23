@@ -30,6 +30,7 @@ import {
   PLAYER,
   aiCommit,
   aiTakeAugment,
+  chargeNewUpgrades,
   drillFor,
   rowMaxed,
   type Difficulty,
@@ -1101,6 +1102,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       for (let lane = 0; lane < committed.lanes; lane++) {
         writeLane(committed, ENEMY, lane, lanes[lane]);
       }
+      chargeNewUpgrades(committed, ENEMY, enemyAug.current.active, aug.active);
       enemyAug.current = aug;
       refreshForRound(committed, playerAug.current, enemyAug.current);
       playRound(committed);
