@@ -68,7 +68,9 @@ export function onSoundChange(fn: () => void): void {
 
 export function unlockSound(): void {
   if (ctx) {
-    if (ctx.state === "suspended") void ctx.resume();
+    // Not just "suspended": iOS Safari also has "interrupted" (a call, Siri,
+    // the app backgrounded), which needs the same resume from a tap.
+    if (ctx.state !== "running" && ctx.state !== "closed") void ctx.resume();
     return;
   }
   try {

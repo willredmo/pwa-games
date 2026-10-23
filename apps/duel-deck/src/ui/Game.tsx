@@ -18,7 +18,7 @@ import {
   upgradeUnit,
   writeLane,
 } from "../engine/board";
-import { resolveRound } from "../engine/combat";
+import { RELAY_CAP, resolveRound } from "../engine/combat";
 import { ARCHETYPES, KNIGHTING_BONUS, SYNERGIES, SYNERGY_MIN, UNITS, canAbsorb, isMastered, levelOf, mergesInto, synergyOf } from "../engine/units";
 import type { Archetype, AttackEvent, BattleEvent, Board, RoundResult, Side, Tick, Unit } from "../engine/types";
 import {
@@ -77,7 +77,7 @@ import { HP_BAR_BLAST_MS, HpBarBlast } from "./HpBarBlast";
 import { RoundBanner, type BannerTone } from "./RoundBanner";
 import { PatchNotes } from "./PatchNotes";
 import { UnitPortrait } from "./UnitPortrait";
-import { OfferInfo, UnitInfo } from "./UnitInfo";
+import { OfferInfo, UnitInfo, type Dock } from "./UnitInfo";
 import {
   AugmentPanel,
   AugmentsView,
@@ -132,7 +132,14 @@ const BIG_HIT = 7;
 const ABILITY_MS = 1100;
 /** One supporting unit's start-of-round buff (each gets its own beat). */
 const OPENING_BEAT_MS = 800;
-/** A Beacon chain's multiplier for labels: "1.5", "2.25", "3". */
+/**
+ * The board growing into a battle and shrinking back out (the FLIP on
+ * `.app__stage`). Matches render.ts's BATTLE_VIEW_MS and App.css's
+ * `controls-in`, so the board, its units and the controls move together.
+ * 460 felt rushed (user, 2026-10-23).
+ */
+const BOARD_ZOOM_MS = 700;
+/** A Beacon chain's multiplier for labels: "1.5", "2", "3". */
 const ampText = (amp: number) => String(Math.round(amp * 100) / 100);
 /** After the main blows, before the first side hit (Overflow, Thorns…) plays. */
 const EXTRA_GAP_MS = 450;
@@ -517,6 +524,23 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
 
   /** The hint line: a click-selection's details card docks just above it. */
   const hintRef = useRef<HTMLParagraphElement>(null);
+  /**
+   * Where a picked-up unit's card docks: just above the hint (which carries
+   * the replace warning), centred over the hint's column, so on wide screens
+   * it sits in the controls column rather than the window's middle. Where the
+   * board shares that column (phones), it may only use the room between the
+   * board and the hint: it grows upward, and a tall card covered the bottom
+   * slots, the very ones the player was choosing between (a bug report).
+   */
+  const dockFor = (): Dock | null => {
+    const hint = hintRef.current?.getBoundingClientRect();
+    if (!hint) return null;
+    const stage = stageRef.current?.getBoundingClientRect();
+    const gap = 6;
+    const sharesColumn = !!stage && stage.left < hint.right && stage.right > hint.left;
+    const room = sharesColumn ? hint.top - gap - stage!.bottom - gap : hint.top - 2 * gap;
+    return { x: hint.left + hint.width / 2, bottom: window.innerHeight - hint.top + gap, maxWidth: hint.width, maxHeight: Math.max(0, room) };
+  };
   const pinnedRef = useRef(pinned);
   pinnedRef.current = pinned;
   const longPress = useRef<{ timer: number; x: number; y: number } | null>(null);
@@ -604,13 +628,16 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
    * source to the first Beacon, bounces off it (squash ring, sparkles, its
    * "×1.5", a boing, the Beacon flaring) and flies on bigger, Beacon by Beacon,
    * to the unit it lands on. `hops` is source, Beacons (nearest first), target.
+   * Each Beacon's label is the chain's total so far (Beacons add, up to
+   * RELAY_CAP, as in combat's `supportTarget`): ×1.5, ×2, ×2.5.
    */
   const relayHops = (later: (ms: number, fn: () => void) => void, b: Board, hops: Cell[], start: number) => {
-    let scale = 1;
+    let total = 1;
     hops.slice(1).forEach((to, k) => {
       const beacon = k + 1 < hops.length - 1 ? b.slots[to.side][to.lane][to.spot] : null;
-      const mult = beacon ? (beacon.traits?.relay ?? 150) / 100 : 1;
-      const size = scale;
+      const size = Math.min(2, total);
+      if (beacon) total = Math.min(RELAY_CAP, total + (beacon.traits?.relay ?? 150) / 100 - 1);
+      const mult = total;
       later(start + k * RELAY_HOP_MS, () => {
         const canvas = canvasRef.current;
         const a = canvas && cellCenter(canvas, b, hops[k]);
@@ -628,8 +655,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           setPose(beacon.id, "attack", POSE_MS.attack);
         });
       }
-      // Grows at each Beacon, but stays readable over a long chain.
-      scale = Math.min(2, scale * (beacon ? mult : 1));
+      // The orb grows at each Beacon (`size`, capped at 2× to stay readable).
     });
   };
   /** How long a relayed ability takes to arrive (before speed scaling, like `later`). */
@@ -884,6 +910,9 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   // and (on wide screens) the grid change instantly; only the board moves.
   // Web Animations rather than CSS transitions, so it doesn't depend on which
   // properties a layout happens to change. Reduced motion: a short fade.
+  // iOS Safari: `getAnimations` arrived in 14 and `animate` in 13.4, so both
+  // are feature-checked (an older iPhone just snaps), and the transform origin
+  // goes on the element, not in the keyframes.
   const stageRef = useRef<HTMLDivElement>(null);
   const stageRect = useRef<DOMRect | null>(null);
   const battleView = phase === "battle";
@@ -892,11 +921,12 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     if (!el) return;
     // A board animation still running (a very short round) would skew the
     // measurement with its transform: drop it and measure the real box.
-    for (const a of el.getAnimations()) a.cancel();
+    for (const a of el.getAnimations?.() ?? []) a.cancel();
     const last = el.getBoundingClientRect();
     const first = stageRect.current;
     stageRect.current = last;
     if (!first || last.height <= 0 || (first.height === last.height && first.width === last.width && first.left === last.left && first.top === last.top)) return;
+    if (typeof el.animate !== "function") return;
     if (prefersReducedMotion()) {
       el.animate([{ opacity: 0.35 }, { opacity: 1 }], { duration: 220, easing: "ease-out" });
       return;
@@ -904,18 +934,20 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     const s = first.height / last.height;
     const dx = first.left + first.width / 2 - (last.left + last.width / 2);
     const dy = first.top - last.top;
-    el.animate(
-      [
-        { transformOrigin: "50% 0", transform: `translate(${dx}px, ${dy}px) scale(${s})` },
-        { transformOrigin: "50% 0", transform: "none" },
-      ],
-      { duration: 460, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
-    );
+    el.style.transformOrigin = "50% 0";
+    el.animate([{ transform: `translate(${dx}px, ${dy}px) scale(${s})` }, { transform: "none" }], {
+      duration: BOARD_ZOOM_MS,
+      easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+    });
   }, [battleView]);
-  // Keep the "before" box current between battles (window resizes, rotation).
+  // Keep the "before" box current between battles (window resizes, rotation),
+  // and re-render so a docked info card (`dockFor`, read while rendering)
+  // moves with the layout instead of staying where the old one put it.
+  const [, setViewportTick] = useState(0);
   useEffect(() => {
     const onResize = () => {
       if (stageRef.current) stageRect.current = stageRef.current.getBoundingClientRect();
+      setViewportTick((n) => n + 1);
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
@@ -2672,7 +2704,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
 
       {/* A hovered offer card's unit: stats and its innate ability. */}
       {offerInfo && !drag && !selected && phase === "pick" && (
-        <OfferInfo unitKey={offerInfo.key} x={offerInfo.x} y={offerInfo.y} />
+        <OfferInfo unitKey={offerInfo.key} x={offerInfo.x} y={offerInfo.y} cap={levelCapOf(board)} />
       )}
 
       {/* What's making a hovered unit's numbers what they are. */}
@@ -2682,16 +2714,17 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           and just above the hint (which carries the outcome warnings), so it
           never covers the board slots the next tap is aimed at. */}
       {selected && !drag && phase === "pick" && !pinned && (() => {
-        const dockBottom = window.innerHeight - (hintRef.current?.getBoundingClientRect().top ?? window.innerHeight) + 6;
-        if (selected.kind === "offer") return <OfferInfo unitKey={selected.key} dockBottom={dockBottom} />;
+        const dock = dockFor();
+        if (!dock) return null;
+        if (selected.kind === "offer") return <OfferInfo unitKey={selected.key} dock={dock} />;
         const unit = board.slots.player[selected.lane]?.[selected.from];
-        return unit && unit.id === selected.unitId ? <UnitInfo unit={unit} dockBottom={dockBottom} toKnight={squireToGo(unit)} cap={levelCapOf(board)} /> : null;
+        return unit && unit.id === selected.unitId ? <UnitInfo unit={unit} dock={dock} toKnight={squireToGo(unit)} cap={levelCapOf(board)} /> : null;
       })()}
 
       {/* Touch: the long-pressed (or tapped) unit or offer, until the next tap. */}
       {pinnedUnit && pinned && <UnitInfo unit={pinnedUnit} x={pinned.x} y={pinned.y} pinned toKnight={squireToGo(pinnedUnit)} cap={levelCapOf(board)} />}
       {pinned?.kind === "offer" && phase === "pick" && (
-        <OfferInfo unitKey={pinned.key} x={pinned.x} y={pinned.y} />
+        <OfferInfo unitKey={pinned.key} x={pinned.x} y={pinned.y} cap={levelCapOf(board)} />
       )}
 
       {/* Ghost of the unit in hand, following the pointer. */}

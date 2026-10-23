@@ -162,6 +162,19 @@ just above the hint line. Not by the pointer, since the next tap is aimed at
 the board, and not over the hint, which carries the replace warning. It is
 `pointer-events: none`, so taps go through, and it goes when the selection does.
 
+**Compact and capped (2026-10-23, a bug report):** the full card grew upward
+from the hint and, with an 8-slot row and six upgrades, covered the bottom
+slots: the ones the player was choosing between. A picked-up card is now
+compact (`UnitInfoCompact`: name, stats, level, class, ability name, upgrade
+icons; an offer's adds its ability text), and `dockFor` in Game places it
+centred over the hint's column (the controls column on wide screens), with a
+`maxHeight` of the room between the board and the hint wherever the two share
+a column, so it can never reach a slot. Game re-renders on resize so it follows
+rotation. Checked at 320×568, 402×812, 768×1024 and 1280×800: always clear of
+the board. Hover and long-press keep the full card, which got smaller overall
+(0.7rem, 15rem wide, one line per upgrade) and is clamped on screen
+horizontally (it used to flip off the left edge in narrow windows).
+
 ### Second wave: Herald, new upgrades, Freeze, AI fit
 - **Herald** (star, 1/5, classes `herald` + `support`): innate `rally` trait.
   At round start every Herald *behind* the front adds its rally (3, +1 every 2
@@ -501,8 +514,16 @@ feeds a later one. Barrier's reach (a mastered Warden, Aegis) now extends
 
 **Beacon** (support, lantern, 1/6), **Relay** (`relay`, a percent): a support
 ability reaching it goes on to the unit in front of it at ×1.5 (+0.1 a level,
-×3 mastered, `BEACON_MASTER_RELAY`). Beacons in a row chain and multiply; the
-product is applied once and rounded once (`boost`, never below the original).
+×3 mastered, `BEACON_MASTER_RELAY`). Beacons in a row chain, each **adding**
+its bonus over ×1 (two level-1 Beacons ×2), up to `RELAY_CAP` ×3 in all; the
+total is applied once and rounded once (`boost`, never below the original).
+Chains multiplied until 2026-10-23 (three mastered ×27): three Beacons and an
+Acolyte won 97-100% of rounds against random rows of the same level (a
+one-round head-to-head like `pnpm synergy`), the front gaining ~600 health at
+level 10; a player reported it. Now 53-68%, below one Beacon and an Acolyte
+(74-80%, unchanged, since one Beacon never passed ×3). A cap of 2.5 measured
+45-53% but would cut a lone mastered Beacon below its ×3. The bounce labels
+show the chain's running total (×1.5, ×2, ×2.5). `pnpm upgrades` checks it.
 A Beacon with nobody ahead keeps what it gets. Buff and heal events carry
 `via` (the Beacons passed) and `amp`, so playback hops the effect through each
 Beacon (`HOP_MS`) and labels it "· Beacon ×1.5". Sanctuary doubles abilities
@@ -937,9 +958,23 @@ Reports go to `feedback/duel-deck/<UTC day>-<random>` = `{ kind: bug|idea,
 text, contact?, at, v, c, ua, ctx, shot? }`, where `ctx` is the mode, room,
 round, phase, HP and viewport (`feedbackContext` in Game.tsx). The rules make
 it create-only, size-capped and unreadable by clients, like telemetry. `pnpm
-feedback [--kind=bug|idea]` lists them through the Firebase CLI and writes the
-screenshots to `feedback/<id>.jpg` (gitignored); `--remove=<id>` deletes one
-once it's dealt with. Nothing prunes it.
+feedback [--kind=bug|idea] [--open] [--all] [--from=<device>]` lists them
+through the Firebase CLI (open ones in full, closed ones a line each) and
+writes the screenshots to `feedback/<id>.jpg` (gitignored).
+
+**Close reports, don't delete them** (decided 2026-10-23, for tracking):
+`--fix=<id> [--in=x.y.z] [--note=…]` or `--wontfix=<id>` adds `status`,
+`closedAt`, `commit` (HEAD's short hash, so fix after committing), `fixedIn`
+and `note` to the report; `--reopen=<id>` clears them. The CLI bypasses the
+rules, and clients can't write those fields (`$other` is rejected), so only
+this script closes a report. `--remove=<id>` is for spam only.
+
+**Who sent it:** `c`, the sender's device id (`clientId()`, random per
+browser/install, the same id telemetry's `meta.c` records), shown as a short
+label (#1 is the first device to report) with its report count, plus the
+optional `contact`. There are no accounts: a person on two devices is two ids,
+and clearing site data makes a new one. As of 2026-10-23 every report (4) came
+from one iPhone, with no contact. Nothing prunes reports.
 
 ### Telemetry (game/telemetry.ts, scripts/telemetry.ts)
 Balance data from real players, always on and not shown in the UI. Each match
@@ -1006,7 +1041,28 @@ It plays only when Sound *and* Music are on and the page is visible (a hidden
 tab or backgrounded install stops it rather than playing silently). Music
 on/off is `Settings.music`, a 🎵 button beside Sound in the title dock and a
 switch under Sound in ☰. The service worker precaches `**/*.mp3` (vite.config.ts;
-~1.7 MB together, under Workbox's 2 MB per-file limit), so music works offline.
+~2.4 MB together, under Workbox's 2 MB per-file limit), so music works offline.
+
+**Menu music** (added 2026-10-23): `menu.mp3` ("Game Music Loop 9" by
+xtremefreddy, from the user's downloads), the `"menu"` track. App sets it on
+every screen outside a match (it used to set `null` there); Game takes over
+per phase. Encoded the same way: 96 kbps stereo, `volume=-1.9dB` to -20.4 LUFS
+(it was -18.0), its 1.4 s of trailing silence cut (`-t 57.81`). `NEXT` says
+which track to pre-decode (menu → plan → battle → plan), and the menu's buffer
+is dropped when it fades out, so a match doesn't hold three decoded tracks. Since
+the title now has music, App unlocks audio on the first tap or key anywhere
+(once, while Sound is on); before, the first unlock was Play.
+
+**Dev server gotcha:** Vite re-runs `music.ts` on a hot update without
+reloading the page, and the old copy kept playing (and restarted the menu
+track on the next tap, as it was still subscribed to sound changes), so the
+menu music carried on into a match when running locally. `hot.dispose` never
+fires for it (Vite calls it on the accepting module, App or Game), so each copy
+registers a stop on `globalThis.__duelDeckMusic` and the next copy calls it as
+it loads and takes over `wanted`. Switching tracks also fades every track in
+`live`, not just `playing`. Checked by recording every AudioBufferSourceNode
+start/stop across a module swap: one track sounding at a time. Builds don't
+have `import.meta.hot`, so players never had this.
 
 ### Tutorial (ui/Tutorial.tsx)
 A guided first match against Easy, offered first on the title screen until
@@ -1116,6 +1172,24 @@ it was replaced. A hidden browser pane runs no frames, so the animations were
 checked by reading `getAnimations()` keyframes: 360×640 scale 0.62 in / 1.62
 out; 1024×768 translate(−72, 38) in / (72, −38) out.
 
+**Slower (2026-10-23):** `BOARD_ZOOM_MS` 700 (was 460; the user found it
+rushed), with `BATTLE_VIEW_MS` and `controls-in` matched to it so the board,
+its units and the controls move as one.
+
+**iOS Safari pass (same day),** following the root CLAUDE.md's animation rules,
+which every new animation here must follow:
+- the FLIP feature-checks `animate`/`getAnimations` and sets
+  `transform-origin` on the element, not in the keyframes;
+- overlays: `-webkit-backdrop-filter` added everywhere (Safari before 18 ignored
+  the blur), and `ov-fade` no longer animates the blur, only opacity;
+- the title's rise-in uses `backwards`, so it doesn't pin the buttons'
+  pressed transform;
+- audio unlocks on `touchend`/`click` as well as `pointerdown` (iOS doesn't
+  count a finger's pointerdown), and `unlockSound` resumes any state but
+  `"running"` (iOS's `"interrupted"`).
+The canvas code (board, fx, characters, the title duel) already avoided
+`ctx.filter` and runs on frame time.
+
 ### Small screens (checked at 320×568, 360×640, 375×812)
 Every screen is meant to work on a 320×568 phone without anything important
 off screen. What that took, screen by screen:
@@ -1126,6 +1200,17 @@ off screen. What that took, screen by screen:
   Music, Feedback). Fits 360×640 with no scroll; `max-height` 700px and 600px steps
   drop the unit lineup, shrink the emblem, then hide the tagline. It still
   scrolls itself if it must (`.title` is the scroller; the page never is).
+  **Title animation (2026-10-23):** the lineup is a live duel
+  (`ui/TitleDuel.tsx`, one canvas, `drawCharacter` and an `FxLayer`): three
+  of yours against three of theirs, the fronts lunge sideways (drawCharacter's
+  own lunge is vertical, for the board) and trade blows every `BEAT_MS` with
+  sparks and damage numbers, and every `FALL_EVERY`th exchange one front falls,
+  its row slides up and it respawns at the back, alternating sides. The canvas's
+  top 32px is headroom that tucks under the tagline, so the strip costs 58px
+  (the old lineup 44). Around it: a light sweep across the title, a turning
+  glow ring and pulse on the emblem, and the hero, cards and dock rising in on
+  open, staggered. Reduced motion: the lineup drawn once, still, and none of
+  the rest. Still hidden under 700px tall.
 - **In a match** (phones, under 45rem): the header is one row — ☰, round and
   phase (ellipsised), and the upgrade countdown as a pill ("⬆ in 2"); the
   "Duel Deck" heading is hidden, since its line is worth more as board. Gaps

@@ -71,7 +71,8 @@ let battleTarget = false;
  */
 let battleT = 0;
 let battleLast = -1;
-const BATTLE_VIEW_MS = 420;
+// Matches Game's BOARD_ZOOM_MS (the board's own move) and App.css's controls-in.
+const BATTLE_VIEW_MS = 700;
 export function setBattleView(on: boolean): void {
   battleTarget = on;
 }

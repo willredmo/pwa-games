@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Difficulty, MatchRules } from "./game/match";
 import { loadMatch, loadSettings, saveSettings, type SavedMatch, type Settings } from "./game/save";
-import { setSoundEnabled, unlockSound } from "./game/sound";
+import { audioContext, setSoundEnabled, unlockSound } from "./game/sound";
 import { setMusic, setMusicEnabled } from "./game/music";
 import { Game } from "./ui/Game";
 import { Title } from "./ui/Title";
@@ -80,10 +80,27 @@ export default function App() {
   useEffect(() => setSoundEnabled(settings.sound), [settings.sound]);
   useEffect(() => setKawaii(settings.kawaii), [settings.kawaii]);
   useEffect(() => setMusicEnabled(settings.music), [settings.music]);
-  // No music on the title screen; a match sets its own track per phase.
+  // The menu track on every screen outside a match; a match sets its own
+  // track per phase.
   useEffect(() => {
-    if (screen !== "game") setMusic(null);
+    if (screen !== "game") setMusic("menu");
   }, [screen]);
+  // Browsers only start audio from a gesture, and the menu has music now, so
+  // the first tap anywhere unlocks it (it used to wait for Play). iOS Safari
+  // doesn't count a finger's pointerdown (touchstart) as one, only the end of
+  // the tap, so it listens for several and stops once audio is running.
+  useEffect(() => {
+    if (!settings.sound) return;
+    const events = ["pointerdown", "touchend", "click", "keydown"] as const;
+    const unlock = () => {
+      unlockSound();
+      if (audioContext()?.state === "running") for (const e of events) window.removeEventListener(e, unlock);
+    };
+    for (const e of events) window.addEventListener(e, unlock, { passive: true });
+    return () => {
+      for (const e of events) window.removeEventListener(e, unlock);
+    };
+  }, [settings.sound]);
 
   const start = (difficulty: Difficulty, resume: SavedMatch | null) => {
     // Audio can only start from a gesture, and this click is one.

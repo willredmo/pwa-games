@@ -1,7 +1,9 @@
 /* Overlay animations. Loaded after App.css; transform/opacity only. */
-.overlay { animation: ov-fade 0.28s ease-out both; backdrop-filter: blur(5px); }
+/* Safari before 18 (iOS 17 and older) needs the -webkit- backdrop-filter, and
+   the blur isn't animated: re-blurring the page every frame stutters on phones. */
+.overlay { animation: ov-fade 0.28s ease-out both; -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); }
 .overlay .panel { animation: ov-pop 0.5s cubic-bezier(0.2, 1.3, 0.4, 1) both; transform-origin: 50% 60%; }
-@keyframes ov-fade { from { opacity: 0; backdrop-filter: blur(0); } to { opacity: 1; backdrop-filter: blur(5px); } }
+@keyframes ov-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes ov-pop {
   0% { opacity: 0; transform: translateY(26px) scale(0.86); }
   60% { opacity: 1; }
@@ -532,7 +534,7 @@
   .ledger__table td { padding: 0.15rem 0.15rem; }
 }
 /* --- Start screen: choose the opponent --- */
-.overlay--start { z-index: 60; background: rgba(12, 10, 20, 0.82); backdrop-filter: blur(3px); }
+.overlay--start { z-index: 60; background: rgba(12, 10, 20, 0.82); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
 .start-panel { width: min(26rem, calc(100vw - 24px)); text-align: center; }
 .start-panel h2 { margin: 0; font-size: 1.8rem; letter-spacing: 0.02em; }
 .start-panel__emblem { font-size: 2.2rem; line-height: 1; margin-bottom: 0.2rem; }

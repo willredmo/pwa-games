@@ -156,7 +156,8 @@ export interface UnitTraits {
   /**
    * A support ability reaching this unit goes on to the unit in front of it,
    * amplified to this percent (Beacon's Relay: 150 + 10 a level). Beacons in
-   * a row chain, multiplying. One with nobody ahead keeps what it gets.
+   * a row chain, each adding its bonus over ×1, up to RELAY_CAP. One with
+   * nobody ahead keeps what it gets.
    */
   relay?: number;
   /**
@@ -262,7 +263,7 @@ export interface BuffEvent {
   hp: number;
   /** Shield it gains for the round (Warden's Barrier). */
   shield?: number;
-  /** Beacons it passed through on the way, nearest the source first, and what they multiplied it by. */
+  /** Beacons it passed through on the way, nearest the source first, and the chain's total amplification (capped at RELAY_CAP). */
   via?: string[];
   amp?: number;
 }

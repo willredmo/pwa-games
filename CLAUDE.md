@@ -54,6 +54,46 @@ game that isn't a roguelike belongs here too, as long as it's a PWA.
 - Prefer flat, geometric placeholder art (shapes + color) over image assets
   for now — cheap to produce, easy to reskin later.
 
+## Animation rules (every game; must work in iOS Safari)
+Players install these on iPhones, so every animation has to work in iOS
+Safari, not just Chrome. Baseline: iOS 15.4+ (what `100dvh` needs). A
+Chromium preview proves nothing about WebKit; test Safari-specific features
+in WebKit (Playwright's `webkit`) or on a phone.
+- **Animate `transform` and `opacity` only.** Never animate layout (`height`,
+  `max-height`, `width`, `top`, margins), `filter` or `backdrop-filter`: iPhones
+  stutter on them, and a max-height collapse didn't visibly animate at all
+  (duel-deck 1.7.3). To animate a size or position change, use FLIP: measure
+  the old and new box, then animate a `transform` from one to the other.
+- **Prefixes Safari still needs:** `-webkit-backdrop-filter` (Safari before 18),
+  `-webkit-mask` / `-webkit-mask-image`, and `-webkit-background-clip: text`.
+  Write the prefixed property alongside the standard one.
+- **Web Animations API:** fine, but feature-check `el.animate` and
+  `el.getAnimations?.()`, and set `transform-origin` on the element rather than
+  inside keyframes.
+- **Canvas:** never `ctx.filter` (Safari ignores it; fake blur with
+  gradients), no `ctx.roundRect` or `letterSpacing` without a fallback. Drive
+  motion from frame *time*, not frame count: ProMotion iPhones run rAF at 120 Hz.
+- **One-shot entrances** (`from` only) use `animation-fill-mode: backwards`,
+  not `both` or `forwards`: holding the last frame pins `transform` and cancels
+  the element's own `:active` and `:hover` transforms. Use `both` only when the
+  end state must stay (a card flipped away).
+- **Positioned elements** (`transform: translateX(-50%)` centring): keyframes
+  must include that transform, or the element jumps while animating.
+- **`prefers-reduced-motion`:** wrap motion in
+  `@media (prefers-reduced-motion: no-preference)` (CSS) or check
+  `prefersReducedMotion()` (canvas, WAAPI), and keep a static or faded
+  version. iPhones with Reduce Motion on are common, so "I see no animation"
+  may be that setting.
+- **Audio started by an animation or screen:** iOS only unlocks audio on the end
+  of a tap (`touchend`/`click`), not `pointerdown`, and an AudioContext can be
+  `"interrupted"` (a call, backgrounding), so resume whenever it isn't `"running"`.
+- **Hidden tabs** run no rAF and pause CSS/WAAPI animations. Don't schedule game
+  logic off animation callbacks, and expect a hidden preview pane to show
+  frozen frames.
+- **Dev only:** Vite hot-reloads modules without reloading the page, so a
+  module that owns long-lived audio or timers must stop the previous copy of
+  itself when it loads (see duel-deck's `game/music.ts`).
+
 ## Build order
 1. `checkers-roguelike` — validates the PWA pipeline (manifest, offline,
    install prompts), no backend needed.

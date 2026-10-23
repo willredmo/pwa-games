@@ -559,6 +559,18 @@ for (const cap of [8, 10, 12, 15]) {
   check("vengeance", "a hit sends 60% back", back?.damage === Math.floor(raw * 0.6), [raw, back?.damage]);
 }
 
+// --- Beacon chains -------------------------------------------------------------
+
+{
+  // Herald Rally 3 behind Beacons. One: ×1.5. Two add: ×2. Three: ×2.5.
+  // Three mastered (×3 each) stop at the cap, ×3: they used to multiply (×27).
+  const rally = (row: U[]) => buffs(resolveRound(setup(row, ["guard"]).board)).find((b) => b.label === "Rally")?.atk;
+  const b = "beacon";
+  const m: U = { key: "beacon", merges: 9 };
+  const got = [rally(["guard", b, "herald"]), rally(["guard", b, b, "herald"]), rally(["guard", b, b, b, "herald"]), rally(["guard", m, m, m, "herald"])];
+  check("relay-chain", "Beacons add up (3 → 5, 6, 8) and stop at ×3 (9)", got.join() === "5,6,8,9", got);
+}
+
 // --- Coverage ----------------------------------------------------------------
 
 for (const a of OFFERED_AUGMENTS) if (!covered.has(a.id)) failures.push(`${a.id}: no check in scripts/upgrades.ts`);

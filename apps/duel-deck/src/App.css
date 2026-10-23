@@ -315,6 +315,7 @@
   padding: 0.6rem;
   background: rgba(10, 8, 18, 0.78);
   border-radius: 10px;
+  -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
 }
 .panel {
@@ -790,34 +791,40 @@ body { background-color: #12101c; }
   position: fixed;
   z-index: 80;
   pointer-events: none;
-  min-width: 13rem;
-  max-width: 17rem;
-  padding: 0.55rem 0.65rem;
-  border-radius: 10px;
+  min-width: 11rem;
+  max-width: 15rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 9px;
   border: 1px solid #4a4368;
   background: rgba(24, 21, 36, 0.97);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-  font-size: 0.78rem;
+  font-size: 0.7rem;
+  line-height: 1.3;
   text-align: left;
 }
-.unit-info__head { display: flex; justify-content: space-between; gap: 0.6rem; font-size: 0.9rem; }
+.unit-info__head { display: flex; justify-content: space-between; gap: 0.6rem; font-size: 0.82rem; }
 .unit-info__stats { display: inline-flex; gap: 0.4rem; font-weight: 800; }
-.unit-info__base { color: #9d97b8; margin: 0.1rem 0 0.35rem; }
+.unit-info__base { color: #9d97b8; margin: 0.05rem 0 0.25rem; }
+/* One line per source: its name, then what it does, wrapping only if long. */
 .unit-info__line {
-  display: flex;
-  flex-direction: column;
-  padding: 0.25rem 0;
+  padding: 0.15rem 0;
   border-top: 1px solid #2f2a45;
 }
-.unit-info__src { font-weight: 700; color: #e3dff2; }
+.unit-info__src { font-weight: 700; color: #e3dff2; margin-right: 0.35rem; }
 .unit-info__fx { color: #ffe27a; }
 .unit-info__none { color: #9d97b8; font-style: italic; border-top: 1px solid #2f2a45; padding-top: 0.3rem; }
 .reroll-btn { white-space: nowrap; flex: none; }
-.unit-info--offer { width: 17rem; max-width: calc(100vw - 16px); }
+.unit-info--offer { width: 15rem; max-width: calc(100vw - 16px); }
 .unit-info__knight { margin-top: 0.15rem; font-weight: 700; color: #ffd666; }
 .unit-info__mastery { margin-top: 0.15rem; font-size: 0.92em; opacity: 0.6; }
 .unit-info__mastery--on { opacity: 1; font-weight: 700; color: #f0b429; }
-.unit-info--pinned { width: 17rem; max-width: calc(100vw - 24px); }
+.unit-info--pinned { width: 15rem; max-width: calc(100vw - 24px); }
+/* Picked up (UnitInfoCompact): a few lines over the controls, clear of the
+   board. Its max-width/max-height come from Game's dockFor; past that it
+   clips rather than grow over the slots. */
+.unit-info--docked { width: max-content; min-width: 0; max-width: 20rem; overflow: hidden; }
+.unit-info--docked .unit-info__base { margin-bottom: 0; }
+.unit-info__icons { margin-top: 0.15rem; font-size: 0.8rem; letter-spacing: 0.05em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Long-press opens info cards: stop the OS menu / text selection on the game. */
 .app__board, .hand .card { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 .unit-info__ability {
@@ -837,7 +844,7 @@ body { background-color: #12101c; }
   color: #c9a24a;
 }
 .unit-info__ability-text { margin-top: 0.15rem; color: #e3dff2; }
-.unit-info__ability-scaling { margin-top: 0.15rem; font-size: 0.72rem; font-weight: 700; color: #5fe08f; }
+.unit-info__ability-scaling { margin-top: 0.15rem; font-size: 0.92em; font-weight: 700; color: #5fe08f; }
 
 /* --- New-version toast (ui/UpdatePrompt.tsx) --- */
 .update-toast {
@@ -1207,13 +1214,50 @@ button.menu-item:hover { border-color: #5a5180; }
   filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.35));
 }
 .title__tagline { margin: 0.4rem 0 0; color: var(--muted); font-size: 0.88rem; }
-.title__lineup { display: flex; justify-content: center; align-items: flex-end; gap: 0.2rem; margin-top: 0.4rem; height: 44px; }
-.title__unit { display: block; }
-.title__unit:nth-child(4) { margin-left: 1.1rem; }
+/* The duel under the logo (ui/TitleDuel.tsx). Its canvas is 84px tall but the
+   top 32px is headroom for damage numbers and sparks, so it tucks up under
+   the tagline and costs a little more than the old 44px lineup did. */
+.title__lineup { position: relative; height: 58px; margin-top: 0.4rem; pointer-events: none; }
+.title__duel { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); width: min(22rem, calc(100vw - 32px)); height: 84px; display: block; }
+
+/* Motion around the logo: a light sweep across the title every few seconds,
+   a slow glowing ring round the emblem, and the menu rising in on open. */
 @media (prefers-reduced-motion: no-preference) {
-  .title__unit { animation: unit-hop 2.4s ease-in-out infinite; animation-delay: calc(var(--i) * 0.18s); }
+  .title__hero h1 {
+    background:
+      linear-gradient(105deg, transparent 42%, rgba(255, 255, 255, 0.85) 50%, transparent 58%) 160% 0 / 250% 100% no-repeat,
+      linear-gradient(180deg, #fff 15%, #ffd666 60%, #e8962a 110%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    animation: title-shine 5.5s ease-in-out 1.2s infinite;
+  }
+  .title__emblem { position: relative; animation: emblem-pulse 3.2s ease-in-out infinite; }
+  .title__emblem::before {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, transparent 0 55%, rgba(255, 214, 102, 0.95) 75%, transparent 90%);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+    animation: spin 4s linear infinite;
+  }
+  /* backwards, not both: holding the last frame would pin `transform` and
+     cancel the buttons' own pressed (:active) transform. */
+  .title__hero { animation: title-rise 0.55s cubic-bezier(0.2, 0.9, 0.3, 1) backwards; }
+  .title__main > *, .title-dock { animation: title-rise 0.5s cubic-bezier(0.2, 0.9, 0.3, 1) backwards; }
+  .title__main > :nth-child(1) { animation-delay: 0.08s; }
+  .title__main > :nth-child(2) { animation-delay: 0.14s; }
+  .title__main > :nth-child(3) { animation-delay: 0.2s; }
+  .title__main > :nth-child(4) { animation-delay: 0.26s; }
+  .title__main > :nth-child(5) { animation-delay: 0.32s; }
+  .title-dock { animation-delay: 0.38s; }
 }
-@keyframes unit-hop { 0%, 70%, 100% { transform: none; } 80% { transform: translateY(-5px); } 90% { transform: translateY(0); } }
+@keyframes title-shine { 0%, 60% { background-position: 160% 0, 0 0; } 100% { background-position: -60% 0, 0 0; } }
+@keyframes emblem-pulse {
+  50% { box-shadow: 0 0 0 1px rgba(240, 180, 41, 0.6), 0 0 40px rgba(240, 180, 41, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.15); }
+}
+@keyframes title-rise { from { opacity: 0; transform: translateY(14px); } }
 
 .title__main { width: min(100%, 26rem); display: flex; flex-direction: column; gap: 0.6rem; }
 
@@ -2038,7 +2082,7 @@ button.menu-item:hover { border-color: #5a5180; }
 /* Wide screens drop the controls column in battle (below); when picking starts
    it slides back in rather than popping. */
 @media (min-width: 45rem) and (min-height: 34rem) {
-  .app__controls { animation: controls-in 0.42s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+  .app__controls { animation: controls-in 0.7s cubic-bezier(0.2, 0.9, 0.3, 1) backwards; }
   .app--battle .app__controls { animation: none; }
 }
 @keyframes controls-in { from { opacity: 0; transform: translateX(24px); } }

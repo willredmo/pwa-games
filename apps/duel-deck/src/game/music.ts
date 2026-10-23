@@ -1,10 +1,10 @@
-// Background music: one loop for planning (pick / upgrade / waiting) and one
-// for battles, crossfading on the phase change. Unlike the effects these are
+// Background music: a loop for the menus, one for planning (pick / upgrade /
+// waiting) and one for battles, crossfading on every change. Unlike the effects these are
 // recorded tracks (src/assets/music, precached by the service worker), but
 // they play through the same AudioContext, so they unlock with `unlockSound`
 // and go quiet with Sound off as well as with Music off.
 //
-// Both files were levelled to the same loudness (about -20 LUFS) when they
+// All three files were levelled to the same loudness (about -20 LUFS) when they
 // were added, so MUSIC_VOLUME is the only knob: it sets music against the
 // effects, and neither track jumps out over the other.
 //
@@ -14,10 +14,13 @@
 import { audioContext, onSoundChange, soundEnabled } from "./sound";
 import planUrl from "../assets/music/plan.mp3";
 import battleUrl from "../assets/music/battle.mp3";
+import menuUrl from "../assets/music/menu.mp3";
 
-export type Track = "plan" | "battle";
+export type Track = "menu" | "plan" | "battle";
 
-const URLS: Record<Track, string> = { plan: planUrl, battle: battleUrl };
+const URLS: Record<Track, string> = { menu: menuUrl, plan: planUrl, battle: battleUrl };
+/** The track to have decoded before leaving this one. */
+const NEXT: Record<Track, Track> = { menu: "plan", plan: "battle", battle: "plan" };
 /** Music against the effects: well under them, so hits and banners still read. */
 const MUSIC_VOLUME = 0.3;
 /** Seconds of crossfade when the phase changes. */
@@ -48,14 +51,22 @@ interface Playing {
   nextAt: number;
 }
 let playing: Playing | null = null;
+/**
+ * Every track still sounding, the current one and any fading out. A switch
+ * fades all of them, not just `playing`, so nothing can be left running that
+ * this module has lost track of.
+ */
+const live = new Set<Playing>();
 let timer: ReturnType<typeof setInterval> | null = null;
+/** Set when the dev server swaps this module out (see the end of the file). */
+let disposed = false;
 
 export function setMusicEnabled(on: boolean): void {
   musicOn = on;
   update();
 }
 
-/** The game's current phase as a track, or null for none (title, result screen). */
+/** What's on screen as a track: the menus, or the match's phase; null for none (result screen). */
 export function setMusic(track: Track | null): void {
   wanted = track;
   update();
@@ -85,6 +96,7 @@ function load(ac: AudioContext, track: Track): Promise<AudioBuffer | null> {
 }
 
 function update(): void {
+  if (disposed) return;
   const ac = audioContext();
   if (!ac) return; // not unlocked yet: `unlockSound` calls back here
   if (!bus) {
@@ -97,16 +109,23 @@ function update(): void {
   // so a backgrounded install isn't decoding music nobody hears.
   const target = audible() ? wanted : null;
   if (playing?.track === target) return;
-  if (playing) fadeOut(ac, playing);
+  for (const p of live) {
+    fadeOut(ac, p);
+    // The menu track is heard once a session or so: don't keep ~25 MB of
+    // decoded audio for it through a match. It decodes again on the way back.
+    if (p.track === "menu" && target !== "menu") buffers.delete("menu");
+  }
+  live.clear();
   playing = null;
   if (!target) return;
   void load(ac, target).then((buffer) => {
     // Still the one wanted, and nothing started while it decoded?
-    if (!buffer || playing || (audible() ? wanted : null) !== target) return;
+    if (disposed || !buffer || playing || (audible() ? wanted : null) !== target) return;
     playing = start(ac, target, buffer);
+    live.add(playing);
   });
-  // Have the other track decoded before the phase changes to it.
-  void load(ac, target === "plan" ? "battle" : "plan");
+  // Have the next track decoded before the screen changes to it.
+  void load(ac, NEXT[target]);
 }
 
 function start(ac: AudioContext, track: Track, buffer: AudioBuffer): Playing {
@@ -156,4 +175,34 @@ function fadeOut(ac: AudioContext, p: Playing): void {
   p.gain.gain.setValueAtTime(p.gain.gain.value, now);
   p.gain.gain.linearRampToValueAtTime(0, now + FADE);
   for (const src of p.sources) src.stop(now + FADE + 0.05);
+}
+
+// Running locally, Vite re-runs this module when it (or a file it imports)
+// changes, without reloading the page. The old copy would keep its track
+// playing, stay subscribed to sound changes with its last track (the menu's)
+// and start it again on the next tap, under whatever the new copy plays: the
+// menu music carried on into a match. `hot.dispose` doesn't help (Vite only
+// calls it on the module that accepts the update, App or Game here), so each
+// copy registers a stop on the page and the next copy calls it as it loads,
+// taking over what the screen wants. Dev only: `import.meta.hot` is absent in
+// a build, where this module runs once.
+if (import.meta.hot) {
+  const page = globalThis as { __duelDeckMusic?: () => { wanted: Track | null; musicOn: boolean } };
+  const prev = page.__duelDeckMusic?.();
+  page.__duelDeckMusic = () => {
+    disposed = true;
+    const ac = audioContext();
+    if (ac) for (const p of live) fadeOut(ac, p);
+    live.clear();
+    playing = null;
+    if (timer) clearInterval(timer);
+    timer = null;
+    document.removeEventListener("visibilitychange", update);
+    return { wanted, musicOn };
+  };
+  if (prev) {
+    wanted = prev.wanted;
+    musicOn = prev.musicOn;
+    update();
+  }
 }

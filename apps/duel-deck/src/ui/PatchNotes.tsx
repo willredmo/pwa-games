@@ -10,6 +10,19 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.7.5",
+    date: "Oct 23, 2026",
+    notes: [
+      "Fixed: the level cap you pick now lasts the whole match. It used to fall back to 10 after the first round.",
+      "Picking up a unit shows a small card that stays clear of your row, so you can see every unit you could merge it into. Hold a unit (or hover with a mouse) for the full details, which are now more compact too.",
+      "Beacons in a row now add their boost instead of multiplying it, up to ×3 in all. Three Beacons and an Acolyte made the unit in front nearly unbeatable.",
+      "Banner of hope now gives the Herald's whole Rally as health, War horn included.",
+      "Online: Bloodpact's health cost now shows on your opponent's screen too.",
+      "The main menu has its own music, and the units under the logo now fight.",
+      "The board takes a little longer to zoom in and out of battles.",
+    ],
+  },
+  {
     version: "1.7.4",
     date: "Oct 21, 2026",
     notes: ["The board now visibly zooms into place when a battle starts and back when it ends (1.7.3's version didn't show on most screens)."],

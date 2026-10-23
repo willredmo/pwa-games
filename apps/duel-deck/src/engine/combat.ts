@@ -373,12 +373,22 @@ function lastLight(board: Board, round: RoundState, events: BattleEvent[]): void
 }
 
 /**
+ * Most a chain of Beacons can amplify a support ability, as a multiplier: one
+ * mastered Beacon's ×3. Chains used to multiply (three level-1 Beacons ×3.4,
+ * three mastered ×27), and three Beacons with an Acolyte behind them won
+ * 97-100% of rounds against random rows of the same level, the front unit
+ * gaining ~600 health at level 10 (a bug report). Now each Beacon adds its
+ * bonus (the part of its Relay over ×1) and the total stops here.
+ */
+export const RELAY_CAP = 3;
+
+/**
  * Where a support ability from `queue[i]` lands: the unit directly in front of
- * it. A Beacon there passes it one step further, multiplied by its Relay, and
- * Beacons in a row chain; one with nobody ahead keeps it. Null when nothing
- * stands in front (a support leading the row does nothing). `amp` is the
- * product of the relays, applied once to each amount (`boost`), so a chain
- * rounds once rather than at every hop.
+ * it. A Beacon there passes it one step further, adding its Relay's bonus, and
+ * Beacons in a row chain (up to RELAY_CAP in all); one with nobody ahead
+ * keeps it. Null when nothing stands in front (a support leading the row does
+ * nothing). `amp` is applied once to each amount (`boost`), so a chain rounds
+ * once rather than at every hop.
  */
 function supportTarget(queue: Unit[], i: number): { unit: Unit; index: number; amp: number; via: string[] } | null {
   if (i <= 0) return null;
@@ -386,11 +396,11 @@ function supportTarget(queue: Unit[], i: number): { unit: Unit; index: number; a
   let amp = 1;
   const via: string[] = [];
   while (j > 0 && (queue[j].traits?.relay ?? 0) > 0) {
-    amp *= queue[j].traits!.relay! / 100;
+    amp += queue[j].traits!.relay! / 100 - 1;
     via.push(queue[j].id);
     j--;
   }
-  return { unit: queue[j], index: j, amp, via };
+  return { unit: queue[j], index: j, amp: Math.min(RELAY_CAP, amp), via };
 }
 
 /** An amount after a chain of Beacons: rounded once, never below what it started as. */

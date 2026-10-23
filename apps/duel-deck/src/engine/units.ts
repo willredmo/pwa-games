@@ -162,7 +162,7 @@ export const UNITS: Record<string, UnitStats> = {
       name: "Relay",
       trigger: "When a support ability lands on it",
       text:
-        "Does nothing on its own. Put a support unit (Herald, Medic, Warden or Acolyte) directly behind it: instead of keeping that unit's Rally, Mend, Barrier or Lifebond, the Beacon bounces it on to the unit in front of it, 1.5× stronger. Several Beacons in a row multiply it again each time, so a support at the back can power up your front unit.",
+        "Does nothing on its own. Put a support unit (Herald, Medic, Warden or Acolyte) directly behind it: instead of keeping that unit's Rally, Mend, Barrier or Lifebond, the Beacon bounces it on to the unit in front of it, 1.5× stronger. Beacons in a row each add their boost (two at level 1: 2×), up to 3× in all, so a support at the back can power up your front unit.",
       scaling: "Bounces it +0.1× stronger per level (×2.4 at level 10)",
     },
     mastery: "Bounces it on at 3×.",
@@ -358,7 +358,8 @@ export function innateTraits(key: string, merges = 0, cap = MAX_LEVEL): UnitTrai
       // Percent of each blow: 40% at level 1, 85% at 10, 100% mastered.
       return { reflect: master ? 100 : 40 + 5 * m };
     case "beacon":
-      // Percent, so chains multiply exactly: ×1.5 at level 1, ×2.4 at 10, ×3 mastered.
+      // Percent: ×1.5 at level 1, ×2.4 at 10, ×3 mastered. In a chain each adds
+      // its bonus over ×1, up to RELAY_CAP (combat.ts).
       return { relay: master ? BEACON_MASTER_RELAY : 150 + 10 * m };
     case "acolyte":
       // `lifebond` multiplies the gift (Sanctuary doubles it); the Acolyte

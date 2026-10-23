@@ -55,7 +55,7 @@ function describeTraits(t: UnitTraits): string[] {
   if (t.relay) {
     const x = String(Math.round(t.relay) / 100);
     out.push(
-      `does nothing on its own; a Rally, Mend, Barrier or Lifebond from the unit directly behind it bounces on to the unit in front of it at ×${x}, and Beacons in a row each multiply it again`,
+      `does nothing on its own; a Rally, Mend, Barrier or Lifebond from the unit directly behind it bounces on to the unit in front of it at ×${x}, and Beacons in a row each add their boost (up to ×3 in all)`,
     );
   }
   if (t.shield) out.push(`shield: the first ${t.shield} damage it takes this round is absorbed`);
@@ -80,25 +80,47 @@ const DEPTH = ["unit", "two units", "three units", "four units"];
 const signed = (n: number, glyph: string) => (n ? `${n > 0 ? "+" : ""}${n}${glyph}` : "");
 
 /**
- * Docked: centred, with its bottom edge this many px above the window's
- * bottom. For a click-selection, where the card must stay clear of the board
- * the player is about to tap.
+ * Where a docked card goes (a click-selection, where it must stay clear of the
+ * board the player is about to tap): centred on `x`, its bottom edge `bottom`
+ * px above the window's, and never taller than `maxHeight` (the room under
+ * the board, where the two share a column; Game's `dockFor`).
  */
-const dockedStyle = (bottom: number) =>
-  ({ left: "50%", top: "auto", bottom, transform: "translateX(-50%)" }) as const;
+export interface Dock {
+  x: number;
+  bottom: number;
+  maxWidth: number;
+  maxHeight: number;
+}
+
+const dockedStyle = (d: Dock) =>
+  ({
+    left: d.x,
+    top: "auto",
+    bottom: d.bottom,
+    transform: "translateX(-50%)",
+    maxWidth: `min(${Math.round(d.maxWidth)}px, calc(100vw - 16px))`,
+    maxHeight: Math.round(d.maxHeight),
+  }) as const;
+
+/** An aura's icon: the upgrade's, or a synergy/Drill label's leading emoji. */
+function detailIcon(d: { id: string; label?: string }): string {
+  const defs = d.id.split("+").map(getAugment).filter((a) => !!a);
+  return defs.length ? defs.map((a) => a!.icon).join("") : (d.label?.split(" ")[0] ?? "");
+}
 
 export function UnitInfo({
   unit,
   x = 0,
   y = 0,
   pinned = false,
-  dockBottom,
+  dock,
   toKnight, cap = MAX_LEVEL }: {
   unit: Unit;
   x?: number;
   y?: number;
   pinned?: boolean;
-  dockBottom?: number;
+  /** Picked up: docked clear of the board, and compact (`dockFor` in Game). */
+  dock?: Dock;
   /** Merges this Squire still needs to be knighted (null/undefined if not a Squire). */
   toKnight?: number | null;
   /** The match's level cap (a match setting). */
@@ -108,27 +130,30 @@ export function UnitInfo({
   const innateRaw = innateTraits(unit.key, unit.merges, cap);
   const innate = Object.keys(innateRaw).length > 0 ? innateRaw : undefined;
   const details = unit.auraDetails ?? [];
-  // Keep the card on screen: flip to the left of the pointer near the right edge.
-  const flip = x > window.innerWidth - 300;
+  // Keep the card on screen: right of the pointer, else left of it, else (a
+  // narrow window) centred on it and clamped to the edges. CARD_W is the
+  // card's max-width (15rem) plus a little.
+  const CARD_W = 250;
+  const vw = window.innerWidth;
+  const hoverLeft =
+    x + 14 + CARD_W <= vw - 8 ? x + 14 : x - 14 - CARD_W >= 8 ? x - 14 - CARD_W : Math.max(8, Math.min(vw - CARD_W - 8, x - CARD_W / 2));
   // Pinned (touch): a finger covers whatever is under it and a phone is too
   // narrow to sit beside it, so centre the card and open it away from the
   // finger, on whichever side of the screen has more room.
   const above = y > window.innerHeight / 2;
-  const style = dockBottom !== undefined
-    ? dockedStyle(dockBottom)
-    : pinned
+  if (dock) return <UnitInfoCompact unit={unit} dock={dock} toKnight={toKnight} cap={cap} />;
+  const style = pinned
     ? {
         left: "50%",
         top: above ? y - 28 : y + 28,
         transform: `translate(-50%, ${above ? "-100%" : "0"})`,
       }
     : {
-        left: flip ? x - 14 : x + 14,
+        left: hoverLeft,
         top: Math.min(y + 14, window.innerHeight - 40),
-        transform: flip ? "translateX(-100%)" : undefined,
       };
   return (
-    <div className={`unit-info${pinned || dockBottom !== undefined ? " unit-info--pinned" : ""}`} style={style} role="tooltip">
+    <div className={`unit-info${pinned ? " unit-info--pinned" : ""}`} style={style} role="tooltip">
       <div className="unit-info__head">
         <strong>
           {unit.side === "enemy" ? "Enemy " : ""}
@@ -185,6 +210,36 @@ export function UnitInfo({
 }
 
 /**
+ * A picked-up unit's card: just enough to recognise it while the next tap
+ * goes to the board (name, numbers, level, class, ability, the upgrades on
+ * it as icons). Hover or long-press still opens the full card. Short so it
+ * fits under the board on any screen; `dock.maxHeight` is the hard limit.
+ */
+function UnitInfoCompact({ unit, dock, toKnight, cap }: { unit: Unit; dock: Dock; toKnight?: number | null; cap: number }) {
+  const st = UNITS[unit.key];
+  const level = levelOf(unit.merges);
+  const icons = (unit.auraDetails ?? []).map(detailIcon).filter(Boolean).join(" ");
+  return (
+    <div className="unit-info unit-info--docked" style={dockedStyle(dock)} role="tooltip">
+      <div className="unit-info__head">
+        <strong>{displayName(unit)}</strong>
+        <span className="unit-info__stats">
+          <span className="stat stat--atk">⚔{unit.atk}</span>
+          <span className="stat stat--hp">♥{unit.maxHp}</span>
+        </span>
+      </div>
+      <div className="unit-info__base">
+        {level >= cap ? "★ MAX" : `Lv${level}`}
+        {st && ` · ${ARCHETYPES[st.archetype].icon} ${ARCHETYPES[st.archetype].name}`}
+        {st?.ability && ` · ✦ ${st.ability.name}`}
+        {toKnight != null && toKnight > 0 && ` · ⚜ ${toKnight} to Knight`}
+      </div>
+      {icons && <div className="unit-info__icons">{icons}</div>}
+    </div>
+  );
+}
+
+/**
  * Hover card for an offer: the unit's printed stats, role and innate ability,
  * so its ability is visible before it's picked. Sits above the card, centred.
  */
@@ -192,25 +247,42 @@ export function OfferInfo({
   unitKey,
   x = 0,
   y = 0,
-  dockBottom,
+  dock,
+  cap = MAX_LEVEL,
 }: {
   unitKey: string;
   x?: number;
   y?: number;
-  dockBottom?: number;
+  /** Picked up: docked clear of the board, and compact. */
+  dock?: Dock;
+  /** The match's level cap, for the Mastery line. */
+  cap?: number;
 }) {
   const u = UNITS[unitKey];
   if (!u) return null;
+  if (dock) {
+    return (
+      <div className="unit-info unit-info--docked" style={dockedStyle(dock)} role="tooltip">
+        <div className="unit-info__head">
+          <strong>{kawaiiName(unitKey, u.name)}</strong>
+          <span className="unit-info__stats">
+            <span className="stat stat--atk">⚔{u.atk}</span>
+            <span className="stat stat--hp">♥{u.maxHp}</span>
+          </span>
+        </div>
+        <div className="unit-info__base">
+          {ARCHETYPES[u.archetype].icon} {ARCHETYPES[u.archetype].name}
+          {u.ability && ` · ✦ ${u.ability.name}: ${u.ability.text}`}
+        </div>
+      </div>
+    );
+  }
   const half = 136; // half the card's width, to keep it on screen
   const left = Math.min(Math.max(x, half + 8), window.innerWidth - half - 8);
   return (
     <div
       className="unit-info unit-info--offer"
-      style={
-        dockBottom !== undefined
-          ? dockedStyle(dockBottom)
-          : { left, top: y - 10, transform: "translate(-50%, -100%)" }
-      }
+      style={{ left, top: y - 10, transform: "translate(-50%, -100%)" }}
       role="tooltip"
     >
       <div className="unit-info__head">
@@ -238,7 +310,7 @@ export function OfferInfo({
           {u.ability.scaling && <div className="unit-info__ability-scaling">↑ {u.ability.scaling}</div>}
           {u.mastery && (
             <div className="unit-info__ability-scaling">
-              ★ Level {MAX_LEVEL} (max): {u.mastery}
+              ★ Level {cap} (max): {u.mastery}
             </div>
           )}
         </div>

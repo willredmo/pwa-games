@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { DIFFICULTIES, LEVEL_CAP_OPTIONS, START_HP_MAX, START_HP_MIN, START_HP_OPTIONS, clampStartHp, type Difficulty, type MatchRules } from "../game/match";
 import type { SavedMatch } from "../game/save";
 import { DIFFICULTY_INFO } from "./Overlays";
-import { UnitPortrait } from "./UnitPortrait";
+import { TitleDuel } from "./TitleDuel";
 
 // The main menu. Everything that used to be decided inside a running match —
 // which opponent, whether a save is resumed — is decided here instead, so the
@@ -16,15 +16,6 @@ import { UnitPortrait } from "./UnitPortrait";
 // (a save, a rejoin and the tutorial all at once on a short phone).
 
 const DIFFICULTY_LABEL: Record<Difficulty, string> = { easy: "Easy", normal: "Normal", hard: "Hard" };
-
-/** The lineup under the logo: one of each class, facing each other across the middle. */
-const HERO_UNITS: { key: string; side: "player" | "enemy" }[] = [
-  { key: "guard", side: "player" },
-  { key: "striker", side: "player" },
-  { key: "herald", side: "player" },
-  { key: "berserker", side: "enemy" },
-  { key: "bulwark", side: "enemy" },
-];
 
 export interface TitleProps {
   saved: SavedMatch | null;
@@ -88,11 +79,7 @@ export function Title(props: TitleProps) {
         <h1>Duel Deck</h1>
         <p className="title__tagline">Build a row. Merge it. Outlast them.</p>
         <div className="title__lineup" aria-hidden="true">
-          {HERO_UNITS.map((u, i) => (
-            <span key={u.key} className={`title__unit title__unit--${u.side}`} style={{ "--i": i } as React.CSSProperties}>
-              <UnitPortrait unitKey={u.key} side={u.side} size={40} />
-            </span>
-          ))}
+          <TitleDuel />
         </div>
       </header>
 
