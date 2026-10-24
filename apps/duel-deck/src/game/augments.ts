@@ -410,10 +410,10 @@ export const AUGMENTS: AugmentDef[] = [
     id: "squires-drill",
     icon: "🏋️",
     name: "Squire's drill",
-    description: "+1 health to all Squires and +1 attack to all Knights.",
+    description: "+2 health to all Squires and +1 attack/+2 health to all Knights.",
     category: "class",
     units: ["squire", "knight"],
-    effect: (u) => (has(u, "squire") ? { hp: 1 } : has(u, "knight") ? { atk: 1 } : {}),
+    effect: (u) => (has(u, "squire") ? { hp: 2 } : has(u, "knight") ? { atk: 1, hp: 2 } : {}),
   },
   {
     id: "early-knighthood",
@@ -467,11 +467,11 @@ export const AUGMENTS: AugmentDef[] = [
     id: "war-chest",
     icon: "🪙",
     name: "War chest",
-    description: "Winning a round deals 6 extra damage and heals you 4 HP.",
+    description: "Winning a round deals 8 extra damage and heals you 6 HP.",
     category: "strategy",
     rarity: "rare",
-    mods: { bounty: 6 },
-    healOnWin: 4,
+    mods: { bounty: 8 },
+    healOnWin: 6,
   },
 
   // --- Epic: offered from the third upgrade round ---
@@ -700,18 +700,18 @@ export const AUGMENTS: AugmentDef[] = [
     id: "aegis",
     icon: "🔮",
     name: "Aegis",
-    description: "Wardens shield themselves with their Barrier too, so a Warden that steps up to the front is protected.",
+    description: "Wardens shield themselves with their Barrier too, so a Warden that steps up to the front is protected, and Barrier shields 2 more.",
     category: "combat",
     rarity: "rare",
-    traits: (u) => (has(u, "warden") ? { barrierSelf: true } : {}),
+    traits: (u) => (has(u, "warden") ? { barrierSelf: true, barrier: 2 } : {}),
   },
   {
     id: "devotion",
     icon: "🙏",
     name: "Devotion",
-    description: "+4 health to all Acolytes, so Lifebond gives more.",
+    description: "+6 health to all Acolytes, so Lifebond gives more.",
     category: "class",
-    effect: (u) => (has(u, "acolyte") ? { hp: 4 } : {}),
+    effect: (u) => (has(u, "acolyte") ? { hp: 6 } : {}),
   },
   {
     id: "blessing",
@@ -793,10 +793,14 @@ export const AUGMENTS: AugmentDef[] = [
     id: "twin-fangs",
     icon: "🐺",
     name: "Twin fangs",
-    description: "Strikers and Berserkers gain +1 attack for each other Striker or Berserker in your row (up to +3).",
+    description: "Strikers and Berserkers gain +1 attack and +1 health for each other Striker or Berserker in your row (up to +3).",
     category: "synergy",
     rarity: "rare",
-    effect: (u, _i, ctx) => (has(u, "aggro") ? { atk: Math.min(3, countClass(ctx.units, "aggro") - 1) } : {}),
+    effect: (u, _i, ctx) => {
+      if (!has(u, "aggro")) return {};
+      const n = Math.min(3, countClass(ctx.units, "aggro") - 1);
+      return { atk: n, hp: n };
+    },
   },
   {
     id: "sanctum",

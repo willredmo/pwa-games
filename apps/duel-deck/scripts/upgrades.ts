@@ -242,6 +242,8 @@ for (const cap of [8, 10, 12, 15]) {
   const s = setup(["striker", "striker", "berserker", "guard"], ["guard"], ["twin-fangs"]);
   const d = s.p.map((u, i) => u.atk - setup(["striker", "striker", "berserker", "guard"], ["guard"]).p[i].atk);
   check("twin-fangs", "+1 attack per other Striker/Berserker (3 of them: +2 each, Guard 0)", d.join() === "2,2,2,0", d);
+  const h = s.p.map((u, i) => u.maxHp - setup(["striker", "striker", "berserker", "guard"], ["guard"]).p[i].maxHp);
+  check("twin-fangs", "and +1 health per other", h.join() === "2,2,2,0", h);
   const five = delta(["striker", "striker", "berserker", "berserker", "striker"], ["guard"], ["twin-fangs"], 0);
   check("twin-fangs", "up to +3", five.atk === 3, five.atk);
   const one = delta(["striker", "guard"], ["guard"], ["twin-fangs"], 0);
@@ -349,7 +351,7 @@ for (const cap of [8, 10, 12, 15]) {
 {
   const sq = delta(["squire", { key: "knight", merges: KNIGHT_AT }], ["guard"], ["squires-drill"], 0);
   const kn = delta(["squire", { key: "knight", merges: KNIGHT_AT }], ["guard"], ["squires-drill"], 1);
-  check("squires-drill", "+1 health to Squires, +1 attack to Knights", sq.hp === 1 && sq.atk === 0 && kn.atk === 1 && kn.hp === 0, [sq.hp, kn.atk]);
+  check("squires-drill", "+2 health to Squires, +1/+2 to Knights", sq.hp === 2 && sq.atk === 0 && kn.atk === 1 && kn.hp === 2, [sq.hp, kn.atk, kn.hp]);
 }
 {
   const st = createAugmentState();
@@ -457,8 +459,8 @@ for (const cap of [8, 10, 12, 15]) {
 {
   const s = setup([{ key: "berserker", atk: 10 }], [{ key: "guard", atk: 0, hp: 5 }], ["war-chest"], { hp: 150 });
   const r = resolveRound(s.board);
-  check("war-chest", "a round won deals 6 extra", r.bounty === 6 && r.hpLoss === 16, [r.bounty, r.hpLoss]);
-  check("war-chest", "and heals 4", settleRound(r, PLAYER, s.pAug, s.board) === 4);
+  check("war-chest", "a round won deals 8 extra", r.bounty === 8 && r.hpLoss === 18, [r.bounty, r.hpLoss]);
+  check("war-chest", "and heals 6", settleRound(r, PLAYER, s.pAug, s.board) === 6);
 }
 {
   const full = delta(["guard", "guard", "guard", "guard", "guard"], ["guard"], ["full-ranks"], 0);
@@ -520,14 +522,14 @@ for (const cap of [8, 10, 12, 15]) {
 {
   const s = setup(["warden", "guard"], ["guard"], ["aegis"]);
   const b = buffs(resolveRound(s.board)).find((e) => e.label === "Aegis");
-  check("aegis", "a Warden at the front shields itself", b?.unit === s.p[0].id && b.shield === 4, b);
+  check("aegis", "a Warden at the front shields itself, 2 more (4 + 2)", b?.unit === s.p[0].id && b.shield === 6, b);
 }
 {
   const d = delta(["guard", "acolyte"], ["guard"], ["devotion"], 1);
-  check("devotion", "+4 health to Acolytes", d.hp === 4, d.hp);
+  check("devotion", "+6 health to Acolytes", d.hp === 6, d.hp);
   const s = setup(["guard", "acolyte"], ["guard"], ["devotion"]);
   const gift = buffs(resolveRound(s.board)).find((e) => e.label === "Lifebond" && e.unit === s.p[0].id);
-  check("devotion", "so Lifebond gives more (half of 12)", gift?.hp === 6, gift);
+  check("devotion", "so Lifebond gives more (half of 14)", gift?.hp === 7, gift);
 }
 {
   const s = setup(["guard", "acolyte"], ["guard"], ["blessing"]);

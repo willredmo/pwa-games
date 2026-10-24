@@ -337,22 +337,6 @@ const FORMATIONS: ((row: Unit[]) => Unit[])[] = [
 ];
 
 /**
- * Add a unit, Hard's way: merge into the most-merged matching unit when it
- * can (one big unit beats several medium ones), otherwise as Normal does.
- */
-function concentrate(board: Board, side: Side, key: string, state: AugmentState): boolean {
-  let best: { lane: number; spot: number; merges: number } | null = null;
-  for (let lane = 0; lane < board.lanes; lane++) {
-    board.slots[side][lane].forEach((u, spot) => {
-      if (u && canAbsorb(u.key, u.merges, key, 1, mergeCapFor(board, side)) && (!best || u.merges > best.merges)) best = { lane, spot, merges: u.merges };
-    });
-  }
-  const b = best as { lane: number; spot: number } | null;
-  if (b && upgradeUnit(board, side, b.lane, b.spot, key, mergeRatioFor(state))) return true;
-  return deployToBack(board, side, key, state);
-}
-
-/**
  * How good a candidate row is: fight it against the scouted opponent row
  * (combat is deterministic) and score the HP swing, with the row's total
  * stats as a tie-break so it still builds for later rounds.
@@ -382,10 +366,84 @@ function scoreRow(
   return score;
 }
 
+/** Hard's growth weights (tuning; the sim sets them). */
 /**
- * Hard: try every pair of offer cards, two ways of adding them and several
- * formations, simulate each against the opponent's scouted row, and keep the
- * best. Rerolls (same allowance as the player) when even the best loses.
+ * Hard's growth weights: `level` per level on the row, plus `conc` × `level` ×
+ * level² / cap per unit, so stacking levels on one unit pays. Tuned with
+ * `pnpm sim --tune-enemy=level,conc` against the previous Hard (fight score
+ * alone): 0,0 lost 32%, 4,0.5 ~50%, 12,1 60%, 20-30,1 64%.
+ */
+export const HARD_TUNING = { level: 24, conc: 1 };
+/** Rows Hard tries in every formation, after scoring all of them in one. */
+const HARD_SHORTLIST = 6;
+
+/** A row's identity for de-duplicating Hard's candidates: its units as a multiset. */
+const rowKey = (board: Board, side: Side) =>
+  sideUnits(board, side)
+    .map((u) => `${u.key}:${u.merges}:${u.baseAtk}:${u.baseMaxHp}`)
+    .sort()
+    .join(",");
+
+/**
+ * Every way Hard could add one card: the next empty slot, merged into any unit
+ * that takes it, or, with a full row and nothing to merge into, replacing a
+ * unit or leaving the pick unspent.
+ */
+function addOptions(board: Board, side: Side, key: string, state: AugmentState): Board[] {
+  const out: Board[] = [];
+  const spot = firstEmptySpot(board, side);
+  if (spot) {
+    const b = cloneBoard(board);
+    place(b, side, spot.lane, spot.spot, makeUnit(key, side));
+    out.push(b);
+  }
+  const cap = mergeCapFor(board, side);
+  const ratio = mergeRatioFor(state);
+  let merged = false;
+  for (let lane = 0; lane < board.lanes; lane++) {
+    board.slots[side][lane].forEach((u, s) => {
+      if (!u || !canAbsorb(u.key, u.merges, key, 1, cap)) return;
+      const b = cloneBoard(board);
+      if (upgradeUnit(b, side, lane, s, key, ratio)) {
+        out.push(b);
+        merged = true;
+      }
+    });
+  }
+  if (!spot && !merged) {
+    out.push(board);
+    for (let lane = 0; lane < board.lanes; lane++) {
+      board.slots[side][lane].forEach((u, s) => {
+        if (!u) return;
+        const b = cloneBoard(board);
+        if (replaceUnit(b, side, lane, s, key)) out.push(b);
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * What a row is worth beyond this round: every level counts (a replaced or
+ * unspent pick is a level thrown away), and levels count for more stacked on
+ * one unit, which reaches its Mastery and earns a slot sooner.
+ */
+function growthValue(board: Board, side: Side): number {
+  const cap = levelCapOf(board);
+  let v = 0;
+  for (const u of sideUnits(board, side)) {
+    const lv = Math.min(cap, u.merges + 1);
+    v += HARD_TUNING.level * lv + (HARD_TUNING.conc * HARD_TUNING.level * lv * lv) / cap;
+  }
+  return v;
+}
+
+/**
+ * Hard: every pair of offer cards, each added every way it can be (any merge
+ * target, an empty slot, a replacement), in several formations; each row is
+ * fought against the opponent's scouted row and a prediction of its picks,
+ * and valued for growth as well as the fight. Rerolls (same allowance as the
+ * player) when the best line still loses.
  */
 function hardCommit(
   board: Board,
@@ -394,39 +452,50 @@ function hardCommit(
   oppAug: AugmentState,
   scout: Board,
 ): string[] {
-  // The scouted row is the opponent's at the start of the round; by the fight
-  // it has two more picks. Predict them the way Normal would (no hidden
-  // information: a guess from the same visible row, on cards Hard rolls itself)
-  // and score each candidate against both rows. Sim: Hard beats Normal 68%,
-  // up from 55-60% scoring against the start-of-round row alone.
   const opp: Side = side === PLAYER ? ENEMY : PLAYER;
   const predicted = cloneBoard(scout);
   aiCommit(predicted, opp, oppAug, { difficulty: "normal" });
+  const fightOf = (row: Board) =>
+    (scoreRow(row, side, state, oppAug, scout) + scoreRow(row, side, state, oppAug, predicted)) / 2;
   const search = (offer: string[]) => {
-    let best: { score: number; board: Board; picked: string[] } | null = null;
+    // Every distinct row the picks can make, scored in the default formation;
+    // the best few are then tried in every formation.
+    const rows: { score: number; cand: Board; growth: number; picked: string[] }[] = [];
+    const seen = new Set<string>();
     for (let i = 0; i < offer.length; i++) {
       for (let j = 0; j < offer.length; j++) {
         if (i === j) continue;
-        for (const add of [deployToBack, concentrate]) {
-          const cand = cloneBoard(board);
-          const picked: string[] = [];
-          for (const k of [offer[i], offer[j]]) {
-            if (add(cand, side, k, state as AugmentState)) picked.push(k);
-          }
-          for (const formation of FORMATIONS) {
+        for (const first of addOptions(board, side, offer[i], state)) {
+          for (const cand of addOptions(first, side, offer[j], state)) {
+            const k = rowKey(cand, side);
+            if (seen.has(k)) continue;
+            seen.add(k);
+            const picked = [first !== board ? offer[i] : null, cand !== first ? offer[j] : null].filter(
+              (x): x is string => !!x,
+            );
+            const growth = growthValue(cand, side);
             const arranged = cloneBoard(cand);
-            arrange(arranged, side, formation);
-            const score =
-              (scoreRow(arranged, side, state, oppAug, scout) + scoreRow(arranged, side, state, oppAug, predicted)) / 2;
-            if (!best || score > best.score) best = { score, board: arranged, picked };
+            arrange(arranged, side, FORMATIONS[0]);
+            rows.push({ score: fightOf(arranged) + growth, cand, growth, picked });
           }
         }
+      }
+    }
+    rows.sort((a, b) => b.score - a.score);
+    let best: { score: number; fight: number; board: Board; picked: string[] } | null = null;
+    for (const r of rows.slice(0, HARD_SHORTLIST)) {
+      for (const formation of FORMATIONS) {
+        const arranged = cloneBoard(r.cand);
+        arrange(arranged, side, formation);
+        const fight = fightOf(arranged);
+        const score = fight + r.growth;
+        if (!best || score > best.score) best = { score, fight, board: arranged, picked: r.picked };
       }
     }
     return best;
   };
   let best = search(rollOffer(OFFER_COUNT, state));
-  for (let left = unitRerollsFor(state); left > 0 && best && best.score < 0; left--) {
+  for (let left = unitRerollsFor(state); left > 0 && best && best.fight < 0; left--) {
     const next = search(rollOffer(OFFER_COUNT, state));
     if (next && next.score > best.score) best = next;
   }
@@ -518,7 +587,7 @@ const AUGMENT_SCORE: Record<string, number> = {
   champion: 49,
   bastion: 50,
   bloodthirst: 50,
-  "war-chest": 47,
+  "war-chest": 50,
   unbreakable: 47,
   spearwall: 46,
   "knights-oath": 56,

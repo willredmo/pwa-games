@@ -1,6 +1,6 @@
 // Headless AI-vs-AI balance sim for Duel Deck, mirroring the app's round flow.
 // Usage: pnpm sim [matches=5000] [--draw=none|more-damage|both] [--cap=300] [--aug=ai|random] [--hp=N]
-//                 [--player=easy|normal|hard] [--enemy=easy|normal|hard]
+//                 [--player=easy|normal|hard] [--enemy=easy|normal|hard] [--tune-player=level,conc] [--tune-enemy=…]
 //
 // --player / --enemy set each side's AI difficulty (default normal), so
 // `--enemy=hard` reports how often a Normal AI beats a Hard one.
@@ -13,7 +13,7 @@ import { capacityOf, cloneBoard, sideUnits } from "../src/engine/board";
 import { resolveRound } from "../src/engine/combat";
 import { synergyOf } from "../src/engine/units";
 import type { Side } from "../src/engine/types";
-import { newBoard, aiCommit, drillFor, PICK_COUNT, type Difficulty, aiPickAugment, aiTakeAugment, isAugmentRound, refreshForRound, upgradeTier, augmentOfferCount } from "../src/game/match";
+import { newBoard, aiCommit, HARD_TUNING, drillFor, PICK_COUNT, type Difficulty, aiPickAugment, aiTakeAugment, isAugmentRound, refreshForRound, upgradeTier, augmentOfferCount } from "../src/game/match";
 import { createAugmentState, offerAugments, takeAugment, OFFERED_AUGMENTS as AUGMENTS } from "../src/game/augments";
 import { settleRound } from "../src/game/roundEnd";
 
@@ -30,6 +30,17 @@ const diff: Record<Side, Difficulty> = {
   player: (flag("player") ?? "normal") as Difficulty,
   enemy: (flag("enemy") ?? "normal") as Difficulty,
 };
+// --tune-player=level,conc / --tune-enemy=…: Hard's growth weights per side.
+const tune = (s: Side) => {
+  const t = flag(`tune-${s}`)?.split(",").map(Number);
+  return { level: t?.[0] ?? HARD_TUNING.level, conc: t?.[1] ?? HARD_TUNING.conc };
+};
+const tunings = { player: tune("player"), enemy: tune("enemy") };
+const commit = (b: Parameters<typeof aiCommit>[0], s: Side, opts: Parameters<typeof aiCommit>[3]) => {
+  Object.assign(HARD_TUNING, tunings[s]);
+  return aiCommit(b, s, aug[s], opts);
+};
+let aug: Record<Side, ReturnType<typeof createAugmentState>>;
 if (!["ai", "random"].includes(augMode)) throw new Error(`bad --aug=${augMode}`);
 const pickAug = <T>(opts: T[]): T | null =>
   augMode === "random"
@@ -57,7 +68,7 @@ for (const a of AUGMENTS) augWin[a.id] = [0, 0];
 for (let i = 0; i < N; i++) {
   let board = newBoard();
   if (startHp) board.hp = { player: startHp, enemy: startHp };
-  const aug = { player: createAugmentState(), enemy: createAugmentState() };
+  aug = { player: createAugmentState(), enemy: createAugmentState() };
   let winner: Side | null = null, r = 0;
   const lastSyn: Record<Side, string | null> = { player: null, enemy: null };
   while (r < CAP) {
@@ -73,8 +84,8 @@ for (let i = 0; i < N; i++) {
     }
     // Hard scouts the rows as they stood before either side picked.
     const scout = cloneBoard(c);
-    const pp = aiCommit(c, "player", aug.player, { difficulty: diff.player, oppAug: aug.enemy, scout });
-    const ep = aiCommit(c, "enemy", aug.enemy, { difficulty: diff.enemy, oppAug: aug.player, scout });
+    const pp = commit(c, "player", { difficulty: diff.player, oppAug: aug.enemy, scout });
+    const ep = commit(c, "enemy", { difficulty: diff.enemy, oppAug: aug.player, scout });
     // Drill: a maxed row's unspent picks, this round only (as in the app).
     aug.player.drill = drillFor(c, "player", PICK_COUNT - pp.length);
     aug.enemy.drill = drillFor(c, "enemy", PICK_COUNT - ep.length);

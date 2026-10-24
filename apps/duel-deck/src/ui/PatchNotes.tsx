@@ -10,6 +10,18 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.7.6",
+    date: "Oct 23, 2026",
+    notes: [
+      "The Hard CPU plays much better: it builds toward maxed units instead of only winning this round, and never throws away a pick. In testing it beats the old Hard about 2 games in 3.",
+      "Aegis: Wardens' Barrier also shields 2 more.",
+      "Devotion: Acolytes get +6 health (was +4).",
+      "Twin fangs: Strikers and Berserkers also get +1 health for each other one.",
+      "War chest: winning a round deals 8 extra damage and heals 6 (was 6 and 4).",
+      "Squire's drill: Squires +2 health, Knights +1 attack and +2 health.",
+    ],
+  },
+  {
     version: "1.7.5",
     date: "Oct 23, 2026",
     notes: [

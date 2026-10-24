@@ -621,6 +621,20 @@ cloned every round (the respawn snapshot), so from round 2 every match fell
 back to cap 10: at cap 8 units never mastered, at 12/15 they mastered and
 stopped at 10. Any new `Board` field must be added to `cloneBoard`.
 
+### Upgrade buffs (2026-10-23, telemetry 1.7.x + sim)
+Upgrades both the sim and real picks (18 matches on 1.7) left for dead,
+buffed: **Aegis** (sim 43%, taken 0 of 7) also +2 Barrier; **Devotion**
+(46%, 1 of 12) +6 health (was +4); **Twin fangs** (44%, 0 of 3) +1 health
+per other Striker/Berserker as well as attack; **War chest** (46.5%, 1 of 9)
+8 damage / heal 6 (was 6 / 4); **Squire's drill** (43.5%, 0 of 3) Squires
++2 health, Knights +1/+2 (was +1 health / +1 attack). Sim after (12000,
+`--aug=random`): War chest 49.8%, Aegis 46.0%, Twin fangs 46.2%, Devotion
+46.4%, Squire's drill 43.9% — the unit upgrades still under-read because the
+CPU doesn't build around them. Left alone: Bloodpact 59.6%, United front
+58.7%, Overwhelm 56.5% (sim-high but rarely taken for real); Knight 63.6%
+and Medic 41.9% as units (real players field Medics and Beacons a lot and
+win, so their low sim rate is likely the CPU's play).
+
 ### Upgrade check (`pnpm upgrades`, scripts/upgrades.ts)
 One small scenario per offered upgrade, through the real engine
 (`refreshForRound`, `resolveRound`, `settleRound`), asserting what its
@@ -640,7 +654,7 @@ netcheck after any change to upgrades or the engine. The first run
 - the info card wrote nothing for upgrades that only add to an ability
   (Skewer, Stimulant, Blessing, Banner of hope): `describeTraits` has lines
   for those now.
-`PROTOCOL` 11.
+`PROTOCOL` 11 (12 with the 2026-10-23 upgrade buffs).
 
 ### Third-wave upgrades (one or two for every unit)
 Lancer, the four supports and the Skirmisher had no upgrades built around
@@ -814,17 +828,35 @@ screen); the ☰ menu just shows it. The last choice is remembered
 (`duel-deck:difficulty`) and marked `last pick` next time. `aiCommit(..., { difficulty, oppAug, scout })`:
 - **Easy** — two random cards, no rerolls, no arranging; random upgrade.
 - **Normal** — the value-table AI described above.
-- **Hard** — searches every ordered pair of offer cards × two ways of adding
-  (fill-first, or merge into its most-merged match) × four formations,
-  simulates each with `resolveRound` against `scout` (your row as it stood at
-  the start of the round — never this round's picks) and keeps the best. It
-  rerolls when even the best line loses, and gets one extra upgrade reroll
-  with a higher reroll bar.
+- **Hard** — searches every ordered pair of offer cards × every way of adding
+  each (the next empty slot, merged into *any* unit that takes it, or with a
+  full row a replacement or an unspent pick), de-duplicated by the row it
+  makes. Each row is fought with `resolveRound` against `scout` (your row as
+  it stood at the start of the round — never this round's picks) in the
+  default formation; the best `HARD_SHORTLIST` (6) are tried in every
+  formation. Score = the fight plus `growthValue`: `HARD_TUNING.level` (24)
+  per level on the row and `conc` × that × level²/cap per unit, so a
+  replaced or unspent pick costs a level and stacking one unit toward its
+  Mastery pays. It rerolls when even the best line loses the fight, and gets
+  one extra upgrade reroll with a higher reroll bar.
 Hard also predicts the opponent's two picks this round (Normal's logic run on
 the scouted row, with cards it rolls itself: no hidden information) and scores
 each candidate against both the scouted and the predicted row. Without that it
 had slipped to 55-60% as units gained mid-round abilities and Normal improved.
 Sim (`--player=` / `--enemy=`, 2026-10-08): Normal beats Easy ~94%; Hard beats Normal ~68%.
+
+**Growth-aware Hard (2026-10-23).** Real players beat Hard ~85% (44 of 56
+telemetry matches since 1.3, nearly all one device). Their rows grew faster:
+the human's summed unit levels gained ~6 per 3 rounds (every pick used),
+Hard's ~4.5 — it replaced units and merged wherever this round's fight
+looked best, since that fight was all it scored — and the human's top unit
+was ~1.5 levels higher from round 6 on. Hard now values growth (above).
+Tuned against the previous Hard (800 games each, `--tune-enemy=level,conc`):
+the fuller search with no growth term lost 68–32; 4,0.5 broke even; 12,1
+won 60%; 20,1 to 30,1 64%. Shipped 24,1: beats the old Hard 64%, Normal 86%
+(was 75% under the same sim). Two extra unit rerolls for Hard added ~3%
+(noise), so it plays with the player's allowance. Its search takes ~12 ms
+a round on a desktop (node), once per round at Battle.
 
 ### Screens: App owns the match, Game plays it
 `App.tsx` is the shell — title screen, settings, the saved match, the online
@@ -969,6 +1001,13 @@ and `note` to the report; `--reopen=<id>` clears them. The CLI bypasses the
 rules, and clients can't write those fields (`$other` is rejected), so only
 this script closes a report. `--remove=<id>` is for spam only.
 
+**Web view:** `pnpm feedback:ui` (scripts/feedback-ui.ts, launch config
+`duel-deck-feedback`) serves the same on http://localhost:5180: Open / Closed
+and bug / idea filters, screenshots inline, and Fixed / Won't fix / Reopen /
+Remove buttons. It reads the database once per page load (no polling; Refresh
+reloads). Both scripts share `scripts/feedbackDb.ts`. Actions take a JSON POST
+from the page's own origin only, so another site can't close reports.
+
 **Who sent it:** `c`, the sender's device id (`clientId()`, random per
 browser/install, the same id telemetry's `meta.c` records), shown as a short
 label (#1 is the first device to report) with its report count, plus the
@@ -1088,7 +1127,7 @@ restored ids; without that, new units would alias restored ones (ids key drags,
 playback and augment grants).
 
 ### Balance simulation
-`pnpm sim [matches] [--draw=…] [--cap=…] [--player=…] [--enemy=…]` (`scripts/sim.ts`) plays AI-vs-AI
+`pnpm sim [matches] [--draw=…] [--cap=…] [--player=…] [--enemy=…] [--tune-enemy=level,conc]` (`scripts/sim.ts`) plays AI-vs-AI
 matches headlessly through the real engine and reports match length, draw rate
 and damage by round, and per-augment holder win rate. It's how the merge
 question was settled: merging first beats placing ~59% of the time, because one
