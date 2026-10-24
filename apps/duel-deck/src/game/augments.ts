@@ -1,5 +1,7 @@
 import type { Archetype, AuraDetail, SideMods, Side, Unit, UnitTraits } from "../engine/types";
 import { KNIGHT_LEVEL, MAX_LEVEL, SYNERGIES, UNITS, UNIT_KEYS, innateTraits } from "../engine/units";
+import { firstEmptySpot, makeUnit, mergeCapFor, mergeGain, place, sideUnits } from "../engine/board";
+import type { Board } from "../engine/types";
 
 // Persistent upgrades ("augments") — the tracker doc's separate offer track.
 //
@@ -14,11 +16,44 @@ import { KNIGHT_LEVEL, MAX_LEVEL, SYNERGIES, UNITS, UNIT_KEYS, innateTraits } fr
 // every round via `applyAugments`, rather than mutated into the units once.
 
 /**
- * How deep into a match an augment can be offered. Commons from the first
- * upgrade round, rares from the second, epics from the third (RARITY_UNLOCK).
+ * Silver, gold, prismatic (as in League's ARAM Mayhem). Each upgrade choice
+ * deals cards of one rarity, the same for both players: `rollRarity` draws it
+ * from a seed both sides share, with fixed odds (`RARITY_ODDS`).
  */
-export type Rarity = "common" | "rare" | "epic";
-export const RARITY_UNLOCK: Record<Rarity, number> = { common: 1, rare: 2, epic: 3 };
+export type Rarity = "silver" | "gold" | "prismatic";
+export const RARITIES: Rarity[] = ["silver", "gold", "prismatic"];
+/**
+ * Chance of each rarity [silver, gold, prismatic] at every upgrade choice,
+ * the same all match (the user's call; they used to climb from 75/25/0).
+ */
+export const RARITY_ODDS: [number, number, number] = [0.5, 0.35, 0.15];
+
+/** A string hashed to [0, 1): FNV-1a, so both devices agree. */
+function hash01(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0) / 0x100000000;
+}
+
+/**
+ * This choice's rarity for both players: `seed` is shared (the room for an
+ * online duel, the saved match against the CPU), `tier` is which upgrade
+ * choice this is (1 = the first), so each choice rolls afresh.
+ */
+export function rollRarity(seed: string, tier: number): Rarity {
+  let r = hash01(`${seed}:${tier}`);
+  for (let i = 0; i < RARITIES.length; i++) {
+    r -= RARITY_ODDS[i];
+    if (r < 0) return RARITIES[i];
+  }
+  return "silver";
+}
+
+/** A fresh seed for a CPU match's upgrade rarities. */
+export const newUpgradeSeed = () => Math.random().toString(36).slice(2, 10);
 
 export type AugmentCategory = "class" | "global" | "synergy" | "combat" | "strategy";
 
@@ -66,8 +101,21 @@ export interface AugmentDef {
   traits?: (unit: Unit, index: number, ctx: AugmentContext) => UnitTraits;
   /** Side-wide modifiers while held (see `sideModsFor`). */
   mods?: SideMods;
-  /** Absent = common. Gates which upgrade round can offer it. */
+  /** Absent = silver. Each upgrade choice deals one rarity. */
   rarity?: Rarity;
+  /**
+   * Choose-a-unit upgrades: taking one asks for one of your units, which it
+   * changes once, at pick time (`applyTarget`). `can` says which units it
+   * may land on; it's only offered while at least one can.
+   */
+  target?: {
+    can: (unit: Unit, board: Board, side: Side) => boolean;
+    apply: (unit: Unit, ctx: TargetContext) => void;
+    /** The AI's choice among the units it can land on (highest wins). */
+    aiScore: (unit: Unit, board: Board, side: Side) => number;
+    /** What the unit-choice step says it does, e.g. "gains 3 levels". */
+    verb: string;
+  };
   /** Pool HP restored each round this side wins (see `settleRound`). */
   healOnWin?: number;
   /**
@@ -98,42 +146,11 @@ export interface AugmentState {
   /** One-time grants baked onto specific units (e.g. Last Stand). */
   grants: Record<string, Grant>; // unitId -> delta
   /**
-   * Upgrades frozen at a previous choice (up to MAX_FROZEN_AUGMENTS): offered
-   * first at the next one (if still not held), and kept frozen until taken or
-   * unfrozen. Player-only. A plain string in saves from before multi-freeze;
-   * read it through rozenAugments.
-   */
-  frozen?: string[] | string;
-  /**
    * Drill: attack every unit gets this round, one per pick left unspent while
    * the whole row is at its level cap (`drillFor` in match.ts). Set at commit,
    * cleared when the next round starts, and sent with the online commit.
    */
   drill?: number;
-}
-
-/** Most upgrades frozen at once: all of a 3-card hand would skip the rarity ladder. */
-export const MAX_FROZEN_AUGMENTS = 2;
-
-/** The frozen upgrade ids, whatever shape the save stored them in. */
-export function frozenAugments(state: AugmentState): string[] {
-  const f = state.frozen;
-  return !f ? [] : typeof f === "string" ? [f] : f;
-}
-
-/**
- * Freeze or unfreeze id. Returns false (and changes nothing) when freezing
- * would go past MAX_FROZEN_AUGMENTS.
- */
-export function toggleFrozenAugment(state: AugmentState, id: string): boolean {
-  const cur = frozenAugments(state);
-  if (cur.includes(id)) {
-    state.frozen = cur.filter((x) => x !== id);
-    return true;
-  }
-  if (cur.length >= MAX_FROZEN_AUGMENTS) return false;
-  state.frozen = [...cur, id];
-  return true;
 }
 
 /**
@@ -144,6 +161,49 @@ export function toggleFrozenAugment(state: AugmentState, id: string): boolean {
 export interface Grant extends Delta {
   from: string[];
 }
+
+/** What a choose-a-unit upgrade may change when it lands. */
+export interface TargetContext {
+  state: AugmentState;
+  board: Board;
+  side: Side;
+  id: string;
+}
+
+/** Pin a permanent stat bonus on one unit, crediting `id` (see `Grant`). */
+function grant(state: AugmentState, unit: Unit, id: string, d: Delta): void {
+  const prev = state.grants[unit.id] ?? { from: [] };
+  state.grants[unit.id] = {
+    ...prev,
+    atk: (prev.atk ?? 0) + (d.atk ?? 0),
+    hp: (prev.hp ?? 0) + (d.hp ?? 0),
+    from: prev.from.includes(id) ? prev.from : [...prev.from, id],
+  };
+}
+
+/**
+ * Give a unit up to `n` levels, each as if a copy of itself were merged in
+ * (a Knight takes them as Squire merges, as its offers would), stopping at the
+ * level cap. Returns the levels given.
+ */
+export function levelUp(unit: Unit, n: number, ctx: TargetContext): number {
+  const cap = mergeCapFor(ctx.board, ctx.side);
+  const ratio = mergeRatioFor(ctx.state);
+  let given = 0;
+  while (given < n && unit.merges < cap) {
+    const gain = mergeGain(unit.key === "knight" ? "squire" : unit.key, ratio, unit.merges);
+    unit.baseAtk += gain.atk;
+    unit.baseMaxHp += gain.hp;
+    unit.merges++;
+    given++;
+  }
+  return given;
+}
+
+const belowCap = (u: Unit, board: Board, side: Side) => u.merges < mergeCapFor(board, side);
+const isSupport = (u: Unit) => UNITS[u.key]?.archetype === "support";
+/** Attack x health: the AI's sense of how much a unit fights. */
+const power = (u: Unit) => Math.max(1, u.baseAtk) * u.baseMaxHp;
 
 export function createAugmentState(): AugmentState {
   return { active: [], momentum: 0, rally: 0, kills: 0, grants: {} };
@@ -217,7 +277,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Battle fury",
     description: "+1 attack to every unit on your board.",
     category: "global",
-    rarity: "rare",
+    rarity: "gold",
     effect: () => ({ atk: 1 }),
   },
   {
@@ -243,6 +303,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Momentum",
     description: "For every 3 rounds your board wins, all units gain +1 attack. Stacks.",
     category: "global",
+    rarity: "gold",
     effect: (_u, _i, ctx) => ({ atk: Math.floor(ctx.momentum / 3) }),
   },
   {
@@ -251,6 +312,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Desperate measures",
     description: "While your HP is below half of what you started with (100 of 200), all units gain +2 attack.",
     category: "global",
+    rarity: "gold",
     effect: (_u, _i, ctx) => (ctx.ownHp < ctx.startHp * 0.5 ? { atk: 2 } : {}),
   },
   {
@@ -259,7 +321,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "United front",
     description: "+1 health to all units for every 2 units on your board (rounded down).",
     category: "global",
-    rarity: "rare",
+    rarity: "prismatic",
     effect: (_u, _i, ctx) => ({ hp: Math.floor(ctx.units.length / 2) }),
   },
   {
@@ -268,7 +330,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Overwhelm",
     description: "+1 attack to all units for every 3 enemy units you killed last round.",
     category: "global",
-    rarity: "rare",
+    rarity: "prismatic",
     effect: (_u, _i, ctx) => ({ atk: Math.floor(ctx.kills / 3) }),
   },
   {
@@ -277,7 +339,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Bloodpact",
     description: "All units gain +2 attack, but you lose 40% of your starting HP (80 of 200).",
     category: "global",
-    rarity: "rare",
+    rarity: "prismatic",
     effect: () => ({ atk: 2 }),
     hpCostShare: 0.4,
   },
@@ -317,12 +379,12 @@ export const AUGMENTS: AugmentDef[] = [
     icon: "🎲",
     name: "Mixed formation",
     // 5 types, not 4: with nine offered types 4 came too easily (54.7%).
-    description: "+1 attack/+1 health to all units, if you have 5+ unit types.",
+    description: "+2 attack/+2 health to all units, if you have 5+ unit types.",
     category: "synergy",
-    rarity: "rare",
+    rarity: "prismatic",
     effect: (_u, _i, ctx) => {
       const types = new Set(ctx.units.map((x) => x.key));
-      return types.size >= 5 ? { atk: 1, hp: 1 } : {};
+      return types.size >= 5 ? { atk: 2, hp: 2 } : {};
     },
   },
   {
@@ -361,6 +423,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Thorns",
     description: "Guards and Bulwarks reflect 2 damage to whoever hits them.",
     category: "combat",
+    rarity: "gold",
     traits: (u) => (has(u, "tank") ? { thorns: 2 } : {}),
   },
   {
@@ -441,7 +504,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Bastion",
     description: "Guards, Bulwarks, Knights and Sentinels take 1 less damage per hit.",
     category: "combat",
-    rarity: "rare",
+    rarity: "gold",
     units: ["guard", "bulwark", "knight", "sentinel"],
     traits: (u) => (has(u, "tank") || has(u, "knight") || has(u, "sentinel") ? { damageReduction: 1 } : {}),
   },
@@ -451,7 +514,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Bloodthirst",
     description: "Strikers and Berserkers heal for half the damage they deal.",
     category: "combat",
-    rarity: "rare",
+    rarity: "gold",
     traits: (u) => (has(u, "aggro") ? { lifesteal: 0.5 } : {}),
   },
   {
@@ -460,7 +523,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Spearwall",
     description: "The unit leading your row when the round starts reflects 3 damage when hit and takes 1 less damage per hit.",
     category: "combat",
-    rarity: "rare",
+    rarity: "gold",
     traits: (_u, i) => (i === 0 ? { thorns: 3, damageReduction: 1 } : {}),
   },
   {
@@ -469,7 +532,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "War chest",
     description: "Winning a round deals 8 extra damage and heals you 6 HP.",
     category: "strategy",
-    rarity: "rare",
+    rarity: "gold",
     mods: { bounty: 8 },
     healOnWin: 6,
   },
@@ -479,12 +542,13 @@ export const AUGMENTS: AugmentDef[] = [
     id: "legion",
     icon: "🦅",
     name: "Legion",
-    description: "+1 attack and +1 health to every unit of your row's most common class (Attack, Defense or Support; a tie goes to your front unit's).",
+    description: "+1 attack and +1 health to every unit.",
     category: "global",
-    rarity: "epic",
-    // Was every unit: 58% in the sim and 83% for real players (n=40), the
-    // most taken upgrade. Now it rewards a focused row.
-    effect: (u, _i, ctx) => (UNITS[u.key]?.archetype === legionClass(ctx.units) ? { atk: 1, hp: 1 } : {}),
+    rarity: "prismatic",
+    // Every unit again (1.8.0, the user's call). From 1.6 to 1.7 it was only
+    // the row's most common class, after every unit measured 58% (as a
+    // common) and 83% for real players.
+    effect: () => ({ atk: 1, hp: 1 }),
   },
   {
     id: "champion",
@@ -492,7 +556,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Champion",
     description: "The unit leading your row when each round starts gains +3 attack and +5 health.",
     category: "global",
-    rarity: "epic",
+    rarity: "prismatic",
     // No first strike: on the front unit it decided nearly every match (88%).
     effect: (_u, i) => (i === 0 ? { atk: 3, hp: 5 } : {}),
   },
@@ -502,7 +566,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Unbreakable",
     description: "Every unit has at least 1 armour (takes 1 less damage per hit). Doesn't add to armour a unit already has.",
     category: "combat",
-    rarity: "epic",
+    rarity: "prismatic",
     // Was +1 armour on top of everything: Knight + Bastion + Unbreakable took
     // 3 less per hit (real players 86%, n=35). Now a floor.
     traits: () => ({ minArmour: 1 }),
@@ -575,6 +639,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Full ranks",
     description: "If every slot in your row is filled when the round starts, all units gain +1 attack.",
     category: "global",
+    rarity: "gold",
     effect: (_u, _i, ctx) => (ctx.units.length >= ctx.capacity ? { atk: 1 } : {}),
   },
   {
@@ -583,7 +648,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Tactician",
     description: "Upgrade choices show 4 options instead of 3.",
     category: "strategy",
-    rarity: "rare",
+    rarity: "gold",
   },
   {
     id: "last-light",
@@ -591,7 +656,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Last light",
     description: "When only one of your units is left standing, it gains +2 attack for every ally that fell this round.",
     category: "combat",
-    rarity: "rare",
+    rarity: "gold",
     mods: { lastLight: 2 },
   },
   {
@@ -600,7 +665,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Sabotage",
     description: "The enemy's front unit loses 4 attack at the start of each round.",
     category: "strategy",
-    rarity: "epic",
+    rarity: "prismatic",
   },
   {
     // The one-unit build: everything goes into a single unit with no level
@@ -613,7 +678,7 @@ export const AUGMENTS: AugmentDef[] = [
     description:
       "Your row holds one unit: your strongest fighter (attack × health; a support unit only if there's nothing else) stays and the rest leave. It has no level cap, and every unit you pick merges into it.",
     category: "strategy",
-    rarity: "epic",
+    rarity: "prismatic",
     mods: { capacity: 1, uncapped: true },
     // Retired 2026-10-16 until it's had more testing.
     retired: true,
@@ -629,7 +694,7 @@ export const AUGMENTS: AugmentDef[] = [
     units: ["bulwark"],
     description: "Bulwarks' Fortify works even if the Bulwark falls, so every Bulwark hardens every round.",
     category: "class",
-    rarity: "epic",
+    rarity: "prismatic",
   },
   // --- Third wave: an upgrade or two for every unit (2026-10-14) ---
   // Lancer, the four supports and the Skirmisher had none built around them.
@@ -649,7 +714,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Skewer",
     description: "Lancers' Impale reaches one unit deeper.",
     category: "combat",
-    rarity: "rare",
+    rarity: "gold",
     traits: (u) => (has(u, "lancer") ? { pierceDeeper: 1 } : {}),
   },
   {
@@ -666,7 +731,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Banner of hope",
     description: "Heralds' Rally also gives the unit it lands on that much health.",
     category: "class",
-    rarity: "rare",
+    rarity: "gold",
     units: ["herald"],
     // Applied after every upgrade (`applyAugments`), so "that much" is the
     // whole Rally: War horn's +3 and the match's level cap included.
@@ -685,7 +750,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Stimulant",
     description: "Each time a Medic mends, the unit it heals also gains +2 attack for the round.",
     category: "combat",
-    rarity: "rare",
+    rarity: "gold",
     traits: (u) => (has(u, "medic") ? { mendAtk: 2 } : {}),
   },
   {
@@ -702,7 +767,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Aegis",
     description: "Wardens shield themselves with their Barrier too, so a Warden that steps up to the front is protected, and Barrier shields 2 more.",
     category: "combat",
-    rarity: "rare",
+    rarity: "gold",
     traits: (u) => (has(u, "warden") ? { barrierSelf: true, barrier: 2 } : {}),
   },
   {
@@ -719,7 +784,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Blessing",
     description: "Acolytes' Lifebond also gives the unit it lands on +3 attack.",
     category: "class",
-    rarity: "rare",
+    rarity: "gold",
     traits: (u) => (has(u, "acolyte") ? { lifebondAtk: 3 } : {}),
   },
   {
@@ -738,7 +803,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Choir",
     description: "+1 attack and +3 health to all Support units (Herald, Medic, Warden, Acolyte, Beacon).",
     category: "class",
-    rarity: "rare",
+    rarity: "gold",
     effect: (u) => (has(u, "support") ? { atk: 1, hp: 3 } : {}),
   },
 
@@ -776,7 +841,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Phalanx",
     description: "The first two units in your row take 1 less damage per hit.",
     category: "combat",
-    rarity: "rare",
+    rarity: "gold",
     traits: (_u, i) => (i < 2 ? { damageReduction: 1 } : {}),
   },
   {
@@ -785,7 +850,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Undying",
     description: "The unit at the back of your row survives the first blow that would kill it each round, on 1 health.",
     category: "combat",
-    rarity: "rare",
+    rarity: "gold",
     // On the front unit it measured 61%: an extra life every round where it matters most.
     traits: (_u, i, ctx) => (i === ctx.units.length - 1 ? { endure: true } : {}),
   },
@@ -795,7 +860,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Twin fangs",
     description: "Strikers and Berserkers gain +1 attack and +1 health for each other Striker or Berserker in your row (up to +3).",
     category: "synergy",
-    rarity: "rare",
+    rarity: "gold",
     effect: (u, _i, ctx) => {
       if (!has(u, "aggro")) return {};
       const n = Math.min(3, countClass(ctx.units, "aggro") - 1);
@@ -808,7 +873,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Sanctum",
     description: "Every support ability counts twice (Rally, Mend, Barrier, Lifebond), as if your row were all Support. Doesn't stack with that bonus.",
     category: "synergy",
-    rarity: "epic",
+    rarity: "prismatic",
     units: ["herald", "medic", "warden", "acolyte"],
   },
   {
@@ -817,7 +882,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Iron curtain",
     description: "Every unit starts each round with a shield of a tenth of its health (at least 2), so it keeps up as your units grow.",
     category: "combat",
-    rarity: "epic",
+    rarity: "prismatic",
     // A flat 3 was worth a lot at level 1 and nothing at level 10; a quarter
     // of health measured 71% (sim, --aug=random), an eighth 59-60%.
     traits: (u) => ({ shield: Math.max(2, Math.ceil(u.baseMaxHp / 10)) }),
@@ -828,7 +893,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Colossus",
     description: "Your highest-level unit (the front-most on a tie) gains +3 attack and +6 health.",
     category: "global",
-    rarity: "epic",
+    rarity: "prismatic",
     // +4/+8 measured 58%.
     effect: (u, _i, ctx) => (u === colossusOf(ctx.units) ? { atk: 3, hp: 6 } : {}),
   },
@@ -838,9 +903,308 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Warlord",
     description: "Every unit gains +1 attack for every 4 upgrades you hold, this one included (up to +2).",
     category: "global",
-    rarity: "epic",
+    rarity: "prismatic",
     // Per 2 up to +3 measured 68%; per 3 up to +2, 60-61%.
     effect: (_u, _i, ctx) => ({ atk: Math.min(2, Math.floor(ctx.upgrades / 4)) }),
+  },
+  {
+    id: "golden-age",
+    icon: "🌅",
+    name: "Golden age",
+    description: "+1 attack and +4 health to all your units.",
+    category: "global",
+    rarity: "prismatic",
+    // +2/+4 measured 65% among prismatics.
+    effect: () => ({ atk: 1, hp: 4 }),
+  },
+
+  // --- 1.8.0: gold and prismatic brought up to silver's numbers ---
+  {
+    id: "bloodbond",
+    icon: "🧛",
+    name: "Bloodbond",
+    description: "The unit leading your row when the round starts heals for half the damage it deals.",
+    category: "combat",
+    rarity: "gold",
+    traits: (_u, i) => (i === 0 ? { lifesteal: 0.5 } : {}),
+  },
+  {
+    id: "spiked-line",
+    icon: "🦔",
+    name: "Spiked line",
+    description: "Every unit reflects 1 damage to whoever hits it.",
+    category: "combat",
+    rarity: "gold",
+    traits: () => ({ thorns: 1 }),
+  },
+  {
+    id: "opening-salvo",
+    icon: "💥",
+    name: "Opening salvo",
+    description: "Every unit's first attack each round deals +3 damage.",
+    category: "combat",
+    rarity: "gold",
+    traits: () => ({ openingBonus: 3 }),
+  },
+  {
+    id: "rear-guard",
+    icon: "🐢",
+    name: "Rear guard",
+    description: "The unit at the back of your row gains +4 attack and +8 health.",
+    category: "global",
+    rarity: "gold",
+    effect: (_u, i, ctx) => (i === ctx.units.length - 1 ? { atk: 4, hp: 8 } : {}),
+  },
+  {
+    id: "second-line",
+    icon: "🥈",
+    name: "Second line",
+    description: "The second unit in your row gains +3 attack and +6 health.",
+    category: "global",
+    rarity: "gold",
+    effect: (_u, i) => (i === 1 ? { atk: 3, hp: 6 } : {}),
+  },
+  {
+    id: "mantis-shrimp",
+    icon: "🦐",
+    name: "Mantis shrimp",
+    description:
+      "The unit leading your row when the round starts punches first in the round's opening exchange, and that first blow deals +3.",
+    category: "combat",
+    rarity: "gold",
+    // +4 measured 61% among golds, +2 55%.
+    traits: (_u, i) => (i === 0 ? { firstStrike: true, openingBonus: 3 } : {}),
+  },
+  {
+    id: "drill-sergeant",
+    icon: "🪃",
+    name: "Drill sergeant",
+    description: "Choose one of your units: it gains 2 levels (up to the cap) and +2 attack, permanently.",
+    category: "strategy",
+    rarity: "gold",
+    target: {
+      verb: "gains 2 levels and +2 attack",
+      can: () => true,
+      apply: (u, c) => {
+        levelUp(u, 2, c);
+        grant(c.state, u, c.id, { atk: 2 });
+      },
+      aiScore: (u) => u.merges + (isSupport(u) ? 0 : 3),
+    },
+  },
+  {
+    id: "juggernaut",
+    icon: "🦏",
+    name: "Juggernaut",
+    description: "Choose one of your units: +5 attack and +10 health, permanently.",
+    category: "combat",
+    rarity: "prismatic",
+    target: {
+      verb: "gains +5 attack and +10 health for good",
+      can: () => true,
+      apply: (u, c) => grant(c.state, u, c.id, { atk: 5, hp: 10 }),
+      aiScore: (u) => (isSupport(u) ? 0 : power(u)),
+    },
+  },
+  {
+    id: "heroic-legion",
+    icon: "🏇",
+    name: "Heroic legion",
+    description: "Choose one of your units: it and every other unit of its type gain 2 levels.",
+    category: "strategy",
+    rarity: "prismatic",
+    target: {
+      verb: "gains 2 levels, with every unit of its type",
+      can: belowCap,
+      apply: (u, c) => {
+        for (const v of sideUnits(c.board, c.side)) if (v.key === u.key) levelUp(v, 2, c);
+      },
+      // The type with the most units, fighters first.
+      aiScore: (u, b, s) => sideUnits(b, s).filter((v) => v.key === u.key).length * 10 + (isSupport(u) ? 0 : 5) + u.merges,
+    },
+  },
+  {
+    id: "vanguards-vow",
+    icon: "🔆",
+    name: "Vanguard's vow",
+    description:
+      "The unit leading your row when the round starts survives its first killing blow each round on 1 health, and takes 1 less damage per hit.",
+    category: "combat",
+    rarity: "prismatic",
+    traits: (_u, i) => (i === 0 ? { endure: true, damageReduction: 1 } : {}),
+  },
+  {
+    id: "hawk-eye",
+    icon: "👁️",
+    name: "Hawk eye",
+    description: "All your units gain +2 attack, and their blows can't be dodged.",
+    category: "global",
+    rarity: "prismatic",
+    effect: () => ({ atk: 2 }),
+    traits: () => ({ trueStrike: true }),
+  },
+  {
+    id: "blood-moon",
+    icon: "🌕",
+    name: "Blood moon",
+    description: "All your units heal for a quarter of the damage they deal.",
+    category: "combat",
+    rarity: "prismatic",
+    // Half measured 72% among prismatics.
+    traits: () => ({ lifesteal: 0.25 }),
+  },
+  {
+    id: "avalanche",
+    icon: "🏔️",
+    name: "Avalanche",
+    description: "All your units' overkill carries on, in full, to the next enemy.",
+    category: "combat",
+    rarity: "prismatic",
+    // Half of it, up to 3 (a Berserker's Overflow) measured 38.5%.
+    traits: () => ({ cleave: true, cleaveFull: true }),
+  },
+  {
+    id: "mirror-shield",
+    icon: "🪩",
+    name: "Mirror shield",
+    description: "Every unit reflects 2 damage to whoever hits it.",
+    category: "combat",
+    rarity: "prismatic",
+    traits: () => ({ thorns: 2 }),
+  },
+  {
+    id: "phoenix",
+    icon: "🌋",
+    name: "Phoenix",
+    description: "The first two units in your row each survive their first killing blow each round, on 1 health.",
+    category: "combat",
+    rarity: "prismatic",
+    traits: (_u, i) => (i < 2 ? { endure: true } : {}),
+  },
+  {
+    id: "ironclad",
+    icon: "⚙️",
+    name: "Ironclad",
+    description: "Every unit takes 1 less damage per hit (a hit still deals at least 1).",
+    category: "combat",
+    rarity: "prismatic",
+    traits: () => ({ damageReduction: 1 }),
+  },
+  {
+    id: "golden-fleece",
+    icon: "🐑",
+    name: "Golden fleece",
+    description: "Each round you win deals 10 extra damage and heals you 25 HP (up to your starting HP).",
+    category: "strategy",
+    rarity: "prismatic",
+    // 6 and 15 measured 40.5%.
+    mods: { bounty: 10 },
+    healOnWin: 25,
+  },
+
+  // --- Choose a unit: taking one asks which of your units it lands on ---
+  {
+    id: "whetstone",
+    icon: "🔨",
+    name: "Whetstone",
+    description: "Choose one of your units: +2 attack, permanently.",
+    category: "combat",
+    target: {
+      verb: "gains +2 attack for good",
+      can: () => true,
+      apply: (u, c) => grant(c.state, u, c.id, { atk: 2 }),
+      aiScore: (u) => (isSupport(u) ? 0 : power(u)),
+    },
+  },
+  {
+    id: "iron-skin",
+    icon: "🦾",
+    name: "Iron skin",
+    description: "Choose one of your units: +5 health, permanently.",
+    category: "combat",
+    target: {
+      verb: "gains +5 health for good",
+      can: () => true,
+      apply: (u, c) => grant(c.state, u, c.id, { hp: 5 }),
+      aiScore: (u) => (isSupport(u) ? 0 : power(u)),
+    },
+  },
+  {
+    id: "field-promotion",
+    icon: "🎓",
+    name: "Field promotion",
+    description: "Choose one of your units below the level cap: it gains 2 levels.",
+    category: "strategy",
+    target: {
+      verb: "gains 2 levels",
+      can: belowCap,
+      apply: (u, c) => void levelUp(u, 2, c),
+      // Closest to its Mastery, fighters first.
+      aiScore: (u) => u.merges + (isSupport(u) ? 0 : 3),
+    },
+  },
+  {
+    id: "commission",
+    icon: "📜",
+    name: "Battlefield commission",
+    description: "Choose one of your units below the level cap: it gains 3 levels.",
+    category: "strategy",
+    rarity: "gold",
+    target: {
+      verb: "gains 3 levels",
+      can: belowCap,
+      apply: (u, c) => void levelUp(u, 3, c),
+      aiScore: (u) => u.merges + (isSupport(u) ? 0 : 3),
+    },
+  },
+  {
+    id: "heros-mark",
+    icon: "💠",
+    name: "Hero's mark",
+    description: "Choose one of your units: +3 attack and +6 health, permanently.",
+    category: "combat",
+    rarity: "gold",
+    target: {
+      verb: "gains +3 attack and +6 health for good",
+      can: () => true,
+      apply: (u, c) => grant(c.state, u, c.id, { atk: 3, hp: 6 }),
+      aiScore: (u) => (isSupport(u) ? 0 : power(u)),
+    },
+  },
+  {
+    id: "apotheosis",
+    icon: "✨",
+    name: "Apotheosis",
+    description: "Choose one of your units below the level cap: it gains 5 levels.",
+    category: "strategy",
+    rarity: "prismatic",
+    target: {
+      verb: "gains 5 levels",
+      can: belowCap,
+      // Straight to the cap measured 72% among prismatics.
+      apply: (u, c) => void levelUp(u, 5, c),
+      // The most levels gained, on a fighter.
+      aiScore: (u, b, s) => (isSupport(u) ? 0 : 20) + Math.min(30, mergeCapFor(b, s)) - u.merges,
+    },
+  },
+  {
+    id: "mirror-image",
+    icon: "🪞",
+    name: "Mirror image",
+    description: "Choose one of your units: a copy of it, at the same level, joins your row. Needs an empty slot.",
+    category: "strategy",
+    rarity: "prismatic",
+    target: {
+      verb: "is copied into an empty slot",
+      can: (_u, b, s) => !!firstEmptySpot(b, s),
+      apply: (u, c) => {
+        const spot = firstEmptySpot(c.board, c.side);
+        if (!spot) return;
+        const copy: Unit = { ...JSON.parse(JSON.stringify(u)), id: makeUnit(u.key, c.side).id };
+        place(c.board, c.side, spot.lane, spot.spot, copy);
+      },
+      aiScore: (u) => u.merges * 10 + (isSupport(u) ? 0 : 5),
+    },
   },
 ];
 
@@ -849,22 +1213,6 @@ function colossusOf(units: Unit[]): Unit | undefined {
   let best: Unit | undefined;
   for (const u of units) if (!best || u.merges > best.merges) best = u;
   return best;
-}
-
-/**
- * The class most of a row's units share (Legion's). A tie goes to the front
- * unit's class, as the synergy meter does.
- */
-function legionClass(units: Unit[]): Archetype | undefined {
-  const count = new Map<Archetype, number>();
-  for (const u of units) {
-    const a = UNITS[u.key]?.archetype;
-    if (a) count.set(a, (count.get(a) ?? 0) + 1);
-  }
-  const top = Math.max(0, ...count.values());
-  const front = units[0] && UNITS[units[0].key]?.archetype;
-  if (front && count.get(front) === top) return front;
-  return [...count.entries()].find(([, n]) => n === top)?.[0];
 }
 
 /** Attack the enemy front loses to Sabotage. */
@@ -879,38 +1227,77 @@ export function getAugment(id: string): AugmentDef | undefined {
 }
 
 /** Sample `n` augments the player doesn't already hold. */
-export const rarityOf = (a: AugmentDef): Rarity => a.rarity ?? "common";
+export const rarityOf = (a: AugmentDef): Rarity => a.rarity ?? "silver";
+
+/** The side's board, so choose-a-unit upgrades are only offered with a unit to land on. */
+export interface OfferContext {
+  board: Board;
+  side: Side;
+}
+
+/** Upgrades `state` could be dealt now, of `rarity`, leaving out `skip`. */
+function offerPool(state: AugmentState, rarity: Rarity, ctx?: OfferContext, skip: string[] = []): AugmentDef[] {
+  const excluded = new Set(state.active.flatMap((id) => getAugment(id)?.excludes ?? []));
+  const units = ctx ? sideUnits(ctx.board, ctx.side) : [];
+  return OFFERED_AUGMENTS.filter(
+    (a) =>
+      rarityOf(a) === rarity &&
+      !state.active.includes(a.id) &&
+      !excluded.has(a.id) &&
+      !skip.includes(a.id) &&
+      (!a.target || !ctx || units.some((u) => a.target!.can(u, ctx.board, ctx.side))),
+  );
+}
 
 /**
- * Sample `n` augments the side doesn't already hold, from the rarities unlocked
- * by `tier` (1 = first upgrade round). The round a rarity unlocks guarantees at
- * least one card of it, so the second and third upgrade rounds feel different.
+ * Deal `n` upgrades of `rarity` the side doesn't hold. Should that rarity run
+ * dry (a long match, most of them held), the rest come from the other
+ * rarities, nearest first.
  */
-export function offerAugments(state: AugmentState, n: number, tier = 1): AugmentDef[] {
-  // Frozen upgrades lead the offer (whatever their rarity: each was offered
-  // once already) and are kept out of the random draw.
-  const frozen = frozenAugments(state)
-    .filter((id) => !state.active.includes(id))
-    .map(getAugment)
-    .filter((a): a is AugmentDef => !!a)
-    .slice(0, n);
-  const frozenIds = new Set(frozen.map((a) => a.id));
-  const excluded = new Set(state.active.flatMap((id) => getAugment(id)?.excludes ?? []));
-  const pool = OFFERED_AUGMENTS.filter(
-    (a) =>
-      !state.active.includes(a.id) && !frozenIds.has(a.id) && !excluded.has(a.id) && RARITY_UNLOCK[rarityOf(a)] <= tier,
-  );
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
+export function offerAugments(state: AugmentState, n: number, rarity: Rarity, ctx?: OfferContext): AugmentDef[] {
+  const at = RARITIES.indexOf(rarity);
+  const order = [...RARITIES].sort((a, b) => Math.abs(RARITIES.indexOf(a) - at) - Math.abs(RARITIES.indexOf(b) - at));
+  const out: AugmentDef[] = [];
+  for (const r of order) {
+    const pool = offerPool(state, r, ctx, out.map((a) => a.id));
+    while (out.length < n && pool.length) out.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
   }
-  const fresh = (Object.keys(RARITY_UNLOCK) as Rarity[]).find((r) => RARITY_UNLOCK[r] === tier);
-  if (fresh && fresh !== "common") {
-    const i = pool.findIndex((a) => rarityOf(a) === fresh);
-    if (i > 0) pool.unshift(...pool.splice(i, 1));
+  return out;
+}
+
+/**
+ * Reroll one card: another upgrade of the same rarity that isn't on the table
+ * and hasn't been shown this choice (`seen`). Null when there's none left.
+ */
+export function rerollAugment(state: AugmentState, card: AugmentDef, seen: string[], ctx?: OfferContext): AugmentDef | null {
+  const pool = offerPool(state, rarityOf(card), ctx, seen);
+  return pool[Math.floor(Math.random() * pool.length)] ?? null;
+}
+
+/**
+ * Land a choose-a-unit upgrade (already taken) on one of the side's units.
+ * Returns false, changing nothing, if it can't land there.
+ */
+export function applyTarget(state: AugmentState, id: string, board: Board, side: Side, unitId: string): boolean {
+  const def = getAugment(id);
+  const unit = sideUnits(board, side).find((u) => u.id === unitId);
+  if (!def?.target || !unit || !def.target.can(unit, board, side)) return false;
+  def.target.apply(unit, { state, board, side, id });
+  return true;
+}
+
+/** The unit the AI lands a choose-a-unit upgrade on, or null when none can take it. */
+export function aiTarget(id: string, board: Board, side: Side): Unit | null {
+  const t = getAugment(id)?.target;
+  if (!t) return null;
+  let best: Unit | null = null;
+  let bestScore = -Infinity;
+  for (const u of sideUnits(board, side)) {
+    if (!t.can(u, board, side)) continue;
+    const sc = t.aiScore(u, board, side);
+    if (sc > bestScore) [best, bestScore] = [u, sc];
   }
-  const drawn = pool.slice(0, Math.max(0, Math.min(n - frozen.length, pool.length)));
-  return [...frozen, ...drawn];
+  return best;
 }
 
 /** Take an augment. Returns the max-HP cost to apply to the player's pool. */
@@ -923,7 +1310,6 @@ export function takeAugment(
   const def = getAugment(id);
   if (!def || state.active.includes(id)) return 0;
   state.active.push(id);
-  if (frozenAugments(state).includes(id)) state.frozen = frozenAugments(state).filter((x) => x !== id);
   def.onPick?.(state, units);
   return hpCostOf(def, startHp);
 }

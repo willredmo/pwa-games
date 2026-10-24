@@ -25,6 +25,9 @@ import {
   hasAugment,
   mergeRatioFor,
   offerAugments,
+  rerollAugment,
+  applyTarget,
+  aiTarget,
   rarityOf,
   sideModsFor,
   takeAugment,
@@ -67,15 +70,15 @@ export function augmentOfferCount(state: AugmentState): number {
   return AUGMENT_OFFER_COUNT + (hasAugment(state, "tactician") ? 1 : 0);
 }
 
-/** Which upgrade round this is (1 for round 3, 2 for round 6, ...): gates rarity. */
+/** Which upgrade choice this is (1 for round 3, 2 for round 6, ...): sets the rarity odds. */
 export function upgradeTier(round: number): number {
   return Math.max(1, Math.floor(round / AUGMENT_EVERY));
 }
 
 /** Unit-offer rerolls each round (Scout adds one). */
 export const UNIT_REROLLS = 1;
-/** Rerolls on each upgrade choice. */
-export const AUGMENT_REROLLS = 2;
+/** Rerolls each upgrade card gets (its own button, as in ARAM Mayhem). */
+export const AUGMENT_REROLLS = 1;
 
 export function unitRerollsFor(state: AugmentState): number {
   return UNIT_REROLLS + (hasAugment(state, "scout") ? 1 : 0);
@@ -583,7 +586,34 @@ export function aiCommit(
  * after the balance pass. Re-measure after balance changes. Unlisted scores 45.
  */
 const AUGMENT_SCORE: Record<string, number> = {
-  legion: 56,
+  // 1.8.0, measured against the same rarity (`pnpm sim 12000 --aug=random`).
+  "mirror-image": 60,
+  apotheosis: 60,
+  "golden-age": 59,
+  commission: 59,
+  "field-promotion": 58,
+  bloodbond: 57,
+  "mirror-shield": 56,
+  juggernaut: 56,
+  "drill-sergeant": 56,
+  "heros-mark": 56,
+  "blood-moon": 55,
+  "hawk-eye": 54,
+  "opening-salvo": 54,
+  "iron-skin": 54,
+  "spiked-line": 54,
+  phoenix: 53,
+  "rear-guard": 52,
+  whetstone: 51,
+  "second-line": 51,
+  "heroic-legion": 50,
+  avalanche: 50,
+  "vanguards-vow": 50,
+  ironclad: 47,
+  "golden-fleece": 42,
+  "mantis-shrimp": 58,
+  legion: 49,
+  "mixed-formation": 56,
   champion: 49,
   bastion: 50,
   bloodthirst: 50,
@@ -615,7 +645,6 @@ const AUGMENT_SCORE: Record<string, number> = {
   "vanguards-edge": 49,
   momentum: 49,
   bounty: 48,
-  "mixed-formation": 48,
   executioner: 48,
   "precision-strikes": 48,
   veteran: 48,
@@ -656,13 +685,11 @@ const AUGMENT_SCORE: Record<string, number> = {
  * rarity — it kept taking commons a point "better". Rarer picks are the point
  * of the later upgrade rounds, so it should reach for them.
  */
-const RARITY_BONUS: Record<Rarity, number> = { common: 0, rare: 6, epic: 12 };
-/** Below this the AI spends a reroll rather than settle. */
+const RARITY_BONUS: Record<Rarity, number> = { silver: 0, gold: 6, prismatic: 12 };
+/** A card scoring below this (plus its rarity's premium) gets rerolled. */
 const AI_REROLL_BELOW = 52;
 /** HP the AI keeps in reserve when an augment costs pool HP. */
 const AI_HP_FLOOR = 70;
-/** Hard's extra upgrade rerolls on top of the player's allowance. */
-const HARD_EXTRA_REROLLS = 1;
 
 /**
  * How much the AI wants an augment given its row: the base win-rate score, the
@@ -720,40 +747,43 @@ export function aiPickAugment<T extends { id: string } | string>(
 }
 
 /**
- * The AI's whole upgrade turn, shared by the app and the sim: draw an offer for
- * this tier, reroll (up to the player's allowance) while the best card is a
- * poor fit, take the best, and apply its pool cost. Returns the id taken.
+ * The AI's whole upgrade turn, shared by the app and the sim: deal this
+ * choice's cards (`rarity`, the same as the player's), reroll each poor fit
+ * once (Hard holds out for a little more), take the best, apply its pool cost
+ * and, for a choose-a-unit upgrade, land it (`aiTarget`). Returns the id taken.
  */
 export function aiTakeAugment(
   board: Board,
   side: Side,
   state: AugmentState,
-  round: number,
+  rarity: Rarity,
   difficulty: Difficulty = "normal",
 ): string | null {
   const units = sideUnits(board, side);
   const startHp = startHpOf(board);
-  let offer = offerAugments(state, augmentOfferCount(state), upgradeTier(round));
-  if (difficulty === "easy") {
-    // Easy takes a card at random.
-    const choice = offer[Math.floor(Math.random() * offer.length)];
-    if (!choice) return null;
-    const cost = takeAugment(state, choice.id, units, startHp);
-    if (cost) board.hp[side] = Math.max(1, board.hp[side] - cost);
-    return choice.id;
+  const ctx = { board, side };
+  const offer = offerAugments(state, augmentOfferCount(state), rarity, ctx);
+  if (difficulty !== "easy") {
+    const bar = AI_REROLL_BELOW + RARITY_BONUS[rarity] + (difficulty === "hard" ? 4 : 0);
+    const seen = offer.map((a) => a.id);
+    offer.forEach((card, i) => {
+      if (aiAugmentScore(card, units, board.hp[side], startHp) >= bar) return;
+      const next = rerollAugment(state, card, seen, ctx);
+      if (!next) return;
+      offer[i] = next;
+      seen.push(next.id);
+    });
   }
-  // Hard holds out for a better card a little longer.
-  const rerolls = AUGMENT_REROLLS + (difficulty === "hard" ? HARD_EXTRA_REROLLS : 0);
-  const bar = AI_REROLL_BELOW + (difficulty === "hard" ? 4 : 0);
-  for (let left = rerolls; left > 0; left--) {
-    const top = aiPickAugment(offer, units, board.hp[side], startHp);
-    if (!top || aiAugmentScore(top, units, board.hp[side], startHp) >= bar) break;
-    offer = offerAugments(state, augmentOfferCount(state), upgradeTier(round));
-  }
-  const choice = aiPickAugment(offer, units, board.hp[side], startHp);
+  // Easy takes a card at random.
+  const choice =
+    difficulty === "easy"
+      ? offer[Math.floor(Math.random() * offer.length)]
+      : aiPickAugment(offer, units, board.hp[side], startHp);
   if (!choice) return null;
   const cost = takeAugment(state, choice.id, units, startHp);
   if (cost) board.hp[side] = Math.max(1, board.hp[side] - cost);
+  const target = aiTarget(choice.id, board, side);
+  if (target) applyTarget(state, choice.id, board, side, target.id);
   return choice.id;
 }
 

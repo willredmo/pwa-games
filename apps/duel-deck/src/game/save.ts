@@ -34,6 +34,8 @@ export interface SavedMatch {
   stats?: MatchStats;
   /** Unit-offer slots frozen to carry into the next round. */
   frozen?: number[];
+  /** Seeds the upgrade rarities (`rollRarity`); absent in older saves, which get a new one. */
+  seed?: string;
 }
 
 export function loadMatch(): SavedMatch | null {

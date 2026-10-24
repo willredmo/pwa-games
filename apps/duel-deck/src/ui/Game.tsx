@@ -50,12 +50,14 @@ import {
 import {
   OFFERED_AUGMENTS as AUGMENTS,
   createAugmentState,
-  frozenAugments,
+  applyTarget,
   getAugment,
   mergeRatioFor,
+  newUpgradeSeed,
   offerAugments,
+  rerollAugment,
+  rollRarity,
   takeAugment,
-  toggleFrozenAugment,
   transferGrant,
   type AugmentDef,
   type AugmentState,
@@ -394,7 +396,16 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   offerRef.current = offer;
   /** The last save, so a freeze toggle can re-save it with the change. */
   const lastSave = useRef<Omit<SavedMatch, "version"> | null>(null);
-  const save = (s: Omit<SavedMatch, "version">) => {
+  /**
+   * Seeds each upgrade choice's rarity (`rollRarity`), so both players are
+   * dealt the same one: the room online, saved with the match against the CPU.
+   */
+  const [upgradeSeed] = useState(() =>
+    online ? `${online.code}:${matchOf(online)}` : tutorial ? "tutorial" : (saved?.seed ?? newUpgradeSeed()),
+  );
+  const rarityFor = (r: number) => rollRarity(upgradeSeed, upgradeTier(r));
+  const save = (raw: Omit<SavedMatch, "version">) => {
+    const s = { ...raw, seed: upgradeSeed };
     lastSave.current = s;
     // An online match lives in the room, not in localStorage: half of it is
     // the opponent's, so a local restore would put the two devices out of
@@ -454,7 +465,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   const difficultyRef = useRef(difficulty);
   const [augOffers, setAugOffers] = useState<AugmentDef[]>(() =>
     saved?.augmentPending
-      ? offerAugments(saved.player, augmentOfferCount(saved.player), upgradeTier(saved.round))
+      ? offerAugments(saved.player, augmentOfferCount(saved.player), rarityFor(saved.round), { board: saved.board, side: PLAYER })
       : [],
   );
   /** The last round's one-line summary, in full and in a phone-width form. */
@@ -463,8 +474,10 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   const [unitRerolls, setUnitRerolls] = useState(() =>
     unitRerollsFor(saved?.player ?? createAugmentState()),
   );
-  /** Rerolls left on the current upgrade choice. */
-  const [augRerolls, setAugRerolls] = useState(AUGMENT_REROLLS);
+  /** Rerolls left on each upgrade card, by position. */
+  const [augRerolls, setAugRerolls] = useState<number[]>(() => augOffers.map(() => AUGMENT_REROLLS));
+  /** Every upgrade shown this choice, so a reroll never deals one back. */
+  const augSeen = useRef<string[]>(augOffers.map((a) => a.id));
   /** Part of the offer-card key, so a reroll replays the deal-in. */
   const [rerollN, setRerollN] = useState(0);
   /**
@@ -1048,7 +1061,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       // Upgrade rounds open with the upgrade, so it can shape this round's picks.
       // The pool is never refilled, so an exhausted one just skips the choice.
       const augs = rules.upgrades && isAugmentRound(roundNum)
-        ? offerAugments(playerAug.current, augmentOfferCount(playerAug.current), upgradeTier(roundNum))
+        ? offerAugments(playerAug.current, augmentOfferCount(playerAug.current), rarityFor(roundNum), { board: next, side: PLAYER })
         : [];
       save({
         board: next,
@@ -1063,7 +1076,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       });
       roundLog.current = { offer: nextOffer.slice(), picks: [], rr: 0, augRr: 0 };
       setAugOffers(augs);
-      setAugRerolls(AUGMENT_REROLLS);
+      setAugRerolls(augs.map(() => AUGMENT_REROLLS));
+      augSeen.current = augs.map((a) => a.id);
       setUnitRerolls(unitRerollsFor(playerAug.current));
       setBoard(next);
       setRound(roundNum);
@@ -1733,38 +1747,32 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     if (lastSave.current) save({ ...lastSave.current, frozen: next });
   };
 
-  /**
-   * Freeze an upgrade to be offered first at the next choice (up to
-   * MAX_FROZEN_AUGMENTS; the panel disables the rest once that's reached).
-   * Lives on the player's augment state, which is saved with the match.
-   */
-  const toggleFreezeAug = (id: string) => {
-    const st = playerAug.current;
-    if (!toggleFrozenAugment(st, id)) return;
-    setAugOffers((o) => [...o]); // re-render the panel
-    if (lastSave.current) save({ ...lastSave.current });
-  };
-
-  /** Reroll the upgrade choice: three fresh cards from the unlocked rarities. */
-  const rerollAugments = () => {
-    if (phase !== "augment" || augRerolls <= 0) return;
-    setAugOffers(offerAugments(playerAug.current, augmentOfferCount(playerAug.current), upgradeTier(round)));
-    setAugRerolls(augRerolls - 1);
+  /** Reroll one upgrade card: another of the same rarity, never one already shown this choice. */
+  const rerollAugmentCard = (i: number) => {
+    const card = augOffers[i];
+    if (phase !== "augment" || !card || (augRerolls[i] ?? 0) <= 0) return;
+    const next = rerollAugment(playerAug.current, card, augSeen.current, { board, side: PLAYER });
+    if (!next) return;
+    augSeen.current.push(next.id);
+    setAugOffers((o) => o.map((a, j) => (j === i ? next : a)));
+    setAugRerolls((r) => r.map((n, j) => (j === i ? n - 1 : n)));
     roundLog.current.augRr++;
   };
 
-  const onPickAugment = (id: string) => {
+  /** Take an upgrade; `unitId` is the unit a choose-a-unit upgrade lands on. */
+  const onPickAugment = (id: string, unitId?: string) => {
     sfx("upgrade");
     const units = sideUnits(board, PLAYER);
     const cost = takeAugment(playerAug.current, id, units, startHpOf(board));
     const next = cloneBoard(board);
     if (cost) next.hp.player = Math.max(1, next.hp.player - cost);
+    if (unitId) applyTarget(playerAug.current, id, next, PLAYER, unitId);
 
     // Against the CPU, it upgrades now too. Online, the opponent is choosing
     // at the same time on their own device; their pick reaches us with their
     // commit, so there's nothing to do here but take ours.
     const enemyHad = enemyAug.current.active.length;
-    if (!online) aiTakeAugment(next, ENEMY, enemyAug.current, round, difficultyRef.current);
+    if (!online) aiTakeAugment(next, ENEMY, enemyAug.current, rarityFor(round), difficultyRef.current);
     matchLog.augment(round, {
       o: augOffers.map((a) => a.id),
       t: id,
@@ -2365,9 +2373,9 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
             peeking={peeking}
             onPeek={() => setPeeking((p) => !p)}
             rerollsLeft={augRerolls}
-            onReroll={rerollAugments}
-            frozenIds={frozenAugments(playerAug.current)}
-            onFreeze={toggleFreezeAug}
+            onReroll={rerollAugmentCard}
+            units={sideUnits(board, PLAYER)}
+            canTarget={(id, u) => !!getAugment(id)?.target?.can(u, board, PLAYER)}
           />
         )}
         {phase === "over" && result?.matchWinner && (

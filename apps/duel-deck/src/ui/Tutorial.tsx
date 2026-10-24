@@ -159,8 +159,9 @@ const STEPS: Step[] = [
     title: "Upgrades",
     text: (
       <>
-        Every 3rd round you choose an <strong>upgrade</strong> that lasts the whole match. Rarer ones unlock as the match goes
-        on. ❄ keeps up to two for your next choice. Tap one to select it, then press <strong>Take</strong>.
+        Every 3rd round you choose an <strong>upgrade</strong> that lasts the whole match. All three cards share a rarity
+        (silver, gold or prismatic, the same for your opponent), and <strong>↻</strong> under a card rerolls it once. Tap
+        one to select it, then press <strong>Take</strong>.
       </>
     ),
     waitFor: (s) => s.phase === "augment",

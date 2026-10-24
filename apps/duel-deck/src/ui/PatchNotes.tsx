@@ -10,6 +10,20 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.8.0",
+    date: "Oct 24, 2026",
+    notes: [
+      "Upgrades work like ARAM Mayhem: every choice deals three cards of one rarity (silver, gold or prismatic), and you and your opponent always get the same rarity. Each choice is silver 50%, gold 35%, prismatic 15%.",
+      "Each card has its own reroll button underneath. Freezing upgrades is gone.",
+      "New card design: tall cards with a silver, gold or shimmering prismatic frame.",
+      "New choose-a-unit upgrades: take one, then pick which of your units gets it. Level a unit up (Field promotion, Battlefield commission, Apotheosis), give it permanent stats (Whetstone, Iron skin, Hero's mark, Juggernaut, Drill sergeant), level a whole unit type (Heroic legion) or copy a unit (Mirror image).",
+      "24 new upgrades in all, so gold and prismatic have about as many as silver. Thorns, Momentum, Full ranks and Desperate measures are now gold; Overwhelm, United front, Bloodpact and Mixed formation are now prismatic.",
+      "New gold upgrade, 🦐 Mantis shrimp: the unit leading your row punches first in each round's opening exchange, and that blow deals +3.",
+      "Legion: +1 attack and +1 health to every unit (was only your row's most common class).",
+      "Mixed formation: +2 attack and +2 health with 5+ unit types (was +1/+1).",
+    ],
+  },
+  {
     version: "1.7.6",
     date: "Oct 23, 2026",
     notes: [

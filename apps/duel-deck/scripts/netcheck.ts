@@ -20,7 +20,7 @@ import { insertUnit, makeUnit, occupants, writeLane } from "../src/engine/board"
 import { resolveRound } from "../src/engine/combat";
 import type { Side, Unit } from "../src/engine/types";
 import { ENEMY, LEVEL_CAP_OPTIONS, PLAYER, chargeNewUpgrades, newBoard, refreshForRound } from "../src/game/match";
-import { OFFERED_AUGMENTS as AUGMENTS, createAugmentState, takeAugment, type AugmentState } from "../src/game/augments";
+import { OFFERED_AUGMENTS as AUGMENTS, aiTarget, applyTarget, createAugmentState, takeAugment, type AugmentState } from "../src/game/augments";
 import { settleRound } from "../src/game/roundEnd";
 import { packCommit, unpackCommit, type Commit } from "../src/online/room";
 
@@ -69,6 +69,18 @@ function grown(key: string, cap: number): Unit {
   return u;
 }
 
+/**
+ * Land a choose-a-unit upgrade on a row, as its device would (the AI's
+ * choice): level-ups and copies change the row, grants travel on the unit.
+ */
+function land(state: AugmentState, id: string, row: Unit[], cap: number): Unit[] {
+  const b = newBoard({ levelCap: cap });
+  writeLane(b, PLAYER, 0, row);
+  const t = aiTarget(id, b, PLAYER);
+  if (t) applyTarget(state, id, b, PLAYER, t.id);
+  return occupants(b, PLAYER, 0);
+}
+
 let desyncs = 0;
 let rounds = 0;
 
@@ -95,8 +107,12 @@ for (let m = 0; m < MATCHES; m++) {
     if (round % 3 === 0) {
       // Bloodpact more often than chance, so its pool cost is always covered.
       const choose = () => (Math.random() < 0.25 ? "bloodpact" : pick(AUGMENTS).id);
-      viewA.mine = Math.max(1, viewA.mine - takeAugment(aAug, choose(), aRow));
-      viewB.mine = Math.max(1, viewB.mine - takeAugment(bAug, choose(), bRow));
+      const ia = choose();
+      const ib = choose();
+      viewA.mine = Math.max(1, viewA.mine - takeAugment(aAug, ia, aRow));
+      viewB.mine = Math.max(1, viewB.mine - takeAugment(bAug, ib, bRow));
+      aRow = land(aAug, ia, aRow, cap);
+      bRow = land(bAug, ib, bRow, cap);
     }
 
     const aCommit = wire(packCommit(round, [aRow.map((u) => ({ ...u }))], aAug));

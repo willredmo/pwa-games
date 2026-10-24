@@ -757,16 +757,12 @@ nudges it up when holding a Squire augment; raising that nudge makes Squire
 augments read far stronger than they are.
 
 ### Rarity, rerolls and the AI's row
-Augments carry a `rarity` (absent = common). `offerAugments(state, n, tier)`
-only offers rarities unlocked by `upgradeTier(round)` — commons from the first
-upgrade round, rares from the second, epics from the third (`RARITY_UNLOCK`) —
-and the round a rarity unlocks guarantees one card of it. Each upgrade choice
-has `AUGMENT_REROLLS` (2); unit picking has `UNIT_REROLLS` (1) per round, plus
-one with Scout, rerolling every slot that isn't frozen, including ones already taken this round (their units stay on the board, spent picks stay spent; undo can't cross it outside easy mode).
-This rarity ladder is the answer to "should offers scale over a long match"
-(settled): with upgrades every 3rd round, rares arrive at round 6 and epics at
-round 9. Nothing unlocks after that, so a median 18-round match spends its
-second half at full power. The AI fills its row before merging (`deployToBack`): merging first left it
+**Superseded in 1.8.0 by "Upgrade choice, ARAM Mayhem style" below** (the
+common/rare/epic ladder and the whole-hand reroll and freeze are gone). Unit
+picking has `UNIT_REROLLS` (1) per round, plus one with Scout, rerolling every
+slot that isn't frozen, including ones already taken this round (their units
+stay on the board, spent picks stay spent; undo can't cross it outside easy
+mode). The AI fills its row before merging (`deployToBack`): merging first left it
 fielding two or three bodies, and with survivor damage empty slots are lost
 damage. Hovering a unit shows `UnitInfo`, built from `unit.auraDetails`, which
 `applyAugments` rebuilds with the stats.
@@ -777,6 +773,58 @@ used to commit, and players picked the wrong one by accident. Taps are also
 ignored for `AUGMENT_ARM_MS` (600) after the cards are dealt (the panel opens
 right as a battle ends, while cards are still flipping in, and again after a
 reroll), and a reroll drops a selection it replaced. Freezing doesn't re-arm.
+
+### Upgrade choice, ARAM Mayhem style (1.8.0)
+Modelled on League's ARAM Mayhem augments, at the user's request:
+- **Rarities are silver, gold, prismatic** (`Rarity`; absent = silver), and
+  every card in a choice shares one. It's drawn by `rollRarity(seed, tier)`
+  from `RARITY_ODDS`, a fixed 50/35/15 at every choice (the user's call; the
+  first version climbed from 75/25/0 to 25/40/35, and its sims below used
+  that), hashed from a seed both players share, so **both players get
+  the same rarity**: online the seed is `<room code>:<match number>`; against
+  the CPU it's `SavedMatch.seed` (`newUpgradeSeed`), and the CPU's
+  `aiTakeAugment` takes the rarity as an argument. If a rarity runs dry the
+  rest of the hand comes from the nearest other rarity.
+- **Each card has its own reroll** (`AUGMENT_REROLLS` = 1 per card), a button
+  under it (`rerollAugment`: same rarity, never a card already shown this
+  choice). **No freezing** (the `frozen` field is gone; old saves' copy is
+  ignored). The CPU rerolls each card scoring under its bar once.
+- **Cards** (`AugmentPanel`, `.aug-card` in overlays.css): tall, a rarity
+  gradient frame round a dark panel, icon in a glowing circle, name, a
+  category chip ("Choose a unit" for those), description; gold and
+  prismatic get a sheen sweep (transform only, off under reduced motion).
+  The overlay now covers the whole screen at every width, centred, max 44rem.
+  Still two steps (select, Take).
+- **Choose-a-unit upgrades** (`AugmentDef.target`: `can`, `apply`,
+  `aiScore`, `verb`): Take opens a third step listing your units (those it
+  can't land on disabled). `applyTarget` lands it once, at pick time; stat
+  bonuses are `grants` (they travel online on the unit, like Last stand),
+  level-ups go through `levelUp` (each level as a merge of its own type, a
+  Knight as a Squire merge, stopping at the cap), Mirror image places a copy.
+  They're only dealt while some unit can take them (`OfferContext`). The CPU
+  picks with `aiTarget`.
+- **Pool** after 1.8.0: 32 silver, 29 gold, 26 prismatic. The four strongest
+  silvers moved to gold (Thorns, Momentum, Full ranks, Desperate measures) and
+  four golds to prismatic (Overwhelm, United front, Bloodpact, Mixed
+  formation); 24 new (see the 1.8.0 patch notes).
+Holder win rates are now measured against an opponent holding the same
+rarity, so ~50% within each tier is the target.
+First sim (12000, `--aug=random`) had the new prismatics far out: Apotheosis
+(straight to the cap) 72%, Blood moon (half lifesteal) 72%, Golden age
+(+2/+4) 65%, Mirror shield (3) 61%, Juggernaut (+6/+12) 58%; Avalanche
+(half, up to 3) 38.5%, Golden fleece (6/15) 40.5%. Retuned to 5 levels, a
+quarter, +1/+4, 2, +5/+10, in full, 10/25: everything 42–63% (Apotheosis
+63%, Golden age/Commission 59%, Field promotion 58%; Tactician 41.7%, Golden
+fleece 42.2%, Skewer 43%) except Mirror image, 75% on n=126 (it needs an
+empty slot, which sim rows rarely have). Median match 22 rounds. Hard still
+beats Normal 88% (n=400). `PROTOCOL` 13.
+Then, at the user's call: **Legion** back to +1/+1 for every unit (the
+most-common-class rule and `legionClass` are gone; it measured 46% as a
+prismatic), **Mixed formation** +2/+2 with 5+ types (was +1/+1, 47%).
+Sim after (6000): Legion 48.6%, Mixed formation 56.3%. Also new, gold:
+**Mantis shrimp** 🦐 (the user asked for a shrimp upgrade): the lead unit
+gets First strike in the opening exchange and +3 on that blow (+4 measured
+61%, +2 55%, +3 57.8%; +3 was the user's pick). Pool: 32 silver, 29 gold, 26 prismatic.
 
 ### Ability beats
 Charge and death buffs (Bodyguard, Pass the torch, Last rally) get their own

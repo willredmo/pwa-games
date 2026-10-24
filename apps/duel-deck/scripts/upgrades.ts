@@ -7,13 +7,19 @@
 // Also checks the level cap survives the round's board clone, and fails if
 // an offered upgrade has no check here.
 
-import { cloneBoard, insertUnit, levelCapOf, makeUnit, occupants, upgradeUnit } from "../src/engine/board";
+import { cloneBoard, insertUnit, levelCapOf, makeUnit, mergeGain, occupants, upgradeUnit } from "../src/engine/board";
 import { resolveRound } from "../src/engine/combat";
 import { KNIGHT_AT, UNITS, isMastered } from "../src/engine/units";
 import type { AttackEvent, BattleEvent, Board, BuffEvent, HealEvent, RoundResult, Side, Unit } from "../src/engine/types";
 import {
   OFFERED_AUGMENTS,
+  applyTarget,
   createAugmentState,
+  getAugment,
+  offerAugments,
+  rarityOf,
+  rerollAugment,
+  rollRarity,
   mergeRatioFor,
   takeAugment,
   transferGrant,
@@ -227,7 +233,7 @@ for (const cap of [8, 10, 12, 15]) {
 {
   const five = delta(["guard", "striker", "medic", "bulwark", "lancer"], ["guard"], ["mixed-formation"], 4);
   const four = delta(["guard", "striker", "medic", "bulwark", "guard"], ["guard"], ["mixed-formation"], 0);
-  check("mixed-formation", "+1/+1 with 5 unit types, nothing with 4", five.atk === 1 && five.hp === 1 && four.atk === 0, [five.atk, five.hp, four.atk]);
+  check("mixed-formation", "+2/+2 with 5 unit types, nothing with 4", five.atk === 2 && five.hp === 2 && four.atk === 0, [five.atk, five.hp, four.atk]);
 }
 {
   const d4 = delta(["guard"], ["guard"], ["berserkers-rally"], 0, { aug: { rally: 4 } });
@@ -371,13 +377,9 @@ for (const cap of [8, 10, 12, 15]) {
 // --- Epics -------------------------------------------------------------------
 
 {
-  // Three Defense, two Attack: Defense units get it.
-  const row = ["striker", "guard", "bulwark", "sentinel", "berserker"];
+  const row = ["striker", "guard", "medic", "sentinel", "berserker"];
   const d = row.map((_, i) => delta(row, ["guard"], ["legion"], i));
-  check("legion", "+1/+1 to the most common class only", d.map((x) => x.atk + x.hp).join() === "0,2,2,2,0", d.map((x) => [x.atk, x.hp]));
-  const tie = ["striker", "guard", "berserker", "bulwark"];
-  const t = tie.map((_, i) => delta(tie, ["guard"], ["legion"], i).atk);
-  check("legion", "a tie goes to the front unit's class", t.join() === "1,0,1,0", t);
+  check("legion", "+1/+1 to every unit, whatever its class", d.every((x) => x.atk === 1 && x.hp === 1), d.map((x) => [x.atk, x.hp]));
 }
 {
   const f = delta(["guard", "striker"], ["guard"], ["champion"], 0);
@@ -571,6 +573,199 @@ for (const cap of [8, 10, 12, 15]) {
   const m: U = { key: "beacon", merges: 9 };
   const got = [rally(["guard", b, "herald"]), rally(["guard", b, b, "herald"]), rally(["guard", b, b, b, "herald"]), rally(["guard", m, m, m, "herald"])];
   check("relay-chain", "Beacons add up (3 → 5, 6, 8) and stop at ×3 (9)", got.join() === "5,6,8,9", got);
+}
+
+// --- 1.8.0 upgrades: choose-a-unit and the new golds and prismatics -----------
+
+/**
+ * Take choose-a-unit upgrade `id` and land it on unit `at` of `mine`, then
+ * refresh. Returns each unit's stats before and after.
+ */
+function landOn(mine: U[], id: string, at: number, rules: Partial<MatchRules> = {}) {
+  const s = setup(mine, ["guard"], [id], { rules });
+  const snap = (us: Unit[]) => us.map((u) => ({ id: u.id, key: u.key, atk: u.atk, hp: u.maxHp, merges: u.merges }));
+  const before = snap(s.p);
+  const can = getAugment(id)!.target!.can(s.p[at], s.board, PLAYER);
+  const ok = applyTarget(s.pAug, id, s.board, PLAYER, s.p[at].id);
+  refreshForRound(s.board, s.pAug, s.eAug);
+  return { can, ok, before, after: snap(occupants(s.board, PLAYER, 0)), s };
+}
+const gain = (r: ReturnType<typeof landOn>, i: number) => ({
+  atk: r.after[i].atk - r.before[i].atk,
+  hp: r.after[i].hp - r.before[i].hp,
+  levels: r.after[i].merges - r.before[i].merges,
+});
+
+{
+  const d = delta(["guard", "striker"], ["guard"], ["golden-age"], 1);
+  check("golden-age", "+1 attack, +4 health to every unit", d.atk === 1 && d.hp === 4, [d.atk, d.hp]);
+}
+{
+  const r = landOn(["guard", "striker"], "whetstone", 1);
+  check("whetstone", "the chosen unit +2 attack, the other nothing", r.ok && gain(r, 1).atk === 2 && gain(r, 0).atk === 0, [gain(r, 0), gain(r, 1)]);
+  const next = cloneBoard(r.s.board);
+  refreshForRound(next, r.s.pAug, r.s.eAug);
+  check("whetstone", "and it lasts into the next round", occupants(next, PLAYER, 0)[1].atk === r.after[1].atk);
+}
+{
+  const r = landOn(["guard", "striker"], "iron-skin", 0);
+  check("iron-skin", "the chosen unit +5 health", r.ok && gain(r, 0).hp === 5 && gain(r, 1).hp === 0, [gain(r, 0), gain(r, 1)]);
+}
+{
+  const r = landOn(["guard", "striker"], "field-promotion", 1);
+  check("field-promotion", "2 levels on the chosen unit", r.ok && gain(r, 1).levels === 2 && gain(r, 0).levels === 0, gain(r, 1));
+  const before = mk("striker", PLAYER);
+  const g = mergeGain("striker", mergeRatioFor(createAugmentState()), 0);
+  check("field-promotion", "each level as a merge would give", gain(r, 1).atk >= 2 * g.atk - 1 && gain(r, 1).hp >= 2 * g.hp - 1, [gain(r, 1), g, before.baseAtk]);
+  const near = landOn([{ key: "striker", merges: 8 }], "field-promotion", 0);
+  check("field-promotion", "stops at the level cap (9 → 10)", near.after[0].merges === 9, near.after[0].merges);
+  const maxed = landOn([{ key: "striker", merges: 9 }], "field-promotion", 0);
+  check("field-promotion", "can't land on a maxed unit", !maxed.can && !maxed.ok);
+}
+{
+  const r = landOn(["guard", "lancer"], "commission", 1);
+  check("commission", "3 levels on the chosen unit", r.ok && gain(r, 1).levels === 3, gain(r, 1));
+}
+{
+  const r = landOn(["guard", "striker"], "heros-mark", 0);
+  check("heros-mark", "the chosen unit +3/+6", r.ok && gain(r, 0).atk === 3 && gain(r, 0).hp === 6, gain(r, 0));
+}
+{
+  const r = landOn(["guard", { key: "striker", merges: 2 }], "apotheosis", 1);
+  check("apotheosis", "5 levels on the chosen unit", r.ok && gain(r, 1).levels === 5, gain(r, 1));
+  const near = landOn(["guard", { key: "striker", merges: 6 }], "apotheosis", 1);
+  check("apotheosis", "up to the cap, Mastery and all", near.after[1].merges === 9 && !!near.s.board.slots.player[0][1]?.traits?.chargeEach, near.after[1].merges);
+}
+{
+  const r = landOn(["guard", { key: "lancer", merges: 4 }], "mirror-image", 1);
+  const copy = r.after[2];
+  check("mirror-image", "a copy at the same level joins the row", r.ok && r.after.length === 3 && copy?.key === "lancer" && copy.merges === 4 && copy.id !== r.after[1].id, r.after);
+  const full = landOn(["guard", "guard", "guard", "guard", "guard"], "mirror-image", 0);
+  check("mirror-image", "needs an empty slot", !full.can && !full.ok);
+}
+{
+  const r = landOn(["guard", "striker"], "drill-sergeant", 1);
+  const g = gain(r, 1);
+  const plain = landOn(["guard", "striker"], "field-promotion", 1);
+  check("drill-sergeant", "2 levels and +2 attack", r.ok && g.levels === 2 && g.atk === gain(plain, 1).atk + 2, [g, gain(plain, 1)]);
+  const maxed = landOn([{ key: "striker", merges: 9 }], "drill-sergeant", 0);
+  check("drill-sergeant", "a maxed unit still takes the attack", maxed.ok && gain(maxed, 0).atk === 2 && gain(maxed, 0).levels === 0, gain(maxed, 0));
+}
+{
+  const r = landOn(["guard", "striker"], "juggernaut", 1);
+  check("juggernaut", "the chosen unit +5/+10", r.ok && gain(r, 1).atk === 5 && gain(r, 1).hp === 10, gain(r, 1));
+}
+{
+  const r = landOn(["guard", "striker", "guard", "medic"], "heroic-legion", 0);
+  check("heroic-legion", "both Guards gain 2 levels, the others none", r.ok && gain(r, 0).levels === 2 && gain(r, 2).levels === 2 && gain(r, 1).levels === 0 && gain(r, 3).levels === 0, [0, 1, 2, 3].map((i) => gain(r, i).levels));
+}
+{
+  const s = setup(["guard", "striker"], ["guard"], ["bloodbond"]);
+  check("bloodbond", "the lead unit heals half, the next doesn't", s.p[0].traits?.lifesteal === 0.5 && !s.p[1].traits?.lifesteal);
+}
+{
+  const s = setup(["striker", "medic"], ["guard"], ["spiked-line"]);
+  check("spiked-line", "every unit reflects 1", s.p.every((u) => u.traits?.thorns === 1), s.p.map((u) => u.traits?.thorns));
+}
+{
+  const a = setup(["guard"], ["guard"]).p[0].traits?.openingBonus ?? 0;
+  const b = setup(["guard"], ["guard"], ["opening-salvo"]).p[0].traits?.openingBonus ?? 0;
+  check("opening-salvo", "+3 on the first attack", b - a === 3, [a, b]);
+  const s = setup([{ key: "guard", atk: 2 }], [{ key: "bulwark", atk: 0, hp: 99 }], ["opening-salvo"]);
+  const first = attacks(resolveRound(s.board)).find((e) => e.attacker === s.p[0].id);
+  check("opening-salvo", "and it lands in combat", first?.damage === 5, first);
+}
+{
+  const back = delta(["guard", "striker", "lancer"], ["guard"], ["rear-guard"], 2);
+  const front = delta(["guard", "striker", "lancer"], ["guard"], ["rear-guard"], 0);
+  check("rear-guard", "the back unit +4/+8, the front nothing", back.atk === 4 && back.hp === 8 && front.atk === 0 && front.hp === 0, [back.atk, back.hp, front.atk]);
+}
+{
+  const d1 = delta(["guard", "striker", "lancer"], ["guard"], ["second-line"], 1);
+  const d0 = delta(["guard", "striker", "lancer"], ["guard"], ["second-line"], 0);
+  check("second-line", "the second unit +3/+6, the first nothing", d1.atk === 3 && d1.hp === 6 && d0.atk === 0, [d1.atk, d1.hp, d0.atk]);
+}
+{
+  const s = setup(["striker", "lancer"], ["guard"], ["vanguards-vow"]);
+  check("vanguards-vow", "the lead unit endures and takes 1 less; the next neither", !!s.p[0].traits?.endure && s.p[0].traits?.damageReduction === 1 && !s.p[1].traits?.endure);
+  const t = setup([{ key: "striker", atk: 1, hp: 5 }], [{ key: "berserker", atk: 50, hp: 99 }], ["vanguards-vow"]);
+  const r = resolveRound(t.board);
+  const hits = attacks(r).filter((e) => e.target === t.p[0].id).length;
+  check("vanguards-vow", "a killing blow leaves it on 1, so it takes a second", hits >= 2, hits);
+}
+{
+  const d = delta(["guard", "striker"], ["guard"], ["hawk-eye"], 1);
+  check("hawk-eye", "+2 attack and blows can't be dodged", d.atk === 2 && !!d.unit.traits?.trueStrike, [d.atk, d.unit.traits?.trueStrike]);
+}
+{
+  const s = setup(["guard", "striker"], ["guard"], ["blood-moon"]);
+  check("blood-moon", "every unit heals a quarter", s.p.every((u) => u.traits?.lifesteal === 0.25));
+}
+{
+  const s = setup(["guard", "striker"], ["guard"], ["avalanche"]);
+  check("avalanche", "every unit's overkill carries on", s.p.every((u) => !!u.traits?.cleave));
+  const t = setup([{ key: "guard", atk: 20, hp: 99 }], [{ key: "guard", atk: 0, hp: 2 }, { key: "guard", atk: 0, hp: 30 }], ["avalanche"]);
+  const carry = attacks(resolveRound(t.board)).find((e) => e.tag === "cleave" && e.attacker === t.p[0].id);
+  // 20 into a 2-health Guard: 18 carries on, in full.
+  check("avalanche", "and it lands on the next enemy in full", carry?.damage === 18, carry);
+}
+{
+  const s = setup(["striker", "lancer"], ["guard"], ["mirror-shield"]);
+  check("mirror-shield", "every unit reflects 2", s.p.every((u) => u.traits?.thorns === 2), s.p.map((u) => u.traits?.thorns));
+}
+{
+  const s = setup(["striker", "lancer", "medic"], ["guard"], ["phoenix"]);
+  check("phoenix", "the first two endure, the third doesn't", !!s.p[0].traits?.endure && !!s.p[1].traits?.endure && !s.p[2].traits?.endure);
+}
+{
+  const s = setup(["striker", "lancer"], ["guard"], ["ironclad"]);
+  check("ironclad", "every unit takes 1 less", s.p.every((u) => u.traits?.damageReduction === 1));
+}
+{
+  const s = setup([{ key: "berserker", atk: 10 }], [{ key: "guard", atk: 0, hp: 5 }], ["golden-fleece"], { hp: 150 });
+  const r = resolveRound(s.board);
+  check("golden-fleece", "a round won deals 10 extra", r.bounty === 10 && r.hpLoss === 20, [r.bounty, r.hpLoss]);
+  check("golden-fleece", "and heals 25", settleRound(r, PLAYER, s.pAug, s.board) === 25);
+}
+
+{
+  const s = setup(["guard", "striker"], ["guard"], ["mantis-shrimp"]);
+  const plain = setup(["guard", "striker"], ["guard"]).p[0].traits?.openingBonus ?? 0;
+  check("mantis-shrimp", "the lead unit strikes first, +3 on that blow; the next neither", !!s.p[0].traits?.firstStrike && (s.p[0].traits?.openingBonus ?? 0) - plain === 3 && !s.p[1].traits?.firstStrike);
+  // A 5-health enemy front dies to the first blow, so nothing comes back.
+  const t = setup([{ key: "guard", atk: 2, hp: 5 }], [{ key: "berserker", atk: 9, hp: 5 }, "guard"], ["mantis-shrimp"]);
+  const first = attacks(resolveRound(t.board))[0];
+  check("mantis-shrimp", "and lands first (2 + 3 kills a 5-health front)", first?.attacker === t.p[0].id && first.damage === 5, first);
+}
+
+// --- Offers: one rarity a choice, the same for both players --------------------
+
+{
+  const seeds = Array.from({ length: 400 }, (_, i) => `s${i}`);
+  check("offers", "the rarity roll is the same on both devices", seeds.every((sd) => rollRarity(sd, 3) === rollRarity(sd, 3)));
+  // 50/35/15 at every choice: over 4000 rolls each share lands within 3 points.
+  for (const tier of [1, 6]) {
+    const rolls = Array.from({ length: 4000 }, (_, i) => rollRarity(`m${i}`, tier));
+    const share = (r: string) => rolls.filter((x) => x === r).length / rolls.length;
+    const got = [share("silver"), share("gold"), share("prismatic")];
+    check("offers", `choice ${tier} deals 50/35/15`, Math.abs(got[0] - 0.5) < 0.03 && Math.abs(got[1] - 0.35) < 0.03 && Math.abs(got[2] - 0.15) < 0.03, got);
+  }
+  const st = createAugmentState();
+  const b = newBoard();
+  insertUnit(b, PLAYER, 0, 0, mk("guard", PLAYER));
+  for (const r of ["silver", "gold", "prismatic"] as const) {
+    const o = offerAugments(st, 3, r, { board: b, side: PLAYER });
+    check("offers", `three ${r} cards`, o.length === 3 && o.every((a) => rarityOf(a) === r), o.map((a) => a.id));
+    const seen = o.map((a) => a.id);
+    const next = rerollAugment(st, o[0], seen, { board: b, side: PLAYER });
+    check("offers", `a ${r} reroll is ${r} and new`, !!next && rarityOf(next) === r && !seen.includes(next.id), next?.id);
+  }
+  // A full row can't take a Mirror image, so it isn't dealt.
+  const full = newBoard();
+  for (let i = 0; i < 5; i++) insertUnit(full, PLAYER, 0, i, mk("guard", PLAYER));
+  const dealt = new Set<string>();
+  for (let i = 0; i < 300; i++) for (const a of offerAugments(st, 3, "prismatic", { board: full, side: PLAYER })) dealt.add(a.id);
+  check("offers", "a full row isn't dealt Mirror image", !dealt.has("mirror-image"));
 }
 
 // --- Coverage ----------------------------------------------------------------

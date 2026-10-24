@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import "./overlays.css";
 import { kawaiiName } from "../game/kawaii";
 import type { AugmentDef, AugmentState } from "../game/augments";
-import { OFFERED_AUGMENTS as AUGMENTS, MAX_FROZEN_AUGMENTS, RALLY_CAP, getAugment, rarityOf, unitsAffectedBy, type Rarity } from "../game/augments";
+import { OFFERED_AUGMENTS as AUGMENTS, RALLY_CAP, getAugment, rarityOf, unitsAffectedBy, type Rarity } from "../game/augments";
 import { ARCHETYPES, KNIGHT_LEVEL, MAX_LEVEL, SYNERGIES, UNITS, UNIT_KEYS, levelOf } from "../engine/units";
 import { levelLabel, levelTier } from "../board/render";
+import type { Unit } from "../engine/types";
 import { AUGMENT_EVERY, PICK_COUNT } from "../game/match";
 import { mvpOf, roundsPlayed, type MatchStats, type UnitTally } from "../game/stats";
 import { prefersReducedMotion } from "../board/anim";
@@ -18,7 +19,8 @@ import { ResultBackdrop } from "./ResultBackdrop";
 interface AugmentPanelProps {
   round: number;
   offers: AugmentDef[];
-  onPick: (id: string) => void;
+  /** Take an upgrade; a choose-a-unit one comes with the unit it lands on. */
+  onPick: (id: string, unitId?: string) => void;
   /**
    * Showing the board through the panel. The panel stays mounted and in place
    * (just faded out), so the toggle button never moves under the pointer.
@@ -26,12 +28,13 @@ interface AugmentPanelProps {
   peeking: boolean;
   /** Toggle `peeking`. */
   onPeek: () => void;
-  /** Rerolls left on this choice, and the action that spends one. */
-  rerollsLeft: number;
-  onReroll: () => void;
-  /** Upgrades frozen for the next choice (up to MAX_FROZEN_AUGMENTS). */
-  frozenIds: string[];
-  onFreeze: (id: string) => void;
+  /** Rerolls left on each card, by position, and the action that spends one. */
+  rerollsLeft: number[];
+  onReroll: (index: number) => void;
+  /** Your row, for choose-a-unit upgrades. */
+  units: Unit[];
+  /** Whether choose-a-unit upgrade `id` can land on `unit`. */
+  canTarget: (id: string, unit: Unit) => boolean;
 }
 
 /**
@@ -41,9 +44,9 @@ interface AugmentPanelProps {
  */
 const AUGMENT_ARM_MS = 600;
 
-const RARITY_LABEL: Record<Rarity, string> = { common: "Common", rare: "Rare", epic: "Epic" };
+const RARITY_LABEL: Record<Rarity, string> = { silver: "Silver", gold: "Gold", prismatic: "Prismatic" };
 
-/** Rarity chip; commons get one too so the tiers read as a scale. */
+/** Rarity chip; silvers get one too so the tiers read as a scale. */
 function RarityTag({ rarity }: { rarity: Rarity }) {
   return <span className={`rarity rarity--${rarity}`}>{RARITY_LABEL[rarity]}</span>;
 }
@@ -56,7 +59,11 @@ const CATEGORY_LABEL: Record<string, string> = {
   strategy: "Strategy",
 };
 
-
+/**
+ * The upgrade choice, laid out like League's ARAM Mayhem: tall cards of one
+ * rarity, each with its own reroll under it. Taking one is two steps (tap a
+ * card, then "Take"), and a choose-a-unit upgrade adds a third: which unit.
+ */
 export function AugmentPanel({
   round,
   offers,
@@ -65,122 +72,162 @@ export function AugmentPanel({
   onPeek,
   rerollsLeft,
   onReroll,
-  frozenIds,
-  onFreeze,
+  units,
+  canTarget,
 }: AugmentPanelProps) {
-  const freezeFull = frozenIds.length >= MAX_FROZEN_AUGMENTS;
   // Two steps, so one stray tap can't lock in an upgrade for the whole match:
   // tapping a card only selects it, and "Take" commits the selection.
   const [selected, setSelected] = useState<string | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
+  /** A choose-a-unit upgrade taken, waiting for its unit. */
+  const [targeting, setTargeting] = useState<AugmentDef | null>(null);
+  const [targetId, setTargetId] = useState<string | null>(null);
   const timer = useRef<number | undefined>(undefined);
   const armedAt = useRef(0);
   // Re-arm whenever the cards change (opening, a reroll), and drop a selection
-  // that was rerolled away. Keyed on the ids, so freezing a card doesn't re-arm.
+  // that was rerolled away.
   const offerKey = offers.map((a) => a.id).join();
   useEffect(() => {
     armedAt.current = performance.now() + AUGMENT_ARM_MS;
     setSelected((s) => (s && offers.some((a) => a.id === s) ? s : null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offerKey]);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
   const select = (id: string) => {
     if (picked || peeking || performance.now() < armedAt.current) return;
     setSelected(id);
   };
   const selectedDef = offers.find((a) => a.id === selected);
-  const choose = (id: string) => {
+  const choose = (id: string, unitId?: string) => {
     if (picked || peeking) return;
-    const reduce =
-      typeof window !== "undefined" &&
-      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) return onPick(id);
+    if (prefersReducedMotion()) return onPick(id, unitId);
     setPicked(id);
-    timer.current = window.setTimeout(() => onPick(id), 450);
+    timer.current = window.setTimeout(() => onPick(id, unitId), 450);
   };
+  const take = (def: AugmentDef) => {
+    if (def.target) {
+      setTargeting(def);
+      setTargetId(null);
+    } else choose(def.id);
+  };
+  // The cards' rarity (they share one; a pool that ran dry can mix them).
+  const rarity = offers[0] ? rarityOf(offers[0]) : "silver";
+  const targetUnit = units.find((u) => u.id === targetId);
   return (
     <div className={`overlay overlay--augment${peeking ? " overlay--peek" : ""}`}>
-      <div className={`panel panel--wide${peeking ? " panel--peek" : ""}`}>
+      <div className={`panel panel--wide aug-panel aug-panel--${rarity}${peeking ? " panel--peek" : ""}`}>
         <div className="panel__head">
-          <h2>
-            <span className="hud__long">Persistent </span>upgrade
+          <h2 className="aug-panel__title">
+            <span className={`aug-panel__rarity aug-panel__rarity--${rarity}`}>{RARITY_LABEL[rarity]}</span> upgrade
           </h2>
           {/* Several upgrades scale off your board, so let the player check it. */}
           <button className="ghost-btn ghost-btn--sm peek-toggle" onClick={onPeek}>
             {peeking ? "← Back to upgrades" : "View board"}
           </button>
         </div>
-        <div className="panel__hint panel__hint--row">
-          <span>Round {round} · lasts this match only</span>
-          <button
-            className="ghost-btn ghost-btn--sm"
-            onClick={onReroll}
-            disabled={rerollsLeft <= 0 || peeking || !!picked}
-            title="Draw new upgrades (frozen ones stay)"
-          >
-            🎲 Reroll ({rerollsLeft})
-          </button>
+        <div className="panel__hint">
+          Round {round} · lasts this match only · both players draw {RARITY_LABEL[rarity].toLowerCase()}
         </div>
-        <div className={`cards cards--deal${picked ? " cards--picked" : ""}`}>
-          {offers.map((a, i) => {
-            const isFrozen = frozenIds.includes(a.id);
-            return (
-            <div className="card-row-wrap" key={a.id}>
+        {targeting ? (
+          <div className="aug-target">
+            <div className="aug-target__head">
+              <span className="aug-target__icon">{targeting.icon}</span>
+              <span>
+                <strong>{targeting.name}</strong>: choose the unit that {targeting.target?.verb}.
+              </span>
+            </div>
+            <div className="aug-target__units">
+              {units.map((u) => {
+                const ok = canTarget(targeting.id, u);
+                return (
+                  <button
+                    key={u.id}
+                    className={`aug-unit${targetId === u.id ? " aug-unit--on" : ""}`}
+                    disabled={!ok || !!picked || peeking}
+                    onClick={() => setTargetId(u.id)}
+                    aria-pressed={targetId === u.id}
+                  >
+                    <UnitPortrait unitKey={u.key} side="player" size={40} merges={u.merges} />
+                    <span className="aug-unit__name">{UNITS[u.key]?.name ?? u.key}</span>
+                    <span className="aug-unit__lv">
+                      Lv {u.merges + 1} · ⚔{u.atk} ♥{u.maxHp}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="aug-target__actions">
+              <button className="ghost-btn" onClick={() => setTargeting(null)} disabled={!!picked || peeking}>
+                ← Other upgrades
+              </button>
+              <button
+                className="primary-btn take-btn"
+                disabled={!targetUnit || !!picked || peeking}
+                onClick={() => targetUnit && choose(targeting.id, targetUnit.id)}
+              >
+                {targetUnit ? `${targeting.icon} ${UNITS[targetUnit.key]?.name ?? targetUnit.key}` : "Tap a unit"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div
+              className={`aug-cards${picked ? " aug-cards--picked" : ""}`}
+              style={{ "--n": offers.length } as React.CSSProperties}
+            >
+              {offers.map((a, i) => (
+                <div className="aug-col" key={`${i}:${a.id}`}>
+                  <button
+                    className={`aug-card aug-card--${rarityOf(a)}${
+                      picked ? (picked === a.id ? " aug-card--chosen" : " aug-card--away") : ""
+                    }${selected === a.id && !picked ? " aug-card--selected" : ""}`}
+                    style={{ "--i": i } as React.CSSProperties}
+                    onClick={() => select(a.id)}
+                    aria-pressed={selected === a.id}
+                    tabIndex={peeking ? -1 : undefined}
+                  >
+                    <span className="aug-card__inner">
+                      <span className="aug-card__icon" aria-hidden="true">
+                        {a.icon}
+                      </span>
+                      <span className="aug-card__name">{a.name}</span>
+                      <span className="aug-card__tag">{a.target ? "Choose a unit" : CATEGORY_LABEL[a.category]}</span>
+                      <span className="aug-card__desc">{a.description}</span>
+                    </span>
+                    {selected === a.id && !picked && (
+                      <span className="aug-card__check" aria-hidden="true">
+                        ✓
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    className="aug-reroll"
+                    onClick={() => onReroll(i)}
+                    disabled={(rerollsLeft[i] ?? 0) <= 0 || peeking || !!picked}
+                    aria-label={`Reroll ${a.name}`}
+                    title={(rerollsLeft[i] ?? 0) > 0 ? "Reroll this card" : "Already rerolled"}
+                  >
+                    ↻
+                  </button>
+                </div>
+              ))}
+            </div>
             <button
-              className={`card-row card-row--deal card-row--${a.category} card-row--${rarityOf(a)}${
-                picked ? (picked === a.id ? " card-row--chosen" : " card-row--away") : ""
-              }${frozenIds.includes(a.id) ? " card-row--frozen" : ""}${selected === a.id && !picked ? " card-row--selected" : ""}`}
-              style={{ "--i": i } as React.CSSProperties}
-              onClick={() => select(a.id)}
-              aria-pressed={selected === a.id}
+              className="primary-btn primary-btn--wide take-btn"
+              onClick={() => selectedDef && take(selectedDef)}
+              disabled={!selectedDef || !!picked || peeking}
               tabIndex={peeking ? -1 : undefined}
             >
-              <span className="card-row__head">
-                <span className="card-row__name">
-                  <span className="aura-icon">{a.icon}</span> {a.name}
-                </span>
-                <span className="tags">
-                  <RarityTag rarity={rarityOf(a)} />
-                  <span className={`tag tag--${a.category}`}>{CATEGORY_LABEL[a.category]}</span>
-                </span>
-              </span>
-              <span className="card-row__desc">{a.description}</span>
-              {selected === a.id && !picked && <span className="card-row__check" aria-hidden="true">✓</span>}
+              {selectedDef ? (
+                <>
+                  Take {selectedDef.icon} {selectedDef.name}
+                </>
+              ) : (
+                "Tap an upgrade to choose it"
+              )}
             </button>
-            {/* Freeze: offered first at your next upgrade choice. */}
-            <button
-              className={`freeze-btn freeze-btn--row${isFrozen ? " freeze-btn--on" : ""}`}
-              onClick={() => onFreeze(a.id)}
-              disabled={peeking || !!picked || (freezeFull && !isFrozen)}
-              aria-pressed={isFrozen}
-              aria-label={`Freeze ${a.name} for your next upgrade choice`}
-              title={
-                isFrozen
-                  ? "Frozen: offered first next time. Click to unfreeze"
-                  : freezeFull
-                    ? `${MAX_FROZEN_AUGMENTS} frozen max: unfreeze one first`
-                    : "Freeze: offer this first at your next upgrade choice"
-              }
-            >
-              ❄
-            </button>
-            </div>
-            );
-          })}
-        </div>
-        <button
-          className="primary-btn primary-btn--wide take-btn"
-          onClick={() => selectedDef && choose(selectedDef.id)}
-          disabled={!selectedDef || !!picked || peeking}
-          tabIndex={peeking ? -1 : undefined}
-        >
-          {selectedDef ? (
-            <>
-              Take {selectedDef.icon} {selectedDef.name}
-            </>
-          ) : (
-            "Tap an upgrade to choose it"
-          )}
-        </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -892,7 +939,8 @@ function CodexUpgrades({ onUnit }: { onUnit: (key: string) => void }) {
     <>
       <p className="panel__hint">
         Every upgrade that can be offered. You pick one every {AUGMENT_EVERY} rounds and each can be taken once per
-        match. Rares can appear from the second pick, epics from the third.
+        match. Each choice deals three cards of one rarity, the same for both players: silver, gold or prismatic,
+        at 50%, 35% and 15% every time. Each card can be rerolled once.
       </p>
       {CATEGORY_ORDER.map((cat) => {
         const defs = AUGMENTS.filter((a) => a.category === cat);

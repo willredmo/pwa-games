@@ -14,7 +14,7 @@ import { resolveRound } from "../src/engine/combat";
 import { synergyOf } from "../src/engine/units";
 import type { Side } from "../src/engine/types";
 import { newBoard, aiCommit, HARD_TUNING, drillFor, PICK_COUNT, type Difficulty, aiPickAugment, aiTakeAugment, isAugmentRound, refreshForRound, upgradeTier, augmentOfferCount } from "../src/game/match";
-import { createAugmentState, offerAugments, takeAugment, OFFERED_AUGMENTS as AUGMENTS } from "../src/game/augments";
+import { createAugmentState, offerAugments, takeAugment, OFFERED_AUGMENTS as AUGMENTS, aiTarget, applyTarget, newUpgradeSeed, rollRarity } from "../src/game/augments";
 import { settleRound } from "../src/game/roundEnd";
 
 type DrawRule = "none" | "more-damage" | "both";
@@ -69,6 +69,7 @@ for (let i = 0; i < N; i++) {
   let board = newBoard();
   if (startHp) board.hp = { player: startHp, enemy: startHp };
   aug = { player: createAugmentState(), enemy: createAugmentState() };
+  const seed = newUpgradeSeed();
   let winner: Side | null = null, r = 0;
   const lastSyn: Record<Side, string | null> = { player: null, enemy: null };
   while (r < CAP) {
@@ -77,10 +78,17 @@ for (let i = 0; i < N; i++) {
     // Upgrade rounds open with the upgrade, before unit picks — as in the app.
     // --aug=ai plays the app's AI upgrade turn (rarity, fit, rerolls); random
     // mode picks blind, for unbiased per-augment win rates.
+    // Both sides are dealt the same rarity, as in the app.
+    const rarity = rollRarity(seed, upgradeTier(r));
     if (isAugmentRound(r)) for (const s of SIDES) {
-      if (augMode === "ai") { aiTakeAugment(c, s, aug[s], r, diff[s]); continue; }
-      const ch = pickAug(offerAugments(aug[s], augmentOfferCount(aug[s]), upgradeTier(r)));
-      if (ch) { const k = takeAugment(aug[s], ch.id, sideUnits(c, s)); if (k) c.hp[s] = Math.max(1, c.hp[s] - k); }
+      if (augMode === "ai") { aiTakeAugment(c, s, aug[s], rarity, diff[s]); continue; }
+      const ch = pickAug(offerAugments(aug[s], augmentOfferCount(aug[s]), rarity, { board: c, side: s }));
+      if (ch) {
+        const k = takeAugment(aug[s], ch.id, sideUnits(c, s));
+        if (k) c.hp[s] = Math.max(1, c.hp[s] - k);
+        const t = aiTarget(ch.id, c, s);
+        if (t) applyTarget(aug[s], ch.id, c, s, t.id);
+      }
     }
     // Hard scouts the rows as they stood before either side picked.
     const scout = cloneBoard(c);

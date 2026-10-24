@@ -248,8 +248,8 @@
   animation: ov-item 0.35s ease both;
   animation-delay: calc(1.2s + var(--i, 0) * 70ms);
 }
-.result-upgrade--rare { border-color: #4c9aeb; }
-.result-upgrade--epic { border-color: #b26eff; box-shadow: 0 0 8px rgba(178, 110, 255, 0.35); }
+.result-upgrade--gold { border-color: #e2b24a; }
+.result-upgrade--prismatic { border-color: #b26eff; box-shadow: 0 0 8px rgba(178, 110, 255, 0.35); }
 
 @media (prefers-reduced-motion: reduce) {
   .overlay, .overlay *, .overlay *::after {
@@ -433,15 +433,15 @@
   padding: 0.1rem 0.4rem;
   border-radius: 999px;
 }
-.rarity--common { background: #3a3651; color: #c9c3e4; }
-.rarity--rare { background: #1f4f8a; color: #cfe6ff; box-shadow: 0 0 6px rgba(76, 154, 235, 0.45); }
-.rarity--epic {
-  background: linear-gradient(135deg, #7b3fd1, #c2408f);
+.rarity--silver { background: #4a4e60; color: #eef0f7; }
+.rarity--gold { background: linear-gradient(135deg, #8a6418, #c9952c); color: #fff4d6; box-shadow: 0 0 6px rgba(240, 186, 70, 0.45); }
+.rarity--prismatic {
+  background: linear-gradient(135deg, #c2408f, #7b3fd1 50%, #2fa6c9);
   color: #fff0fb;
   box-shadow: 0 0 8px rgba(178, 110, 255, 0.6);
 }
-.card-row.card-row--rare { border-color: #3f7fc9; }
-.card-row.card-row--epic {
+.card-row.card-row--gold { border-color: #c9952c; }
+.card-row.card-row--prismatic {
   border-color: #b26eff;
   box-shadow: 0 0 0 1px rgba(178, 110, 255, 0.35), 0 0 14px rgba(178, 110, 255, 0.25);
 }
@@ -725,4 +725,238 @@ button.unit-entry__aug:hover, button.unit-entry__aug:focus-visible { border-colo
   /* Tags on their own line, so the name gets the width. */
   .overlay--augment .card-row__head { flex-wrap: wrap; row-gap: 0.15rem; }
   .overlay--augment .take-btn { position: sticky; bottom: 0; min-height: 2.9rem; }
+}
+
+/* --- Upgrade choice: ARAM Mayhem-style cards ---------------------------------
+   Tall cards of one rarity, each with its own reroll. The frame is the card's
+   own background (a rarity gradient) showing round a dark inner panel; only
+   transform and opacity animate (iOS). */
+/* The cards need the width, so the choice takes the whole screen at every
+   size (phones already did, below), centred. Doubled class: App.css's .overlay
+   loads later. */
+.overlay.overlay--augment {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  border-radius: 0;
+  overflow-y: auto;
+  align-items: flex-start;
+  justify-content: center;
+  padding: max(10px, env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom));
+}
+.overlay--augment > .aug-panel { width: min(100%, 44rem); margin: auto; }
+.aug-panel { --aug-glow: rgba(214, 218, 236, 0.45); --aug-frame: linear-gradient(160deg, #fbfbff, #9ca1b9 45%, #e9eaf5 70%, #8d92aa); }
+.aug-panel--gold { --aug-glow: rgba(240, 190, 80, 0.55); }
+.aug-panel--prismatic { --aug-glow: rgba(190, 140, 255, 0.6); }
+.aug-panel__title { display: flex; align-items: baseline; gap: 0.35rem; }
+.aug-panel__rarity { font-weight: 900; }
+.aug-panel__rarity--silver { color: #e3e6f2; }
+.aug-panel__rarity--gold { color: #f3c55a; }
+.aug-panel__rarity--prismatic {
+  background: linear-gradient(90deg, #ff8ad8, #a98cff, #6fe3ff, #fff09a);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.aug-cards {
+  display: grid;
+  grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr));
+  gap: clamp(0.4rem, 2.2vw, 1rem);
+  margin-top: 0.7rem;
+}
+.aug-col { display: flex; flex-direction: column; align-items: center; gap: 0.55rem; min-width: 0; }
+/* Every card as tall as the tallest, so the rerolls line up. */
+.aug-col .aug-card { display: flex; flex: 1; }
+.aug-col .aug-card__inner { flex: 1; height: auto; }
+
+.aug-card {
+  --frame: linear-gradient(160deg, #fbfbff, #9ca1b9 45%, #e9eaf5 70%, #8d92aa);
+  --glow: rgba(214, 218, 236, 0.4);
+  --accent: #dfe2ee;
+  position: relative;
+  width: 100%;
+  min-height: clamp(13rem, 46vw, 17.5rem);
+  padding: 4px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--frame);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 0 16px var(--glow), 0 8px 22px rgba(0, 0, 0, 0.45);
+  color: #f2f0fa;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 160ms ease, opacity 220ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.aug-card--gold {
+  --frame: linear-gradient(160deg, #fff3c4, #c8902a 40%, #ffe08a 65%, #9a6a18);
+  --glow: rgba(240, 186, 70, 0.5);
+  --accent: #f5c75c;
+}
+.aug-card--prismatic {
+  --frame: linear-gradient(135deg, #ff8ad8, #b08cff 25%, #6fe3ff 50%, #fff09a 75%, #ff8ad8);
+  --glow: rgba(186, 140, 255, 0.6);
+  --accent: #c9b2ff;
+}
+.aug-card__inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  height: 100%;
+  padding: clamp(0.7rem, 3vw, 1.3rem) clamp(0.35rem, 1.8vw, 0.9rem) 0.9rem;
+  border-radius: 10px;
+  background:
+    radial-gradient(120% 70% at 50% 0%, rgba(255, 255, 255, 0.07), transparent 60%),
+    linear-gradient(180deg, #121b24, #070b11 75%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07), inset 0 0 18px rgba(0, 0, 0, 0.7);
+  text-align: center;
+}
+.aug-card__icon {
+  display: grid;
+  place-items: center;
+  width: clamp(2.8rem, 13vw, 4.4rem);
+  height: clamp(2.8rem, 13vw, 4.4rem);
+  margin-bottom: 0.2rem;
+  border-radius: 50%;
+  font-size: clamp(1.5rem, 7vw, 2.4rem);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.14), transparent 70%);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.06), 0 0 18px var(--glow);
+}
+.aug-card__name {
+  font-weight: 800;
+  font-size: clamp(0.78rem, 3.3vw, 1.08rem);
+  line-height: 1.15;
+  color: #fff;
+}
+.aug-card__tag {
+  padding: 0.08rem 0.4rem;
+  border-radius: 3px;
+  background: #b9bccb;
+  color: #12161d;
+  font-size: clamp(0.55rem, 2.3vw, 0.7rem);
+  font-weight: 700;
+}
+.aug-card--gold .aug-card__tag { background: #e7c46c; }
+.aug-card--prismatic .aug-card__tag { background: linear-gradient(90deg, #ffb0e6, #c3b0ff, #9be9ff); }
+.aug-card__desc {
+  margin-top: 0.15rem;
+  font-size: clamp(0.62rem, 2.7vw, 0.82rem);
+  line-height: 1.35;
+  color: #dcdbe6;
+}
+.aug-card__check {
+  position: absolute;
+  z-index: 2;
+  top: 0.45rem;
+  right: 0.45rem;
+  display: grid;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #10141b;
+  font-weight: 900;
+  font-size: 0.8rem;
+}
+.aug-card--selected { transform: translateY(-6px) scale(1.03); }
+.aug-card--selected::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 2px #fff, 0 0 24px var(--glow);
+  pointer-events: none;
+}
+.aug-cards--picked .aug-card { pointer-events: none; }
+.aug-card--chosen { transform: translateY(-10px) scale(1.07); }
+.aug-card--away { opacity: 0.2; transform: scale(0.94); }
+
+/* A light band sweeping across gold and prismatic frames (transform only). */
+.aug-card--gold::before,
+.aug-card--prismatic::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: -20%;
+  bottom: -20%;
+  left: -60%;
+  width: 45%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: translateX(0) skewX(-18deg);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.aug-reroll {
+  display: grid;
+  place-items: center;
+  width: 2.6rem;
+  height: 2.1rem;
+  border: 1px solid #a07a3a;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #4b3a22, #2c2113);
+  box-shadow: inset 0 1px 0 rgba(255, 220, 150, 0.25), 0 2px 6px rgba(0, 0, 0, 0.5);
+  color: #f0dcae;
+  font-size: 1.15rem;
+  font-weight: 900;
+  cursor: pointer;
+  transition: transform 120ms ease, opacity 160ms ease;
+}
+.aug-reroll:not(:disabled):hover { transform: scale(1.06); }
+.aug-reroll:not(:disabled):active { transform: scale(0.94); }
+.aug-reroll:disabled { opacity: 0.3; cursor: default; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .aug-card { animation: aug-deal 420ms cubic-bezier(0.2, 0.9, 0.3, 1.2) backwards; animation-delay: calc(var(--i, 0) * 90ms); }
+  .aug-card--gold::before,
+  .aug-card--prismatic::before { animation: aug-sheen 3.6s ease-in-out infinite; animation-delay: calc(0.6s + var(--i, 0) * 0.35s); }
+}
+@keyframes aug-deal {
+  from { opacity: 0; transform: translateY(26px) scale(0.9); }
+}
+@keyframes aug-sheen {
+  0% { opacity: 0; transform: translateX(0) skewX(-18deg); }
+  10% { opacity: 1; }
+  45% { opacity: 1; transform: translateX(480%) skewX(-18deg); }
+  50%, 100% { opacity: 0; transform: translateX(480%) skewX(-18deg); }
+}
+
+/* Choose-a-unit step. */
+.aug-target { margin-top: 0.6rem; }
+.aug-target__head { display: flex; gap: 0.5rem; align-items: center; font-size: 0.9rem; }
+.aug-target__icon { font-size: 1.6rem; }
+.aug-target__units {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(5.4rem, 1fr));
+  gap: 0.45rem;
+  margin: 0.7rem 0;
+}
+.aug-unit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.4rem 0.2rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+.aug-unit:disabled { opacity: 0.3; cursor: default; }
+.aug-unit--on { border-color: var(--aug-glow); box-shadow: 0 0 0 2px var(--aug-glow); transform: translateY(-2px); }
+.aug-unit__name { font-size: 0.72rem; font-weight: 700; }
+.aug-unit__lv { font-size: 0.65rem; color: var(--muted); }
+.aug-target__actions { display: flex; gap: 0.5rem; justify-content: space-between; align-items: center; }
+.aug-target__actions .take-btn { margin-top: 0; flex: 1; }
+
+@media (max-width: 420px) {
+  .aug-cards { gap: 0.35rem; }
+  .aug-card { padding: 3px; border-radius: 11px; }
+  .aug-card__inner { border-radius: 8px; gap: 0.3rem; }
 }

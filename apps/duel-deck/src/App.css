@@ -1031,8 +1031,8 @@ button.menu-item:hover { border-color: #5a5180; }
   background: rgba(255, 255, 255, 0.03);
   border-left: 3px solid #6b6585;
 }
-.side-upgrade--rare { border-left-color: #3a86d6; }
-.side-upgrade--epic { border-left-color: #9a5cf0; }
+.side-upgrade--gold { border-left-color: #d9a63a; }
+.side-upgrade--prismatic { border-left-color: #9a5cf0; }
 .side-upgrade__head { font-weight: 700; color: var(--fg); }
 .side-upgrade__desc { color: #b4aecb; font-size: 0.74rem; line-height: 1.3; }
 .side-panel__stats { margin: 0; display: grid; gap: 0.25rem; }
