@@ -750,6 +750,11 @@ const gain = (r: ReturnType<typeof landOn>, i: number) => ({
     const got = [share("silver"), share("gold"), share("prismatic")];
     check("offers", `choice ${tier} deals 50/35/15`, Math.abs(got[0] - 0.5) < 0.03 && Math.abs(got[1] - 0.35) < 0.03 && Math.abs(got[2] - 0.15) < 0.03, got);
   }
+  // Each choice in a match rolls afresh: FNV alone gave 91% of matches one
+  // rarity at every choice. Independent rolls: 0.8% (0.5^7 + 0.35^7 + 0.15^7).
+  const runs = Array.from({ length: 2000 }, (_, i) => new Set(Array.from({ length: 7 }, (_, t) => rollRarity(`run${i}`, t + 1))).size);
+  const stuck = runs.filter((n) => n === 1).length / runs.length;
+  check("offers", "a match's choices don't all share a rarity (under 3%)", stuck < 0.03, stuck);
   const st = createAugmentState();
   const b = newBoard();
   insertUnit(b, PLAYER, 0, 0, mk("guard", PLAYER));

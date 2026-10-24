@@ -780,7 +780,10 @@ Modelled on League's ARAM Mayhem augments, at the user's request:
   every card in a choice shares one. It's drawn by `rollRarity(seed, tier)`
   from `RARITY_ODDS`, a fixed 50/35/15 at every choice (the user's call; the
   first version climbed from 75/25/0 to 25/40/35, and its sims below used
-  that), hashed from a seed both players share, so **both players get
+  that), hashed (FNV-1a plus murmur3's finalizer: FNV alone barely moved
+  between "seed:1" and "seed:2", so 91% of matches got one rarity all match,
+  found in the user's first local match; `pnpm upgrades` now checks it)
+  from a seed both players share, so **both players get
   the same rarity**: online the seed is `<room code>:<match number>`; against
   the CPU it's `SavedMatch.seed` (`newUpgradeSeed`), and the CPU's
   `aiTakeAugment` takes the rarity as an argument. If a rarity runs dry the

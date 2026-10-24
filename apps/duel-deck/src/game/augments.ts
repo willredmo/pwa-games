@@ -28,13 +28,23 @@ export const RARITIES: Rarity[] = ["silver", "gold", "prismatic"];
  */
 export const RARITY_ODDS: [number, number, number] = [0.5, 0.35, 0.15];
 
-/** A string hashed to [0, 1): FNV-1a, so both devices agree. */
+/**
+ * A string hashed to [0, 1), the same on both devices: FNV-1a, then
+ * murmur3's finalizer. FNV alone left "seed:1", "seed:2", ... a few
+ * thousandths apart (the last character only nudges it), so 91% of matches
+ * got one rarity at every choice.
+ */
 function hash01(s: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);
     h = Math.imul(h, 0x01000193);
   }
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16;
   return (h >>> 0) / 0x100000000;
 }
 
