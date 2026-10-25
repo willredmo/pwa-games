@@ -16,6 +16,7 @@
               "diff": { ".validate": "newData.isString() && newData.val().length <= 8" },
               "at": { ".validate": "newData.isNumber()" },
               "c": { ".validate": "newData.isString() && newData.val().length <= 40" },
+              "u": { ".validate": "auth != null && newData.val() === auth.uid" },
               "$other": { ".validate": false }
             },
             "rounds": {
@@ -78,11 +79,23 @@
           "at": { ".validate": "newData.isNumber()" },
           "v": { ".validate": "newData.isString() && newData.val().length <= 16" },
           "c": { ".validate": "newData.isString() && newData.val().length <= 40" },
+          "u": { ".validate": "auth != null && newData.val() === auth.uid" },
           "ua": { ".validate": "newData.isString() && newData.val().length <= 400" },
           "ctx": { ".validate": "newData.isString() && newData.val().length <= 500" },
           "shot": { ".validate": "newData.isString() && newData.val().length <= 1000000 && newData.val().beginsWith('data:image/')" },
           "$other": { ".validate": false }
         }
+      }
+    },
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid && auth.token.email_verified === true",
+        "name": { ".validate": "newData.isString() && newData.val().length <= 40" },
+        "devices": {
+          "$device": { ".validate": "$device.length <= 40 && newData.isNumber()" }
+        },
+        "$other": { ".validate": false }
       }
     },
     "rooms": {      "knock-hockey": {

@@ -50,6 +50,11 @@ export interface TitleProps {
   /** Kawaii mode: a hidden switch in the settings sheet. */
   kawaii: boolean;
   onKawaii: (on: boolean) => void;
+  /** The account chip: "Guest · Sign in", the player's name, or "Confirm email". */
+  accountLabel: string;
+  /** An email account waiting for its link: the chip asks for attention. */
+  accountAlert: boolean;
+  onAccount: () => void;
 }
 
 /** Taps on the settings sheet's heading that reveal the Kawaii switch, and the window they must land in. */
@@ -74,6 +79,15 @@ export function Title(props: TitleProps) {
 
   return (
     <div className="title">
+      {/* Accounts are optional: a corner chip, so the title never reads as a sign-in wall. */}
+      <button
+        className={`title-account${props.accountAlert ? " title-account--alert" : ""}`}
+        onClick={props.onAccount}
+        aria-label={`Account: ${props.accountLabel}`}
+        title={props.accountLabel}
+      >
+        <span aria-hidden="true">👤</span> <span className="title-account__name">{props.accountLabel}</span>
+      </button>
       <header className="title__hero">
         <div className="title__emblem" aria-hidden="true">⚔</div>
         <h1>Duel Deck</h1>

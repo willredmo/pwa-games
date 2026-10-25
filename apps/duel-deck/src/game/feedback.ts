@@ -1,12 +1,13 @@
 import { clientId, writeAt } from "@pwa-games/backend-client";
 import "../online/firebase";
+import { accountUid } from "../online/account";
 
 // Player feedback: bug reports and feature ideas, each with an optional
 // screenshot of the game. Read with `pnpm feedback` (scripts/feedback.ts),
 // which also saves the screenshots to disk.
 //
 // Layout: feedback/duel-deck/<UTC day>-<random>
-//   { kind, text, contact?, at, v, c, ua, ctx, shot? }
+//   { kind, text, contact?, at, v, c, u?, ua, ctx, shot? }   (u: the account, if signed in)
 // Create-only in the database rules, like telemetry, and nobody can read it
 // back but the Firebase CLI.
 //
@@ -113,6 +114,8 @@ export async function sendFeedback(entry: FeedbackEntry, timeoutMs = 20_000): Pr
   };
   const contact = entry.contact?.trim();
   if (contact) value.contact = contact.slice(0, 120);
+  const u = accountUid();
+  if (u) value.u = u;
   if (entry.shot) value.shot = entry.shot;
   await Promise.race([
     writeAt(`${ROOT}/${id}`, value),

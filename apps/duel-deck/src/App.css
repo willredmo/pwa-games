@@ -1186,7 +1186,7 @@ button.menu-item:hover { border-color: #5a5180; }
   gap: 0.9rem;
   padding: max(1rem, env(safe-area-inset-top)) 16px calc(0.8rem + env(safe-area-inset-bottom));
 }
-.title > :first-child { margin-top: auto; }
+.title > .title__hero { margin-top: auto; }
 .title > :last-child { margin-bottom: auto; }
 .title__hero { text-align: center; position: relative; }
 .title__emblem {
@@ -1963,6 +1963,66 @@ button.menu-item:hover { border-color: #5a5180; }
 .feedback__small { margin: 0; font-size: 0.74rem; color: var(--muted); }
 .feedback .confirm-actions { justify-content: flex-end; }
 .feedback__done { font-size: 2.6rem; }
+
+/* --- Account (title chip and ui/Account.tsx) --- */
+.title-account {
+  font: inherit;
+  position: fixed;
+  top: max(0.6rem, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: min(11rem, 40vw);
+  padding: 0.3rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--fg);
+  background: rgba(39, 35, 56, 0.85);
+  border: 1px solid #3a3454;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.title-account:hover { border-color: #5a4f80; }
+.title-account__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.title-account--alert { border-color: #f0b429; box-shadow: 0 0 0 1px rgba(240, 180, 41, 0.4); }
+/* Short phones hide the emblem, so the title's top line reaches the chip: icon only there. */
+@media (max-width: 380px), (max-height: 600px) {
+  .title-account__name { display: none; }
+}
+.account__google { display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
+.account__g {
+  display: grid;
+  place-items: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 50%;
+  background: #fff;
+  color: #4285f4;
+  font-weight: 900;
+  font-size: 0.85rem;
+}
+.account__or { display: flex; align-items: center; gap: 0.6rem; font-size: 0.76rem; color: var(--muted); }
+.account__or::before,
+.account__or::after { content: ""; flex: 1; height: 1px; background: #3a3454; }
+.account__form { display: flex; flex-direction: column; gap: 0.6rem; }
+.account__forgot { align-self: center; }
+.account__guest { align-self: center; }
+.account__who { display: flex; align-items: center; gap: 0.7rem; }
+.account__who small { display: block; font-size: 0.78rem; color: var(--muted); }
+.account__avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #4a3f78, #221d38 70%);
+  box-shadow: 0 0 0 1px rgba(240, 180, 41, 0.45);
+  font-weight: 900;
+  font-size: 1.2rem;
+}
 
 /* --- Online rematch, on the result screen --- */
 .result-rematch {

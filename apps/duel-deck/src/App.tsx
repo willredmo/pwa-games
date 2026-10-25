@@ -14,6 +14,9 @@ import { EMPTY_DRAFT, FeedbackPanel, type FeedbackDraft } from "./ui/Feedback";
 import { afterPaint, captureScreenshot } from "./game/feedback";
 import { leaveRoom, loadSession, readSession, saveSession, type Session } from "./online/room";
 import { setKawaii } from "./game/kawaii";
+import { googleRedirectPending } from "@pwa-games/backend-client";
+import { startAccount, useAccount } from "./online/account";
+import { AccountPanel } from "./ui/Account";
 import "./App.css";
 
 // Screens. App owns what outlives a single match — the settings, the saved
@@ -75,6 +78,12 @@ export default function App() {
   /** What's typed in the form, kept across a Retake (and a Cancel, until it's sent). */
   const [draft, setDraft] = useState<FeedbackDraft>(EMPTY_DRAFT);
   const runId = useState(() => ({ n: 0 }))[0];
+  const account = useAccount();
+  /** The account screen. Opens by itself on the way back from a Google redirect, to show how it went. */
+  const [accountOpen, setAccountOpen] = useState(googleRedirectPending);
+
+  // Follow the account only if this device signed in before; a guest loads nothing.
+  useEffect(startAccount, []);
 
   useEffect(() => saveSettings(settings), [settings]);
   useEffect(() => setSoundEnabled(settings.sound), [settings.sound]);
@@ -244,6 +253,17 @@ export default function App() {
           onFeedback={() => void openFeedback("title")}
           kawaii={settings.kawaii}
           onKawaii={(kawaii) => setSettings((s) => ({ ...s, kawaii }))}
+          accountLabel={
+            account.status === "signed-in"
+              ? account.account.verified
+                ? account.account.name || account.account.email || "Account"
+                : "Confirm email"
+              : account.status === "loading"
+                ? "…"
+                : "Guest · Sign in"
+          }
+          accountAlert={account.status === "signed-in" && !account.account.verified}
+          onAccount={() => setAccountOpen(true)}
         />
       )}
       {lobby && (
@@ -260,6 +280,7 @@ export default function App() {
       {help && <HelpPanel onClose={() => setHelp(false)} />}
       {units && <CodexView onClose={() => setUnits(false)} />}
       {notes && <PatchNotes onClose={() => setNotes(false)} />}
+      {accountOpen && <AccountPanel onClose={() => setAccountOpen(false)} />}
       {feedback && (
         <FeedbackPanel
           shot={feedback.shot}

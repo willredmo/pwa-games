@@ -1062,8 +1062,9 @@ from the page's own origin only, so another site can't close reports.
 **Who sent it:** `c`, the sender's device id (`clientId()`, random per
 browser/install, the same id telemetry's `meta.c` records), shown as a short
 label (#1 is the first device to report) with its report count, plus the
-optional `contact`. There are no accounts: a person on two devices is two ids,
-and clearing site data makes a new one. As of 2026-10-23 every report (4) came
+optional `contact`, and `u`, the account, when the sender is signed in (see
+"Accounts"). A guest on two devices is two ids, and clearing site data makes a
+new one. As of 2026-10-23 every report (4) came
 from one iPhone, with no contact. Nothing prunes reports.
 
 ### Telemetry (game/telemetry.ts, scripts/telemetry.ts)
@@ -1088,6 +1089,85 @@ Retention is three weeks. Grouping by day makes a prune one delete per day:
 `pnpm telemetry` prunes on every run (`--prune` only prunes), and
 `.github/workflows/telemetry-prune.yml` does it daily once the repo secret
 `FIREBASE_SERVICE_ACCOUNT` (a service-account key) is set.
+### Accounts (online/account.ts, ui/Account.tsx, backend-client auth.ts)
+Optional, added 2026-10-24. **Guest is the default and nothing asks you to
+sign in**: the title screen has a small 👤 chip top-right ("Guest · Sign in",
+the player's name, or "Confirm email"; icon only under 380px wide or 600px
+tall, where it would touch the title). Firebase Authentication on the free
+Spark plan, through `@pwa-games/backend-client` (`auth.ts`, generic):
+- **Guests load nothing new.** firebase/auth (~190 KB, its own chunk) loads
+  only when the account screen opens, or at startup when this device signed in
+  before (`pwa-games:account` in localStorage: `"1"` signed in, `"redirect"`
+  mid-Google-redirect; `hasAccountHint`). Checked: a guest's page makes no
+  auth requests.
+- **Google:** a popup, except in an installed iOS app (`prefersRedirect`:
+  `navigator.standalone` or iOS + `display-mode: standalone`), where a popup
+  opens in a sheet that can't report back, so it redirects to Google and back.
+  A blocked popup falls back to the redirect. Two things make the redirect
+  work under Safari's storage partitioning: `authDomain` is the game's own
+  site, `duel-deck-game.web.app` (online/firebase.ts; Hosting serves
+  `/__/auth/` on every site), and the service worker doesn't answer `/__/`
+  navigations with the app shell (`navigateFallbackDenylist` in
+  vite.config.ts). Returning from a redirect opens the account screen by
+  itself (`googleRedirectPending`) to show the result or error.
+- **Email + password, confirmed by Firebase's own link** (not a code: a code
+  needs a Cloud Function and an email service, so the Blaze plan; the user
+  chose free). Create account sends the link (`sendEmailVerification`, with
+  this page as the continue URL). The link usually opens in Safari or a mail
+  app, not the installed game, which is fine: verification is server-side, so
+  the account screen asks every 4 s while open (`VERIFY_POLL_MS`) and the app
+  asks again whenever it comes back to the foreground (`checkVerified`: reload
+  the user, then force a token refresh so the database rules see
+  `email_verified`). Until then the account counts for nothing and the player
+  is effectively a guest. Forgot password sends Firebase's reset link.
+- **What an account does:** links devices. A verified account writes
+  `users/<uid>/devices/<clientId>` = last seen (ms) and `users/<uid>/name`
+  (`linkDevice`, once per page; retried once after 1.5 s, since straight after
+  verification the database can still hold the old token and refuse it). The
+  device id is the same `clientId()` telemetry and feedback already record as
+  `c`, so one player's devices can be joined. Telemetry `meta` and feedback
+  reports also get `u` = the uid (`accountUid()`, verified accounts only; not
+  sent while auth is still loading at the start of a match).
+- **Rules** (database.rules.json): `users/$uid` readable by its owner, writable
+  by its owner only with `email_verified`, `name` ≤ 40 chars, `devices/$id`
+  numbers, nothing else. Telemetry and feedback `u` must equal `auth.uid`, so
+  it can't be forged. **Deploy the rules before a build that writes `u`**:
+  older rules reject the unknown field, and telemetry `meta` is create-only,
+  so a signed-in player's match would lose its meta.
+- **Sign out** clears the hint; the saved match and settings stay (they're per
+  device, not per account).
+
+**Before it works on the live site** (Firebase console, all free): enable
+Authentication; turn on the Email/Password and Google providers; add
+`duel-deck-game.web.app` to Authorized domains (localhost is there by
+default); add `https://duel-deck-game.web.app/__/auth/handler` as an
+authorized redirect URI on the Google provider's OAuth web client (Google
+Cloud console → Credentials); deploy the rules. Until then the account screen
+says "Accounts aren't switched on yet" (`accountErrorText`). Google sign-in in
+an installed iPhone app has only been tested against the emulator: try it on
+a phone after setup.
+
+**Local testing:** `pnpm emulators` at the repo root (auth on 9099, database
+on 9000, UI on http://localhost:4000; launch config `firebase-emulators`),
+then `pnpm dev:emu` here (`vite --mode emulator`, `.env.emulator` sets
+`VITE_FIREBASE_EMULATORS`; launch config `duel-deck-emu`, port 5178). The
+emulator sends no email: its verification links are listed at
+`http://127.0.0.1:9099/emulator/v1/projects/roguelike-games/oobCodes` and in
+the emulator UI. `connectEmulators` uses the page's own host: with the game
+on localhost and the auth emulator on 127.0.0.1, the browser partitions the
+redirect's iframe storage and Google sign-in comes back signed out (the same
+problem `authDomain` solves in production). The browser pane can't open
+popups, so the Google popup path is untested there; the redirect path was
+tested by setting `navigator.standalone`. Verified 2026-10-24: guest loads no
+auth, email sign-up → link → linked device without a reload, Google by
+redirect, sign-out, and the rules (forged `u`, another user's data, an
+unverified account's writes all refused).
+
+Later, accounts could carry: cloud save (`duel-deck:match` and settings under
+`users/<uid>/duel-deck`), the player's name in online duels (the room's
+`host`/`guest` are device ids today), replies to feedback without the contact
+field, and `pnpm telemetry`/`pnpm feedback` grouping by account.
+
 ### Sound (game/sound.ts)
 Effects are synthesized, no audio files (`?sounds` on the dev server plays every one). The
 master chain is a compressor plus a short generated room reverb, and combat

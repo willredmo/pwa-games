@@ -41,6 +41,31 @@
       "port": 5176
     },
     {
+      "name": "firebase-emulators",
+      "runtimeExecutable": "firebase",
+      "runtimeArgs": [
+        "emulators:start",
+        "--only",
+        "auth,database",
+        "--project",
+        "roguelike-games"
+      ],
+      "port": 4000
+    },
+    {
+      "name": "duel-deck-emu",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "duel-deck",
+        "dev:emu",
+        "--port",
+        "5178",
+        "--strictPort"
+      ],
+      "port": 5178
+    },
+    {
       "name": "knock-hockey",
       "runtimeExecutable": "corepack",
       "runtimeArgs": [

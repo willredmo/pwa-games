@@ -1,5 +1,6 @@
 import { clientId, writeAt } from "@pwa-games/backend-client";
 import "../online/firebase";
+import { accountUid } from "../online/account";
 import { levelOf } from "../engine/units";
 import type { Unit } from "../engine/types";
 
@@ -9,7 +10,7 @@ import type { Unit } from "../engine/types";
 // Action).
 //
 // Layout: telemetry/duel-deck/<UTC day the match started>/<match id>/
-//   meta          { v, mode, diff, at, c }
+//   meta          { v, mode, diff, at, c, u? }   (u: the account, if signed in)
 //   rounds/<n>    { offer, picks, rr, row, foe, won, hp }
 //   augs/<n>      { o, t, rr, e? }
 //   end           { won, rounds, hp, aug, foeAug, mvp? }
@@ -98,7 +99,8 @@ export class MatchLog {
   }
 
   private meta(mode: string, diff: string, at: number) {
-    send(`${this.base}/meta`, { v: __APP_VERSION__, mode, diff, at, c: clientId() });
+    const u = accountUid();
+    send(`${this.base}/meta`, { v: __APP_VERSION__, mode, diff, at, c: clientId(), ...(u ? { u } : {}) });
   }
 
   round(n: number, entry: { offer: string[]; picks: PickLog[]; rr: number; row: string[]; foe: string[]; won: number; hp: [number, number] }) {

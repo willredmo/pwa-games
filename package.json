@@ -8,6 +8,7 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "dev:house-edge": "pnpm --filter house-edge dev",
-    "dev:knock-hockey": "pnpm --filter knock-hockey dev"
+    "dev:knock-hockey": "pnpm --filter knock-hockey dev",
+    "emulators": "firebase emulators:start --only auth,database --project roguelike-games"
   }
 }

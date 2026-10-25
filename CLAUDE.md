@@ -39,7 +39,9 @@ game that isn't a roguelike belongs here too, as long as it's a PWA.
                           cards, buttons, menus)
   /canvas-utils         — board/grid rendering helpers, shape/color constants
   /backend-client       — Firebase Realtime Database rooms for online turn
-                          exchange (built; used by knock-hockey)
+                          exchange (built; used by knock-hockey), plus
+                          optional accounts on Firebase Authentication
+                          (auth.ts; used by duel-deck)
 ```
 
 ## Conventions
