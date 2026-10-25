@@ -81,6 +81,16 @@
         "--strictPort"
       ],
       "port": 5177
+    },
+    {
+      "name": "duel-deck-feedback",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "duel-deck",
+        "feedback:ui"
+      ],
+      "port": 5180
     }
   ]
 }

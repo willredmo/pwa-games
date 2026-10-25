@@ -1065,6 +1065,11 @@ and bug / idea filters, screenshots inline, and Fixed / Won't fix / Reopen /
 Remove buttons. It reads the database once per page load (no polling; Refresh
 reloads). Both scripts share `scripts/feedbackDb.ts`. Actions take a JSON POST
 from the page's own origin only, so another site can't close reports.
+It was rebuilt on 2026-10-25 (the first version was never committed). It
+listens on 127.0.0.1 only and shows reports newest first, with the account
+(`u`) when there is one. `feedbackDb.ts` reads through `database:get
+--output <file>`: piped, the Firebase CLI exited before the ~700 KB of
+screenshots was written, and the JSON arrived cut short.
 
 **Who sent it:** `c`, the sender's device id (`clientId()`, random per
 browser/install, the same id telemetry's `meta.c` records), shown as a short
