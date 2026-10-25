@@ -10,12 +10,21 @@ import {
   signOutAccount,
   type Account,
 } from "@pwa-games/backend-client";
-import { accountErrorText, followAccount, takeRedirectError, useAccount } from "../online/account";
+import {
+  accountErrorText,
+  claimUsername,
+  followAccount,
+  takeRedirectError,
+  useAccount,
+  useUsername,
+  usernameAvailable,
+  usernameProblem,
+} from "../online/account";
 
 // The account screen (title screen's 👤). Accounts are optional: a guest sees
 // what one is for, Google, and an email form, and closing it just carries on
 // as a guest. An email account waits here until its link is opened; a
-// signed-in one shows who it is and Sign out.
+// signed-in one shows who it is, its username (pick or change it) and Sign out.
 
 type Mode = "sign-in" | "create";
 /** How often to ask whether the email has been confirmed, while this screen waits for it. */
@@ -209,23 +218,152 @@ function VerifyView({ account, busy, run }: { account: Account; busy: boolean; r
 }
 
 function SignedInView({ account, busy, run }: { account: Account; busy: boolean; run: Run }) {
+  const username = useUsername();
+  const shown = username || account.name || account.email || "?";
   return (
     <>
       <div className="account__who">
-        <span className="account__avatar" aria-hidden="true">{(account.name || account.email || "?").slice(0, 1).toUpperCase()}</span>
+        <span className="account__avatar" aria-hidden="true">{shown.slice(0, 1).toUpperCase()}</span>
         <span>
-          <strong>{account.name || account.email}</strong>
+          <strong>{username ? `@${username}` : account.name || account.email}</strong>
           <small>
-            {account.name && account.email ? `${account.email} · ` : ""}
+            {username && account.name ? `${account.name} · ` : ""}
+            {account.email ? `${account.email} · ` : ""}
             {account.provider === "google" ? "Google" : "Email"}
           </small>
         </span>
       </div>
+      <UsernameField current={username} />
       <p className="panel__hint">This device is linked to your account.</p>
       <button className="ghost-btn" onClick={() => void run(signOutAccount)} disabled={busy}>
         Sign out
       </button>
       <small className="feedback__small">Signing out keeps your saved match on this device.</small>
     </>
+  );
+}
+
+/** How long typing pauses before asking whether a name is free. */
+const CHECK_DELAY_MS = 450;
+
+/**
+ * Pick or change the account's username: unique (case doesn't count), 3-20
+ * letters, numbers or _. Shows whether a name is free as you type; Save
+ * claims it (and can still lose a race, which it reports as taken).
+ */
+function UsernameField({ current }: { current: string | null | undefined }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [status, setStatus] = useState<"" | "checking" | "free" | "taken" | "mine">("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const open = editing || current === null;
+  const problem = draft ? usernameProblem(draft) : "";
+  const same = !!current && draft === current;
+
+  useEffect(() => {
+    setStatus("");
+    if (!draft || problem || same) return;
+    if (current && draft.toLowerCase() === current.toLowerCase()) return setStatus("mine");
+    let live = true;
+    const t = window.setTimeout(() => {
+      setStatus("checking");
+      usernameAvailable(draft)
+        .then((free) => live && setStatus(free ? "free" : "taken"))
+        .catch(() => live && setStatus(""));
+    }, CHECK_DELAY_MS);
+    return () => {
+      live = false;
+      window.clearTimeout(t);
+    };
+  }, [draft, problem, same, current]);
+
+  if (current === undefined) return null;
+  if (!open) {
+    return (
+      <div className="account__username">
+        <span>
+          Username <strong>@{current}</strong>
+        </span>
+        <button
+          className="link-btn"
+          onClick={() => {
+            setDraft(current ?? "");
+            setError("");
+            setEditing(true);
+          }}
+        >
+          Change
+        </button>
+      </div>
+    );
+  }
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (problem || same || !draft || status === "taken") return;
+    setSaving(true);
+    setError("");
+    try {
+      const res = await claimUsername(draft);
+      if (res === "taken") setStatus("taken");
+      else setEditing(false);
+    } catch {
+      setError("Couldn't save it. Check your connection and try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  const hint =
+    problem ||
+    (status === "checking"
+      ? "Checking…"
+      : status === "free"
+        ? "✓ Available"
+        : status === "taken"
+          ? "Taken. Try another."
+          : status === "mine"
+            ? "✓ Yours (changing the capitals)"
+            : "3 to 20 letters, numbers or _. You can change it any time.");
+  return (
+    <form className="account__username-form" onSubmit={save}>
+      <label className="feedback__label">
+        {current ? "New username" : "Pick a username"}
+        <span className="account__username-input">
+          <span aria-hidden="true">@</span>
+          <input
+            className="feedback__contact"
+            value={draft}
+            maxLength={20}
+            autoComplete="username"
+            autoCapitalize="none"
+            spellCheck={false}
+            autoFocus
+            aria-invalid={!!problem || status === "taken"}
+            onChange={(e) => setDraft(e.target.value.replace(/\s/g, ""))}
+          />
+        </span>
+      </label>
+      <small
+        className={`feedback__small account__username-hint${problem || status === "taken" ? " account__username-hint--bad" : status === "free" || status === "mine" ? " account__username-hint--ok" : ""}`}
+        role="status"
+      >
+        {hint}
+      </small>
+      <div className="confirm-actions">
+        {current && (
+          <button type="button" className="ghost-btn" onClick={() => setEditing(false)} disabled={saving}>
+            Cancel
+          </button>
+        )}
+        <button
+          className="primary-btn"
+          type="submit"
+          disabled={saving || !draft || !!problem || same || status === "taken" || status === "checking"}
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+      </div>
+      {error && <p className="lobby__error" role="alert">{error}</p>}
+    </form>
   );
 }

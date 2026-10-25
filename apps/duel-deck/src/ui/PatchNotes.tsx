@@ -10,6 +10,19 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.9.0",
+    date: "Oct 24, 2026",
+    notes: [
+      "Accounts, optional: sign in with Google or email from the 👤 button on the main menu. Guests can keep playing as before.",
+      "Pick a username for your account. It has to be unique, and you can change it any time.",
+      "Progression (accounts only): every finished match earns XP, a win more than a loss, and more again at higher starting health. 30 levels unlock new upgrades: about half of them now start locked.",
+      "New upgrades have to be claimed: open ⭐ on the main menu and claim them, and they join your upgrade choices. The ⭐ shows a badge while there are upgrades waiting.",
+      "Match settings now come up when you start a match vs the CPU or host a duel, instead of sitting on the main menu.",
+      "Replacing a unit asks first, so a misplaced drop can't throw away a levelled unit.",
+      "The Codex lists upgrades by rarity, and marks the ones you haven't unlocked yet.",
+    ],
+  },
+  {
     version: "1.8.0",
     date: "Oct 24, 2026",
     notes: [

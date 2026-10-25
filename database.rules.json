@@ -95,7 +95,26 @@
         "devices": {
           "$device": { ".validate": "$device.length <= 40 && newData.isNumber()" }
         },
+        "username": {
+          ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z0-9_]{3,20}$/) && newData.parent().parent().parent().child('usernames').child(newData.val().toLowerCase()).val() === $uid"
+        },
+        "duel-deck": {
+          "xp": {
+            ".validate": "newData.isNumber() && ((!data.exists() && newData.val() >= 0 && newData.val() <= 750) || (data.exists() && newData.val() >= data.val() && newData.val() <= data.val() + 750))"
+          },
+          "claimed": {
+            ".validate": "newData.isNumber() && newData.val() >= 2 && newData.val() <= 30 && (!data.exists() || newData.val() > data.val()) && newData.parent().child('xp').val() >= 150 * (newData.val() - 1) + 15 * (newData.val() - 1) * (newData.val() - 2) / 2"
+          },
+          "$other": { ".validate": false }
+        },
         "$other": { ".validate": false }
+      }
+    },
+    "usernames": {
+      "$name": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.token.email_verified === true && ((newData.exists() && newData.val() === auth.uid && (!data.exists() || data.val() === auth.uid)) || (!newData.exists() && data.val() === auth.uid && newData.parent().parent().child('users').child(auth.uid).child('username').val().toLowerCase() !== $name))",
+        ".validate": "$name.matches(/^[a-z0-9_]{3,20}$/)"
       }
     },
     "rooms": {      "knock-hockey": {

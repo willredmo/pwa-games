@@ -50,7 +50,10 @@
         "--project",
         "roguelike-games"
       ],
-      "port": 4000
+      "port": 4000,
+      "env": {
+        "PATH": "/opt/homebrew/opt/openjdk/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+      }
     },
     {
       "name": "duel-deck-emu",
