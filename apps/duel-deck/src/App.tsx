@@ -15,8 +15,10 @@ import { afterPaint, captureScreenshot } from "./game/feedback";
 import { leaveRoom, loadSession, readSession, saveSession, type Session } from "./online/room";
 import { setKawaii } from "./game/kawaii";
 import { googleRedirectPending } from "@pwa-games/backend-client";
-import { startAccount, useAccount } from "./online/account";
+import { startAccount, useAccount, useUsername } from "./online/account";
 import { AccountPanel } from "./ui/Account";
+import { ProgressPanel } from "./ui/Progress";
+import "./online/progress";
 import "./App.css";
 
 // Screens. App owns what outlives a single match — the settings, the saved
@@ -79,8 +81,10 @@ export default function App() {
   const [draft, setDraft] = useState<FeedbackDraft>(EMPTY_DRAFT);
   const runId = useState(() => ({ n: 0 }))[0];
   const account = useAccount();
+  const username = useUsername();
   /** The account screen. Opens by itself on the way back from a Google redirect, to show how it went. */
   const [accountOpen, setAccountOpen] = useState(googleRedirectPending);
+  const [progressOpen, setProgressOpen] = useState(false);
 
   // Follow the account only if this device signed in before; a guest loads nothing.
   useEffect(startAccount, []);
@@ -210,6 +214,7 @@ export default function App() {
           onExit={toTitle}
           onRematch={(match) => run.online && startOnline({ ...run.online, match })}
           onFeedback={(context) => void openFeedback(context)}
+          onProgress={() => setProgressOpen(true)}
         />
       ) : (
         <Title
@@ -256,7 +261,7 @@ export default function App() {
           accountLabel={
             account.status === "signed-in"
               ? account.account.verified
-                ? account.account.name || account.account.email || "Account"
+                ? (username && `@${username}`) || account.account.name || account.account.email || "Account"
                 : "Confirm email"
               : account.status === "loading"
                 ? "…"
@@ -264,6 +269,7 @@ export default function App() {
           }
           accountAlert={account.status === "signed-in" && !account.account.verified}
           onAccount={() => setAccountOpen(true)}
+          onProgress={() => setProgressOpen(true)}
         />
       )}
       {lobby && (
@@ -281,6 +287,15 @@ export default function App() {
       {units && <CodexView onClose={() => setUnits(false)} />}
       {notes && <PatchNotes onClose={() => setNotes(false)} />}
       {accountOpen && <AccountPanel onClose={() => setAccountOpen(false)} />}
+      {progressOpen && (
+        <ProgressPanel
+          onClose={() => setProgressOpen(false)}
+          onSignIn={() => {
+            setProgressOpen(false);
+            setAccountOpen(true);
+          }}
+        />
+      )}
       {feedback && (
         <FeedbackPanel
           shot={feedback.shot}

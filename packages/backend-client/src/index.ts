@@ -217,6 +217,49 @@ export async function writeAt(fullPath: string, value: unknown): Promise<void> {
   await m.set(m.ref(db, fullPath), value ?? null);
 }
 
+/** Read a value at any database path outside the rooms, once. */
+export async function readAt<T>(fullPath: string): Promise<T | null> {
+  const { db, m } = await backend();
+  return (await m.get(m.ref(db, fullPath))).val() as T | null;
+}
+
+/**
+ * Write several database paths in one atomic update (keys are full paths,
+ * null deletes). Either every path passes the rules and is written, or none is.
+ */
+export async function updateAt(updates: Record<string, unknown>): Promise<void> {
+  const { db, m } = await backend();
+  await m.update(m.ref(db), updates);
+}
+
+/**
+ * Read-modify-write a value at any database path outside the rooms, e.g. a
+ * counter several devices add to. Same contract as `transactRoom`: `fn` may
+ * first see null before the server's copy loads; return undefined to abort.
+ */
+export async function transactAt<T>(
+  fullPath: string,
+  fn: (cur: T | null) => T | null | undefined,
+): Promise<{ committed: boolean; data: T | null }> {
+  const { db, m } = await backend();
+  const res = await m.runTransaction(m.ref(db, fullPath), (cur) => fn(cur as T | null));
+  return { committed: res.committed, data: res.snapshot.val() as T | null };
+}
+
+/** Follow a value at any database path outside the rooms. Returns an unsubscribe function. */
+export function watchAt<T>(fullPath: string, cb: (value: T | null) => void): () => void {
+  let off: (() => void) | null = null;
+  let cancelled = false;
+  void backend().then(({ db, m }) => {
+    if (cancelled) return;
+    off = m.onValue(m.ref(db, fullPath), (snap) => cb(snap.val() as T | null));
+  });
+  return () => {
+    cancelled = true;
+    off?.();
+  };
+}
+
 /** Whether the database connection is up right now (for "reconnecting…" UI). */
 export function watchConnection(cb: (connected: boolean) => void): () => void {
   let off: (() => void) | null = null;
