@@ -879,6 +879,20 @@ gets First strike in the opening exchange and +3 on that blow (+4 measured
 - **Round breakdown:** "📊 Stats" beside Replay opens the last round unit
   by unit (`RoundStatsPanel`), from a fresh `recordRound` over `lastFight`.
 
+### Blood setting (2026-10-30, feedback "more blood")
+Style "Bloody" (see Style below). Cosmetic and local, a module flag like Kawaii
+(`board/blood.ts`, set from App). With it on:
+- **Hits** (every `"damage"` fx with an amount) spray `PT.Drop` droplets away
+  from the blow and leave a floor splat (`FxLayer.decals`, drawn by
+  `drawUnder` before the units, fading over 2.6 s).
+- **Deaths** (`"death"` fx) burst into a bloody mess instead of the shatter:
+  red flash and ring, chunks, droplets, red mist, a pool that lasts 4.2 s.
+- **Wounds:** `drawCharacter`'s `wounds` (share of health lost, from the
+  eased HP) draws seeded splotches with drips and spatter inside the body,
+  a gash past 30% and a red wash past half. Full health draws none, so
+  nothing shows while picking. Portraits never pass it.
+Canvas only, no `ctx.filter`; `count()` thins the particles under reduced motion.
+
 ### Ability beats
 Charge and death buffs (Bodyguard, Pass the torch, Last rally) get their own
 `"ability"` frame (`ABILITY_MS`) — Charge before the lunge, death buffs after
@@ -1056,11 +1070,18 @@ second match on (`MatchLog.online`), since the paths are create-only. The
 database rules allow `match` only to go up by one. `PROTOCOL` 9, so both
 sides of a duel have rematch.
 
-### Kawaii mode (game/kawaii.ts) — a hidden setting
-Tapping the settings sheet's "Match settings" heading 5 times within 3 s
-(`SECRET_TAPS`, `SECRET_WINDOW_MS` in Title.tsx) reveals a 🌸 Kawaii mode
-switch; it stays visible while the mode is on. Saved as `Settings.kawaii`.
-Your units only: a pink palette (`KAWAII_PLAYER`), bigger pupils with two
+### Style: Normal / Kawaii / Bloody (`Settings.look`, ui/LookSelect.tsx)
+One dropdown, in Match settings (title) and the in-game ☰ menu, replaces the
+old hidden Kawaii switch (five taps on the heading) and the Blood switch;
+`loadSettings` migrates the old `kawaii` / `blood` booleans. App sets both
+module flags from it (`setKawaii`, `setBlood`), so it can change mid-match.
+
+### Kawaii mode (game/kawaii.ts) — Style "Kawaii"
+Nobody dies: the `"dying"` pose becomes a happy hop away (bouncing sideways,
+happy eyes, fading), for both sides' units; the `"death"` fx is a pink pop of
+sparkles and hearts (`PT.Heart`), the lost-match row explosion is confetti
+(no fireball or shake), and the log says "hops away happily". Otherwise
+your units only: a pink palette (`KAWAII_PLAYER`), bigger pupils with two
 sparkles, blush, an ω mouth and a bow (`drawBow`), all in board/characters.ts
 behind a module flag (`setKawaiiCharacters`, set by `setKawaii` from App), so
 the board, portraits and offer cards all follow it. Text goes uwu

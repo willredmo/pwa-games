@@ -14,6 +14,7 @@ import {
   type PoseState,
 } from "./anim";
 import { drawCharacter } from "./characters";
+import { bloodOn } from "./blood";
 import type { FxLayer } from "./fx";
 
 // Imperative Canvas 2D board renderer.
@@ -709,6 +710,9 @@ export function draw(canvas: HTMLCanvasElement, state: RenderState): void {
     ctx.restore();
   }
 
+  // Blood splats on the floor, under the units.
+  if (state.fx && animated) state.fx.drawUnder(ctx, time);
+
   // Units: idle ones first, attackers last so lunges pass over neighbours.
   for (let passIdx = 0; passIdx < 2; passIdx++) {
     for (let lane = 0; lane < board.lanes; lane++) {
@@ -1073,6 +1077,7 @@ function drawUnit(
     t,
     seed: v.seed,
     merges: unit.merges,
+    wounds: bloodOn() ? clamp01(1 - v.hp / Math.max(1, unit.maxHp)) : 0,
   });
   ctx.restore();
 

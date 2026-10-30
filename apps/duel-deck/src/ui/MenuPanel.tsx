@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { LookSelect } from "./LookSelect";
+import type { Look } from "../game/save";
 import {
   THIS_BUILD,
   checkForUpdate,
@@ -34,6 +36,8 @@ export interface MenuPanelProps {
   onMusic: (on: boolean) => void;
   battleLog: boolean;
   onBattleLog: (on: boolean) => void;
+  look: Look;
+  onLook: (look: Look) => void;
   /** This match's opponent, for display (it's chosen on the title screen). */
   difficultyLabel: string;
   /** This match's settings that differ from the defaults, or "Standard". */
@@ -45,7 +49,7 @@ export interface MenuPanelProps {
 type CheckState = "idle" | "checking" | "done";
 
 export function MenuPanel(props: MenuPanelProps) {
-  const { onClose, onCodex, onNotes, onHelp, onFeedback, onNewMatch, onExit, sound, onSound, music, onMusic, difficultyLabel, rulesLabel, online } = props;
+  const { onClose, onCodex, onNotes, onHelp, onFeedback, onNewMatch, onExit, sound, onSound, music, onMusic, look, onLook, difficultyLabel, rulesLabel, online } = props;
   const waiting = usePwaUpdate();
   const [latest, setLatest] = useState<DeployInfo | null>(null);
   const [check, setCheck] = useState<CheckState>("idle");
@@ -114,6 +118,7 @@ export function MenuPanel(props: MenuPanelProps) {
               <small>{!sound ? "Needs Sound on" : music ? "Calm while picking, faster in battle" : "Off"}</small>
             </span>
           </label>
+          <LookSelect look={look} onLook={onLook} />
           {/* Battle log: hidden for now (battle view gives the board the screen),
               so its switch is too. The setting and props stay for when it returns. */}
         </div>

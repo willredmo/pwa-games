@@ -14,6 +14,7 @@ import { EMPTY_DRAFT, FeedbackPanel, type FeedbackDraft } from "./ui/Feedback";
 import { afterPaint, captureScreenshot } from "./game/feedback";
 import { leaveRoom, loadSession, readSession, saveSession, type Session } from "./online/room";
 import { setKawaii } from "./game/kawaii";
+import { setBlood } from "./board/blood";
 import "./App.css";
 
 // Screens. App owns what outlives a single match — the settings, the saved
@@ -78,7 +79,10 @@ export default function App() {
 
   useEffect(() => saveSettings(settings), [settings]);
   useEffect(() => setSoundEnabled(settings.sound), [settings.sound]);
-  useEffect(() => setKawaii(settings.kawaii), [settings.kawaii]);
+  useEffect(() => {
+    setKawaii(settings.look === "kawaii");
+    setBlood(settings.look === "bloody");
+  }, [settings.look]);
   useEffect(() => setMusicEnabled(settings.music), [settings.music]);
   // The menu track on every screen outside a match; a match sets its own
   // track per phase.
@@ -196,6 +200,8 @@ export default function App() {
             if (music && settings.sound) unlockSound();
             setSettings((s) => ({ ...s, music }));
           }}
+          look={settings.look}
+          onLook={(look) => setSettings((s) => ({ ...s, look }))}
           battleLog={settings.battleLog}
           onBattleLog={(battleLog) => setSettings((s) => ({ ...s, battleLog }))}
           onExit={toTitle}
@@ -242,8 +248,8 @@ export default function App() {
           }}
           onRejoin={() => void rejoin()}
           onFeedback={() => void openFeedback("title")}
-          kawaii={settings.kawaii}
-          onKawaii={(kawaii) => setSettings((s) => ({ ...s, kawaii }))}
+          look={settings.look}
+          onLook={(look) => setSettings((s) => ({ ...s, look }))}
         />
       )}
       {lobby && (

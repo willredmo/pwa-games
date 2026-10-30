@@ -36,6 +36,8 @@ export interface CharacterOpts {
   seed: number;
   /** Merges absorbed — higher tiers can look grander. */
   merges: number;
+  /** Blood setting: share of health lost (0..1), drawn as wounds. Absent = none. */
+  wounds?: number;
 }
 
 type RGB = readonly [number, number, number];
@@ -61,6 +63,10 @@ let KAWAII = false;
 export function setKawaiiCharacters(on: boolean): void {
   KAWAII = on;
 }
+/** Kawaii mode is on (fx reads it: nobody dies, they hop away). */
+export const kawaiiOn = () => KAWAII;
+/** Wound colours (Blood setting): clotted, blood, fresh. */
+const BLOOD_RGB = ["#4a0509", "#8a0d16", "#c8242c"] as const;
 const ENEMY: Palette = { fill: [0xd1, 0x48, 0x3a], edge: [0xf2, 0xa2, 0x94], dark: [0x8c, 0x27, 0x20] };
 const STEEL: RGB = [0xe2, 0xe7, 0xef];
 const STEEL_D: RGB = [0x8e, 0x98, 0xaa];
@@ -1078,6 +1084,71 @@ function drawLegs(
   ctx.restore();
 }
 
+/**
+ * Wounds for the Blood setting, drawn inside the body's clip: `w` is the share
+ * of health lost (0 at full health draws nothing). Splotches and drips are
+ * seeded per unit and added in order, so a unit keeps its wounds and gains
+ * more as it weakens; a gash opens past 30%, and past half the body reddens.
+ */
+function drawWounds(ctx: CanvasRenderingContext2D, R: number, w: number, seed: number): void {
+  let k = seed % 233280;
+  const rnd = () => ((k = (k * 9301 + 49297) % 233280) / 233280);
+  const n = Math.ceil(w * 9);
+  for (let i = 0; i < n; i++) {
+    const x = (rnd() - 0.5) * R * 1.3;
+    const y = (rnd() - 0.6) * R * 1.2;
+    const r = R * (0.13 + rnd() * 0.12) * (0.8 + w * 0.7);
+    const drip = R * (0.25 + rnd() * 0.5) * (0.4 + w);
+    ctx.fillStyle = BLOOD_RGB[1];
+    ctx.beginPath();
+    ctx.ellipse(x, y, r, r * 0.8, rnd() * 3, 0, Math.PI * 2);
+    ctx.fill();
+    // A drip running down from it.
+    const dw = r * 0.35;
+    ctx.beginPath();
+    ctx.moveTo(x - dw, y);
+    ctx.lineTo(x - dw * 0.6, y + drip);
+    ctx.arc(x, y + drip, dw * 0.6, Math.PI, 0, true);
+    ctx.lineTo(x + dw, y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = BLOOD_RGB[0];
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.45, 0, Math.PI * 2);
+    ctx.fill();
+    // Spatter around it.
+    ctx.fillStyle = BLOOD_RGB[2];
+    for (let j = 0; j < 3; j++) {
+      const a = rnd() * Math.PI * 2;
+      ctx.beginPath();
+      ctx.arc(x + Math.cos(a) * r * 1.6, y + Math.sin(a) * r * 1.6, r * (0.12 + rnd() * 0.14), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  if (w > 0.3) {
+    const g = Math.min(1, (w - 0.3) / 0.3);
+    const a = (seed % 2 ? 1 : -1) * 0.6;
+    ctx.save();
+    ctx.rotate(a);
+    ctx.lineCap = "round";
+    ctx.strokeStyle = BLOOD_RGB[2];
+    ctx.lineWidth = R * 0.2 * g;
+    ctx.beginPath();
+    ctx.moveTo(-R * 0.55 * g, R * 0.05);
+    ctx.lineTo(R * 0.55 * g, -R * 0.05);
+    ctx.stroke();
+    ctx.strokeStyle = BLOOD_RGB[0];
+    ctx.lineWidth = R * 0.08 * g;
+    ctx.stroke();
+    ctx.restore();
+  }
+  if (w > 0.5) {
+    ctx.globalAlpha *= 0.45 * Math.min(1, (w - 0.5) / 0.5);
+    ctx.fillStyle = BLOOD_RGB[1];
+    ctx.fillRect(-R * 1.5, -R * 1.5, R * 3, R * 3);
+  }
+}
+
 export function drawCharacter(ctx: CanvasRenderingContext2D, o: CharacterOpts): void {
   const { key, pose, t, time, seed } = o;
   const cute = KAWAII && o.side === "player";
@@ -1106,6 +1177,7 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: CharacterOpts): 
   let w = 0; // weapon swing -1 (wound up) .. 1 (struck)
   let str = 0; // strike intensity for trails
   let fwd = 0; // local forward offset (negative = forward)
+  let hopX = 0; // sideways travel (Kawaii's hop away)
   const sway = Math.sin(time / 520 + phase) * 0.07;
   let eye: Eye = Eye.Open;
   let tear = -1;
@@ -1163,6 +1235,25 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: CharacterOpts): 
       break;
     }
     case "dying": {
+      // Kawaii mode: nobody dies. The unit hops away happily, bouncing off
+      // the side of its row and fading out as it goes (either side's units).
+      if (KAWAII) {
+        const dir = seed % 2 ? 1 : -1;
+        const amp = prefersReducedMotion() ? 0.4 : 1;
+        const hop = Math.abs(Math.sin(t * Math.PI * 3));
+        hopX = dir * R * 2.8 * easeInCubic(t) * amp;
+        bob = -hop * R * (0.5 + 0.6 * t) * amp;
+        sy = 1 + 0.12 * hop - 0.1 * (1 - hop);
+        sx = 1 - 0.06 * hop + 0.08 * (1 - hop);
+        tilt = dir * 0.22 * Math.sin(t * Math.PI * 6) * amp;
+        scale = 1 - 0.25 * easeInCubic(t);
+        alpha = t < 0.55 ? 1 : 1 - (t - 0.55) / 0.45;
+        eye = Eye.Happy;
+        tuck = hop;
+        stride = 0;
+        w = 0.6 * Math.sin(t * Math.PI * 6);
+        break;
+      }
       flash = t < 0.3 ? 1 - t / 0.3 : 0;
       tilt = (seed % 2 ? 1 : -1) * 0.9 * easeOutCubic(t);
       scale = 1 - 0.5 * easeInCubic(t);
@@ -1253,7 +1344,7 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: CharacterOpts): 
   ctx.save();
   ctx.globalAlpha *= alpha;
   // Nudged up a touch so the feet stay inside the row.
-  ctx.translate(o.cx, o.cy - R * 0.12 + bob);
+  ctx.translate(o.cx + hopX, o.cy - R * 0.12 + bob);
   ctx.rotate(tilt);
   ctx.scale(scale * sx, scale * sy);
   // Forward motion (wind-up, follow-through) heads toward the opponent.
@@ -1292,6 +1383,13 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: CharacterOpts): 
   ctx.globalAlpha *= 0.35;
   ctx.fillRect(-R, R * 0.28, R * 2, R);
   ctx.restore();
+  if ((o.wounds ?? 0) > 0.02) {
+    ctx.save();
+    bodyPath(ctx, key, R);
+    ctx.clip();
+    drawWounds(ctx, R, Math.min(1, o.wounds!), seed);
+    ctx.restore();
+  }
   bodyPath(ctx, key, R);
   ctx.strokeStyle = m(P.edge);
   ctx.lineWidth = lw * 1.4;

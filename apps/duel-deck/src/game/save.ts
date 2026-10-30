@@ -94,9 +94,16 @@ export interface Settings {
   upgrades: boolean;
   /** Level cap (LEVEL_CAP_OPTIONS in match.ts). */
   levelCap: number;
-  /** Kawaii mode (hidden in the settings sheet): your units pink and cute, the battle uwu. */
-  kawaii: boolean;
+  /** How battles look (cosmetic, local): see `Look`. */
+  look: Look;
 }
+
+/**
+ * Normal; Kawaii (your units pink and cute, the battle uwu, units hop away
+ * instead of dying); Bloody (hits bleed, deaths splatter, wounds show).
+ */
+export type Look = "normal" | "kawaii" | "bloody";
+export const LOOKS: Look[] = ["normal", "kawaii", "bloody"];
 
 const DEFAULTS: Settings = {
   difficulty: "normal",
@@ -109,7 +116,7 @@ const DEFAULTS: Settings = {
   synergies: true,
   upgrades: true,
   levelCap: 10,
-  kawaii: false,
+  look: "normal",
 };
 /** Mirrors LEVEL_CAP_OPTIONS in match.ts, for the same reason as START_HP_RANGE below. */
 const LEVEL_CAPS = [8, 10, 12, 15];
@@ -128,7 +135,7 @@ export function loadSettings(): Settings {
       return null;
     }
   };
-  let saved: Partial<Settings> & { fast?: boolean } = {};
+  let saved: Partial<Settings> & { fast?: boolean; kawaii?: boolean; blood?: boolean } = {};
   try {
     saved = JSON.parse(read(SETTINGS_KEY) ?? "{}") as Partial<Settings>;
   } catch {
@@ -153,7 +160,8 @@ export function loadSettings(): Settings {
     synergies: saved.synergies ?? DEFAULTS.synergies,
     upgrades: saved.upgrades ?? DEFAULTS.upgrades,
     levelCap: LEVEL_CAPS.includes(saved.levelCap as number) ? (saved.levelCap as number) : DEFAULTS.levelCap,
-    kawaii: saved.kawaii === true,
+    // Kawaii and Blood used to be switches of their own.
+    look: LOOKS.includes(saved.look as Look) ? saved.look! : saved.kawaii ? "kawaii" : saved.blood ? "bloody" : DEFAULTS.look,
   };
 }
 

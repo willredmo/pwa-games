@@ -7,6 +7,8 @@ import {
   lerp,
   prefersReducedMotion,
 } from "./anim";
+import { BLOOD, bloodOn } from "./blood";
+import { kawaiiOn } from "./characters";
 
 // Transient board effects: particles, floating numbers, slashes, rings, screen
 // shake. Particles live in a fixed pool (no per-frame allocation); one-off
@@ -127,6 +129,20 @@ const enum PT {
   Spiral,
   Plus,
   Coin,
+  /** Blood droplet (Blood setting), stretched along its velocity. */
+  Drop,
+  /** A little heart floating up (Kawaii mode). */
+  Heart,
+}
+
+/** A floor splat (Blood setting): drawn under the units, fades out. */
+interface Decal {
+  x: number;
+  y: number;
+  r: number;
+  t0: number;
+  dur: number;
+  seed: number;
 }
 
 interface Particle {
@@ -204,6 +220,7 @@ const sideLight = (s?: Side) =>
 export class FxLayer {
   private parts: Particle[] = [];
   private effects: Effect[] = [];
+  private decals: Decal[] = [];
   private cursor = 0;
   private lastNow = -1;
   private trauma = 0;
@@ -223,6 +240,7 @@ export class FxLayer {
     switch (fx.kind) {
       case "damage":
         this.addNumber(fx, now);
+        if (bloodOn() && (fx.amount ?? 0) > 0) this.bleed(x, y, s, fx.amount!, fx.side, now);
         break;
       case "slash":
         this.fx(ET.Slash, now, 260, x, y, s, sideCol(fx.side), sideLight(fx.side), 0, false, fx.side === "enemy" ? -1 : 1);
@@ -241,6 +259,14 @@ export class FxLayer {
         break;
       }
       case "death": {
+        if (kawaiiOn()) {
+          this.happyPop(x, y, s, now);
+          break;
+        }
+        if (bloodOn()) {
+          this.gore(x, y, s, fx.side, now);
+          break;
+        }
         const c = sideCol(fx.side);
         const l = sideLight(fx.side);
         this.fx(ET.Flash, now, 160, x, y, s * 0.8, "#fff", l, 0, false, 0);
@@ -471,7 +497,8 @@ export class FxLayer {
         break;
       }
       case "explosion":
-        this.explode(x, y, s, fx.side, now);
+        if (kawaiiOn()) this.confetti(x, y, s, now);
+        else this.explode(x, y, s, fx.side, now);
         break;
       case "stat-gain": {
         // Big enough to read at a glance: gold for attack, green for health.
@@ -514,9 +541,17 @@ export class FxLayer {
     ctx.restore();
   }
 
+  /** Floor splats, drawn before the units so they sit under them. */
+  drawUnder(ctx: CanvasRenderingContext2D, now: number): void {
+    if (this.decals.length === 0) return;
+    ctx.save();
+    this.drawDecals(ctx, now);
+    ctx.restore();
+  }
+
   /** Anything still on screen or still to come (particles, effects, shake), so the caller can't drop frames. */
   busy(now: number): boolean {
-    if (this.effects.length > 0 || this.currentTrauma(now) > 0) return true;
+    if (this.effects.length > 0 || this.decals.length > 0 || this.currentTrauma(now) > 0) return true;
     for (const p of this.parts) if (p.alive) return true;
     return false;
   }
@@ -525,6 +560,7 @@ export class FxLayer {
   clear(): void {
     for (const p of this.parts) p.alive = false;
     this.effects.length = 0;
+    this.decals.length = 0;
     this.trauma = 0;
     this.lastNow = -1;
   }
@@ -726,6 +762,137 @@ export class FxLayer {
         y + (Math.random() - 0.5) * R * 0.8, (Math.random() - 0.5) * s * 0.8, -s * (0.6 + Math.random() * 1.2), -s * 0.2,
         s * (0.04 + Math.random() * 0.04), i % 2 ? COL.ember : COL.goldLight);
     }
+  }
+
+  /** Kawaii mode's "death": a pink pop of sparkles and hearts as the unit hops away. */
+  private happyPop(x: number, y: number, s: number, now: number): void {
+    this.fx(ET.Ring, now, 420, x, y, s * 1.0, "#ffd6ec", "#ff8fc8", 0, false, 0);
+    const n = this.count(14);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = s * (0.8 + Math.random() * 1.8);
+      this.emit(PT.Sparkle, now, 600 + Math.random() * 400, x, y, Math.cos(a) * sp, Math.sin(a) * sp - s * 0.8,
+        s * 1.2, s * (0.05 + Math.random() * 0.04), i % 3 === 0 ? "#fff" : i % 3 === 1 ? "#ffd6ec" : "#ff8fc8");
+    }
+    const hearts = this.count(6);
+    for (let i = 0; i < hearts; i++) {
+      this.emit(PT.Heart, now + i * 40, 900 + Math.random() * 300, x + (Math.random() - 0.5) * s * 0.6, y - s * 0.1,
+        (Math.random() - 0.5) * s * 0.8, -s * (0.9 + Math.random() * 0.8), -s * 0.15, s * (0.07 + Math.random() * 0.04),
+        i % 2 ? "#ff5c9d" : "#ff8fc8");
+    }
+  }
+
+  /** Kawaii mode's lost-match "explosion": a big burst of confetti and hearts, no fire or shake. */
+  private confetti(x: number, y: number, s: number, now: number): void {
+    const R = s * 2.4;
+    this.fx(ET.Ring, now, 650, x, y, R * 1.4, "#ffd6ec", "#ff8fc8", 0, false, 0);
+    const colors = ["#ff8fc8", "#ffe27a", "#9ecbf5", "#b6f5c8", "#cdb8ff", "#fff"];
+    const n = this.count(48);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = s * (2 + Math.random() * 4);
+      const p = this.emit(PT.Shard, now, 1100 + Math.random() * 600, x + (Math.random() - 0.5) * R, y,
+        Math.cos(a) * sp, Math.sin(a) * sp - s * 2.5, s * 4, s * (0.06 + Math.random() * 0.06), colors[i % colors.length]);
+      if (p) {
+        p.rot = Math.random() * 6.28;
+        p.vr = (Math.random() - 0.5) * 14;
+      }
+    }
+    const hearts = this.count(14);
+    for (let i = 0; i < hearts; i++) {
+      this.emit(PT.Heart, now + Math.random() * 300, 1200 + Math.random() * 500, x + (Math.random() - 0.5) * R * 1.4, y,
+        (Math.random() - 0.5) * s, -s * (1 + Math.random() * 1.2), -s * 0.2, s * (0.08 + Math.random() * 0.06), i % 2 ? "#ff5c9d" : "#ff8fc8");
+    }
+  }
+
+  /**
+   * Blood setting: a hit sprays droplets away from the blow (player units are
+   * struck from above, enemy units from below) and leaves a splat on the
+   * floor, bigger for bigger hits.
+   */
+  private bleed(x: number, y: number, s: number, amount: number, side: Side | undefined, now: number): void {
+    const dir = side === "enemy" ? -1 : 1;
+    const n = this.count(6 + Math.min(16, amount * 2));
+    for (let i = 0; i < n; i++) {
+      const a = Math.PI / 2 * dir + (Math.random() - 0.5) * 2.2;
+      const sp = s * (1.4 + Math.random() * 3.2);
+      this.emit(PT.Drop, now, 420 + Math.random() * 380, x + (Math.random() - 0.5) * s * 0.3, y,
+        Math.cos(a) * sp, Math.sin(a) * sp - s * 1.2, s * 7, s * (0.025 + Math.random() * 0.04), BLOOD[1 + (i % 3)]);
+    }
+    const r = s * Math.min(0.42, 0.14 + amount * 0.025);
+    this.decals.push({ x: x + (Math.random() - 0.5) * s * 0.4, y: y + dir * s * 0.32, r, t0: now, dur: 2600, seed: Math.random() * 1000 });
+  }
+
+  /** Blood setting: a death bursts into a bloody mess and leaves a pool. */
+  private gore(x: number, y: number, s: number, side: Side | undefined, now: number): void {
+    if (!this.reduced) this.shake(0.3, now);
+    this.fx(ET.Flash, now, 140, x, y, s * 0.9, "#ffd0d0", BLOOD[3], 0, false, 0);
+    this.fx(ET.Ring, now, 380, x, y, s * 1.2, BLOOD[3], BLOOD[1], 0, false, 0);
+    const c = sideCol(side);
+    const chunks = this.count(14);
+    for (let i = 0; i < chunks; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = s * (1.6 + Math.random() * 3);
+      const p = this.emit(PT.Shard, now, 620 + Math.random() * 300, x, y, Math.cos(a) * sp, Math.sin(a) * sp - s * 1.8,
+        s * 6.5, s * (0.07 + Math.random() * 0.1), i % 3 === 0 ? c : i % 3 === 1 ? BLOOD[0] : BLOOD[2]);
+      if (p) {
+        p.rot = Math.random() * 6.28;
+        p.vr = (Math.random() - 0.5) * 16;
+      }
+    }
+    const drops = this.count(34);
+    for (let i = 0; i < drops; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = s * (1.5 + Math.random() * 4.5);
+      this.emit(PT.Drop, now + Math.random() * 60, 500 + Math.random() * 500, x, y, Math.cos(a) * sp, Math.sin(a) * sp - s * 1.6,
+        s * 7, s * (0.03 + Math.random() * 0.05), BLOOD[1 + (i % 3)]);
+    }
+    const mist = this.count(8);
+    for (let i = 0; i < mist; i++) {
+      const a = Math.random() * Math.PI * 2;
+      this.emit(PT.Smoke, now, 700 + Math.random() * 400, x + Math.cos(a) * s * 0.2, y + Math.sin(a) * s * 0.2,
+        Math.cos(a) * s * 0.9, Math.sin(a) * s * 0.6, 0, s * (0.18 + Math.random() * 0.14), i % 2 ? BLOOD[2] : BLOOD[1]);
+    }
+    this.decals.push({ x, y: y + s * 0.1, r: s * 0.55, t0: now + 120, dur: 4200, seed: Math.random() * 1000 });
+  }
+
+  /** Floor splats (Blood setting), drawn under the units. */
+  private drawDecals(ctx: CanvasRenderingContext2D, now: number): void {
+    let w = 0;
+    for (const d of this.decals) {
+      const age = now - d.t0;
+      if (age >= d.dur) continue;
+      this.decals[w++] = d;
+      if (age < 0) continue;
+      const t = age / d.dur;
+      const grow = easeOutCubic(clamp01(age / 160));
+      ctx.globalAlpha = 0.82 * (t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3);
+      // A seeded scatter of blobs around a main one, so a splat keeps its shape.
+      let k = d.seed;
+      const rnd = () => ((k = (k * 9301 + 49297) % 233280) / 233280);
+      ctx.fillStyle = BLOOD[1];
+      ctx.beginPath();
+      ctx.ellipse(d.x, d.y, d.r * grow, d.r * 0.62 * grow, 0, 0, 6.2832);
+      ctx.fill();
+      for (let i = 0; i < 7; i++) {
+        const a = rnd() * 6.2832;
+        const dist = d.r * (0.6 + rnd() * 0.8) * grow;
+        const r = d.r * (0.12 + rnd() * 0.22) * grow;
+        ctx.beginPath();
+        ctx.ellipse(d.x + Math.cos(a) * dist, d.y + Math.sin(a) * dist * 0.62, r, r * 0.7, 0, 0, 6.2832);
+        ctx.fill();
+      }
+      ctx.fillStyle = BLOOD[0];
+      ctx.beginPath();
+      ctx.ellipse(d.x - d.r * 0.1, d.y + d.r * 0.08, d.r * 0.55 * grow, d.r * 0.32 * grow, 0, 0, 6.2832);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255, 140, 140, 0.35)";
+      ctx.beginPath();
+      ctx.ellipse(d.x + d.r * 0.25, d.y - d.r * 0.2, d.r * 0.16 * grow, d.r * 0.08 * grow, -0.4, 0, 6.2832);
+      ctx.fill();
+    }
+    this.decals.length = w;
+    ctx.globalAlpha = 1;
   }
 
   /** Fireball: layered radial gradients (no blur filter) that swell, then cool from white to red and fade. */
@@ -1211,6 +1378,27 @@ export class FxLayer {
           ctx.fillStyle = p.color;
           ctx.beginPath();
           ctx.arc(p.x, p.y, p.size * (0.6 + easeOutCubic(t) * 1.4), 0, 6.2832);
+          ctx.fill();
+          break;
+        }
+        case PT.Drop: {
+          ctx.globalAlpha = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
+          ctx.fillStyle = p.color;
+          const speed = Math.hypot(p.vx, p.vy);
+          const stretch = 1 + Math.min(2.2, speed / Math.max(1, p.size * 70));
+          ctx.beginPath();
+          ctx.ellipse(p.x, p.y, Math.max(0.8, p.size * stretch), Math.max(0.8, p.size), Math.atan2(p.vy, p.vx), 0, 6.2832);
+          ctx.fill();
+          break;
+        }
+        case PT.Heart: {
+          ctx.globalAlpha = t < 0.6 ? 1 : 1 - (t - 0.6) / 0.4;
+          ctx.fillStyle = p.color;
+          const r = p.size * (1 - t * 0.2);
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y + r * 1.1);
+          ctx.bezierCurveTo(p.x - r * 1.6, p.y, p.x - r * 1.1, p.y - r * 1.3, p.x, p.y - r * 0.45);
+          ctx.bezierCurveTo(p.x + r * 1.1, p.y - r * 1.3, p.x + r * 1.6, p.y, p.x, p.y + r * 1.1);
           ctx.fill();
           break;
         }

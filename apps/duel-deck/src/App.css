@@ -2072,8 +2072,23 @@ button.menu-item:hover { border-color: #5a5180; }
 }
 
 /* Kawaii mode's hidden switch (Title.tsx), once found. */
-.kawaii-toggle { margin-top: 0.7rem; padding: 0.55rem 0.65rem; border-radius: 12px; border: 1px dashed #ff8fc8; background: rgba(255, 143, 200, 0.08); }
-.kawaii-toggle input:checked + .toggle__switch { background: #ff5ca8; }
+/* Style (Normal / Kawaii / Bloody) */
+.look-select { display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.7rem; padding: 0.55rem 0.65rem; border-radius: 12px; border: 1px solid #3a3454; font-size: 0.88rem; font-weight: 700; text-align: left; }
+.look-select--kawaii { border: 1px dashed #ff8fc8; background: rgba(255, 143, 200, 0.08); }
+.look-select--bloody { border-color: #8a0d16; background: rgba(163, 18, 28, 0.1); }
+.look-select__head { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; }
+.look-select small { font-weight: 500; font-size: 0.74rem; color: var(--muted); }
+.look-select select {
+  font: inherit;
+  font-size: 0.9rem;
+  color: #f0ecff;
+  background: #2a2540;
+  border: 1px solid #4a4370;
+  border-radius: 8px;
+  padding: 0.3rem 0.5rem;
+  min-height: 2.2rem;
+}
+.look-select select:focus-visible { outline: 2px solid #f0b429; outline-offset: 2px; }
 
 /* --- Battle view: during a battle the board takes the screen ---
    The rows under it (round summary, pick label, offer cards / log, hint)

@@ -92,7 +92,7 @@ import {
 } from "./Overlays";
 import { emptyStats, mvpOf, recordRound, type MatchStats } from "../game/stats";
 import { MatchLog, rowLog, type PickLog } from "../game/telemetry";
-import { SPEEDS, clearMatch, saveMatch, type SavedMatch, type Speed } from "../game/save";
+import { SPEEDS, clearMatch, saveMatch, type Look, type SavedMatch, type Speed } from "../game/save";
 import { sfx } from "../game/sound";
 import { setMusic } from "../game/music";
 import {
@@ -272,6 +272,9 @@ function applyEvent(board: Board, ev: BattleEvent): void {
   }
 }
 
+/** A fallen unit in the battle log; in Kawaii mode nobody falls, they hop away. */
+const fallText = <T,>(name: T) => (isKawaii() ? ["💖 ", name, " hops away happily"] : ["☠ ", name, " falls"]);
+
 /** A stat change as playback labels it: "+2⚔ +3♥", "+4🔰", or "−4♥" for a loss. */
 const statText = (atk: number, hp: number, shield = 0) =>
   [
@@ -356,6 +359,8 @@ export interface GameProps {
   onSound: (on: boolean) => void;
   music: boolean;
   onMusic: (on: boolean) => void;
+  look: Look;
+  onLook: (look: Look) => void;
   battleLog: boolean;
   onBattleLog: (on: boolean) => void;
   /** Back to the title screen (New match, or leaving a finished one). */
@@ -372,7 +377,7 @@ export interface GameProps {
   onFeedback: (context: string) => void;
 }
 
-export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, sound, onSound, music, onMusic, battleLog, onBattleLog, onExit, online, tutorial, rules: startRules, onRematch, onFeedback }: GameProps) {
+export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, sound, onSound, music, onMusic, look, onLook, battleLog, onBattleLog, onExit, online, tutorial, rules: startRules, onRematch, onFeedback }: GameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   /** The match being resumed, if any; resuming always lands in the pick phase. */
@@ -2089,7 +2094,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       const mainKills = new Set(attacks.filter((e) => e.tag !== "dodge" && dying.has(e.target)).map((e) => e.target));
       for (const id of mainKills) {
         const u = unitAt(f.board, id)?.unit;
-        if (u) pushFeed("death", ["☠ ", nameOf(u), " falls"]);
+        if (u) pushFeed("death", fallText(nameOf(u)));
       }
       // Just after the impact, so the fall reads as its consequence.
       if (dying.size > 0) window.setTimeout(() => sfx("death"), 90);
@@ -2189,7 +2194,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           if (target) {
             const how = ev.tag === "cleave" ? " carries on into " : ev.tag === "thorns" ? " strikes back at " : ev.tag === "pierce" ? " impales " : " lands a parting blow on ";
             pushFeed("hit", [nameOf(src.unit), how, nameOf(target), ` for ${ev.damage}`]);
-            if (lethal && !mainKills.has(ev.target)) pushFeed("death", ["☠ ", nameOf(target), " falls"]);
+            if (lethal && !mainKills.has(ev.target)) pushFeed("death", fallText(nameOf(target)));
           }
           if (ev.tag === "pierce") fxAt(f.board, cell, "slash");
           else {
@@ -2541,6 +2546,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
             onSound={onSound}
             music={music}
             onMusic={onMusic}
+            look={look}
+            onLook={onLook}
             battleLog={battleLog}
             onBattleLog={onBattleLog}
             difficultyLabel={DIFFICULTY_LABEL[difficulty]}
