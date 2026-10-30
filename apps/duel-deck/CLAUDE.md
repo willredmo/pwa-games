@@ -884,9 +884,9 @@ Style "Bloody" (see Style below). Cosmetic and local, a module flag like Kawaii
 (`board/blood.ts`, set from App). With it on:
 - **Hits** (every `"damage"` fx with an amount) spray `PT.Drop` droplets away
   from the blow and leave a floor splat (`FxLayer.decals`, drawn by
-  `drawUnder` before the units, fading over 2.6 s).
+  `drawUnder` before the units, gone in 1.3 s, fading from halfway).
 - **Deaths** (`"death"` fx) burst into a bloody mess instead of the shatter:
-  red flash and ring, chunks, droplets, red mist, a pool that lasts 4.2 s.
+  red flash and ring, the body torn into 5 or 6 pieces (`PT.Chunk`: its colour, a bloody torn side, a blood streak, droplets trailing), blood bits, droplets and red mist. No pool: the user found it lingered.
 - **Wounds:** `drawCharacter`'s `wounds` (share of health lost, from the
   eased HP) draws seeded splotches with drips and spatter inside the body,
   a gash past 30% and a red wash past half. Full health draws none, so

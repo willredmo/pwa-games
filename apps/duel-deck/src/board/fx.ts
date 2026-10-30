@@ -136,6 +136,8 @@ const enum PT {
   Drop,
   /** A little heart floating up (Kawaii mode). */
   Heart,
+  /** A torn piece of a unit's body (Bloody death): its colour, a bloody edge, a blood streak behind it. */
+  Chunk,
 }
 
 /** A floor splat (Blood setting): drawn under the units, fades out. */
@@ -846,21 +848,40 @@ export class FxLayer {
         Math.cos(a) * sp, Math.sin(a) * sp - s * 1.2, s * 7, s * (0.025 + Math.random() * 0.04), BLOOD[1 + (i % 3)]);
     }
     const r = s * Math.min(0.42, 0.14 + amount * 0.025);
-    this.decals.push({ x: x + (Math.random() - 0.5) * s * 0.4, y: y + dir * s * 0.32, r, t0: now, dur: 2600, seed: Math.random() * 1000 });
+    this.decals.push({ x: x + (Math.random() - 0.5) * s * 0.4, y: y + dir * s * 0.32, r, t0: now, dur: 1300, seed: Math.random() * 1000 });
   }
 
-  /** Blood setting: a death bursts into a bloody mess and leaves a pool. */
+  /** Blood setting: a death tears the unit into pieces in a burst of blood (no pool left behind). */
   private gore(x: number, y: number, s: number, side: Side | undefined, now: number): void {
     if (!this.reduced) this.shake(0.3, now);
     this.fx(ET.Flash, now, 140, x, y, s * 0.9, "#ffd0d0", BLOOD[3], 0, false, 0);
     this.fx(ET.Ring, now, 380, x, y, s * 1.2, BLOOD[3], BLOOD[1], 0, false, 0);
     const c = sideCol(side);
-    const chunks = this.count(14);
-    for (let i = 0; i < chunks; i++) {
+    // The body breaks into 5 or 6 big pieces flung outward, each trailing blood.
+    const pieces = this.count(5 + Math.round(Math.random()));
+    for (let i = 0; i < pieces; i++) {
+      const a = (i / pieces) * Math.PI * 2 + (Math.random() - 0.5) * 0.7;
+      const sp = s * (2 + Math.random() * 1.8);
+      const vx = Math.cos(a) * sp;
+      const vy = Math.sin(a) * sp - s * 2.2;
+      const p = this.emit(PT.Chunk, now, 950 + Math.random() * 350, x + Math.cos(a) * s * 0.12, y + Math.sin(a) * s * 0.12,
+        vx, vy, s * 7, s * (0.2 + Math.random() * 0.08), c);
+      if (p) {
+        p.rot = Math.random() * 6.28;
+        p.vr = (Math.random() - 0.5) * 12;
+        p.rad = Math.random() * 1000; // the piece's shape
+      }
+      for (let j = 0; j < 4; j++) {
+        this.emit(PT.Drop, now + j * 45, 500 + Math.random() * 300, x, y, vx * (0.75 - j * 0.1), vy * (0.75 - j * 0.1),
+          s * 7, s * (0.03 + Math.random() * 0.03), BLOOD[1 + (j % 3)]);
+      }
+    }
+    const bits = this.count(10);
+    for (let i = 0; i < bits; i++) {
       const a = Math.random() * Math.PI * 2;
       const sp = s * (1.6 + Math.random() * 3);
       const p = this.emit(PT.Shard, now, 620 + Math.random() * 300, x, y, Math.cos(a) * sp, Math.sin(a) * sp - s * 1.8,
-        s * 6.5, s * (0.07 + Math.random() * 0.1), i % 3 === 0 ? c : i % 3 === 1 ? BLOOD[0] : BLOOD[2]);
+        s * 6.5, s * (0.05 + Math.random() * 0.06), i % 2 ? BLOOD[0] : BLOOD[2]);
       if (p) {
         p.rot = Math.random() * 6.28;
         p.vr = (Math.random() - 0.5) * 16;
@@ -879,7 +900,6 @@ export class FxLayer {
       this.emit(PT.Smoke, now, 700 + Math.random() * 400, x + Math.cos(a) * s * 0.2, y + Math.sin(a) * s * 0.2,
         Math.cos(a) * s * 0.9, Math.sin(a) * s * 0.6, 0, s * (0.18 + Math.random() * 0.14), i % 2 ? BLOOD[2] : BLOOD[1]);
     }
-    this.decals.push({ x, y: y + s * 0.1, r: s * 0.55, t0: now + 120, dur: 4200, seed: Math.random() * 1000 });
   }
 
   /** Floor splats (Blood setting), drawn under the units. */
@@ -892,7 +912,7 @@ export class FxLayer {
       if (age < 0) continue;
       const t = age / d.dur;
       const grow = easeOutCubic(clamp01(age / 160));
-      ctx.globalAlpha = 0.82 * (t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3);
+      ctx.globalAlpha = 0.82 * (t < 0.5 ? 1 : 1 - (t - 0.5) / 0.5);
       // A seeded scatter of blobs around a main one, so a splat keeps its shape.
       let k = d.seed;
       const rnd = () => ((k = (k * 9301 + 49297) % 233280) / 233280);
@@ -1415,6 +1435,51 @@ export class FxLayer {
           ctx.beginPath();
           ctx.ellipse(p.x, p.y, Math.max(0.8, p.size * stretch), Math.max(0.8, p.size), Math.atan2(p.vy, p.vx), 0, 6.2832);
           ctx.fill();
+          break;
+        }
+        case PT.Chunk: {
+          ctx.globalAlpha = t < 0.75 ? 1 : 1 - (t - 0.75) / 0.25;
+          // Blood streaking behind it.
+          ctx.strokeStyle = BLOOD[1];
+          ctx.lineWidth = Math.max(1, p.size * 0.45);
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(p.x - p.vx * 0.06, p.y - p.vy * 0.06);
+          ctx.stroke();
+          // A jagged piece, seeded by `rad`, turning as it flies.
+          const r = p.size;
+          let k = p.rad;
+          const rnd = () => ((k = (k * 9301 + 49297) % 233280) / 233280);
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rot);
+          ctx.beginPath();
+          for (let v = 0; v < 6; v++) {
+            const a = (v / 6) * Math.PI * 2;
+            const rr = r * (0.6 + rnd() * 0.5);
+            if (v === 0) ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+            else ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+          }
+          ctx.closePath();
+          ctx.fillStyle = p.color;
+          ctx.fill();
+          ctx.lineWidth = Math.max(1.5, r * 0.22);
+          ctx.strokeStyle = INK;
+          ctx.stroke();
+          ctx.lineWidth = Math.max(1, r * 0.1);
+          ctx.strokeStyle = p.color === COL.enemy ? COL.enemyLight : COL.playerLight;
+          ctx.stroke();
+          // The torn, bloody side.
+          ctx.clip();
+          ctx.fillStyle = BLOOD[2];
+          ctx.beginPath();
+          ctx.ellipse(r * 0.75, 0, r * 0.45, r * 0.9, 0, 0, 6.2832);
+          ctx.fill();
+          ctx.fillStyle = BLOOD[0];
+          ctx.beginPath();
+          ctx.ellipse(r * 0.95, r * 0.1, r * 0.25, r * 0.5, 0, 0, 6.2832);
+          ctx.fill();
+          ctx.restore();
           break;
         }
         case PT.Heart: {
