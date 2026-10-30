@@ -635,6 +635,34 @@ body { background-color: #12101c; }
     repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 16px),
     repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 16px);
 }
+/* Kawaii style (Settings.look; App sets html[data-look]): a pink-and-lavender
+   arena, polka dots, and hearts drifting up the page. */
+html[data-look="kawaii"] body { background-color: #241431; }
+html[data-look="kawaii"] .app-root::before,
+html[data-look="kawaii"] .app::before {
+  background:
+    radial-gradient(70% 40% at 50% -6%, rgba(255, 143, 200, 0.26), transparent 70%),
+    radial-gradient(70% 40% at 50% 106%, rgba(205, 184, 255, 0.24), transparent 70%),
+    radial-gradient(130% 95% at 50% 50%, transparent 60%, rgba(40, 0, 40, 0.45) 100%),
+    radial-gradient(circle, rgba(255, 179, 217, 0.09) 1.6px, transparent 2.2px) 0 0 / 26px 26px;
+}
+/* On .app-root only: the game's .app sits inside it, so both would double up. */
+html[data-look="kawaii"] .app-root::after {
+  content: "";
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: calc(100% + 120px);
+  z-index: -1;
+  pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cg fill='%23ff8fc8'%3E%3Cpath d='M30 42c-9-7-16-12-16-19a8 8 0 0 1 16-2 8 8 0 0 1 16 2c0 7-7 12-16 19z' opacity='.16'/%3E%3Cpath d='M90 100c-6-5-11-8-11-13a5.5 5.5 0 0 1 11-1.5 5.5 5.5 0 0 1 11 1.5c0 5-5 8-11 13z' opacity='.12'/%3E%3C/g%3E%3Cpath d='M92 22l2 6 6 2-6 2-2 6-2-6-6-2 6-2z' fill='%23fff' opacity='.18'/%3E%3C/svg%3E") 0 0 / 120px 120px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  html[data-look="kawaii"] .app-root::after { animation: kawaii-drift 6s linear infinite; }
+}
+/* One tile (120px) per loop, so it wraps seamlessly. */
+@keyframes kawaii-drift { from { transform: translateY(0); } to { transform: translateY(-120px); } }
 .app__log, .app__hint { overflow-wrap: anywhere; text-align: center; max-width: 94vw; }
 /* The round summary and its Replay button share one line (the row reserves it). */
 .app__log-row { display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-width: 0; max-width: 100%; }

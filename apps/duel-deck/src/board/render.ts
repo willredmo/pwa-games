@@ -13,7 +13,7 @@ import {
   type Pose,
   type PoseState,
 } from "./anim";
-import { drawCharacter } from "./characters";
+import { drawCharacter, kawaiiOn } from "./characters";
 import { bloodOn } from "./blood";
 import type { FxLayer } from "./fx";
 
@@ -256,6 +256,29 @@ export function cellCenter(
   };
 }
 
+/**
+ * Where a unit's character stands in its slot (left of its name and stats),
+ * for effects that belong on the body (a death, blood) rather than the slot's
+ * middle. Matches drawUnit's layout: contents scaled by `contentScale` about
+ * the slot's left edge, the character CHAR_X across. Ignores lunges.
+ */
+export function unitCenter(
+  canvas: HTMLCanvasElement,
+  board: Board,
+  cell: Cell,
+): { x: number; y: number; size: number } | null {
+  const l = layout(canvas, board);
+  if (!l) return null;
+  const row = sideSpotToRow(board, cell.side, cell.spot);
+  const pad = Math.min(l.laneW, l.rowH) * 0.03;
+  const h = l.rowH - pad * 2;
+  return {
+    x: l.ox + cell.lane * l.laneW + pad + h * CHAR_X * contentScale(h),
+    y: l.oy + (row + 0.5) * l.rowH,
+    size: l.rowH * contentScale(l.rowH),
+  };
+}
+
 function roundRect(
   ctx: CanvasRenderingContext2D,
   x: number, y: number, w: number, h: number, r: number,
@@ -445,6 +468,53 @@ function updateVis(
   energy += (activity - energy) * (1 - Math.exp(-dt / (activity > energy ? 50 : 220)));
 }
 
+/** A heart centred on (x, y), `r` about half its width (Kawaii board decor). */
+function heartPath(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): void {
+  ctx.beginPath();
+  ctx.moveTo(x, y + r * 1.1);
+  ctx.bezierCurveTo(x - r * 1.6, y, x - r * 1.1, y - r * 1.3, x, y - r * 0.45);
+  ctx.bezierCurveTo(x + r * 1.1, y - r * 1.3, x + r * 1.6, y, x, y + r * 1.1);
+}
+
+/**
+ * Kawaii board decor, inside the arena: soft hearts drifting up and sparkles
+ * twinkling, faint enough to sit behind the slots. Seeded positions, moved by
+ * the clock (time, not frames) and still under reduced motion.
+ */
+function drawKawaiiDecor(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, time: number, still: boolean): void {
+  const t = still ? 0 : time;
+  for (let i = 0; i < 14; i++) {
+    const px = x + ((i * 0.618 + 0.11) % 1) * w;
+    const speed = 0.006 + (i % 4) * 0.002;
+    const py = y + h - ((((i * 0.37) % 1) * h + t * speed) % (h + 40)) + 20;
+    const r = 5 + (i % 3) * 3;
+    ctx.globalAlpha = 0.08 + (i % 3) * 0.035;
+    ctx.fillStyle = i % 2 ? "#ff8fc8" : "#ffb3d9";
+    heartPath(ctx, px + Math.sin(t / 900 + i) * 6, py, r);
+    ctx.fill();
+  }
+  for (let i = 0; i < 18; i++) {
+    const px = x + ((i * 0.754 + 0.3) % 1) * w;
+    const py = y + ((i * 0.433 + 0.07) % 1) * h;
+    const tw = 0.5 + 0.5 * Math.sin(t / 600 + i * 1.7);
+    const s = 1.5 + tw * 2;
+    ctx.globalAlpha = 0.1 + tw * 0.2;
+    ctx.fillStyle = i % 3 ? "#fff" : "#ffe27a";
+    ctx.beginPath();
+    ctx.moveTo(px, py - s * 1.6);
+    ctx.lineTo(px + s * 0.4, py - s * 0.4);
+    ctx.lineTo(px + s * 1.6, py);
+    ctx.lineTo(px + s * 0.4, py + s * 0.4);
+    ctx.lineTo(px, py + s * 1.6);
+    ctx.lineTo(px - s * 0.4, py + s * 0.4);
+    ctx.lineTo(px - s * 1.6, py);
+    ctx.lineTo(px - s * 0.4, py - s * 0.4);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
 export function draw(canvas: HTMLCanvasElement, state: RenderState): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -489,14 +559,16 @@ export function draw(canvas: HTMLCanvasElement, state: RenderState): void {
   const bwid = l.laneW * board.lanes;
   const bht = l.rowH * l.rows;
   const midY = l.oy + board.depth * l.rowH;
+  // Kawaii mode: a pink-and-lavender arena with drifting hearts.
+  const cute = kawaiiOn();
 
   // Arena panel with gradient + soft vignette.
   const pp = pad * 1.5;
   roundRect(ctx, bx - pp, l.oy - pp, bwid + pp * 2, bht + pp * 2, 10);
   const g = ctx.createLinearGradient(0, l.oy, 0, l.oy + bht);
-  g.addColorStop(0, "#2a1d2e");
-  g.addColorStop(0.5, "#201d30");
-  g.addColorStop(1, "#1a2038");
+  g.addColorStop(0, cute ? "#4a2148" : "#2a1d2e");
+  g.addColorStop(0.5, cute ? "#3a2152" : "#201d30");
+  g.addColorStop(1, cute ? "#2d2a5c" : "#1a2038");
   ctx.fillStyle = g;
   ctx.fill();
   ctx.save();
@@ -506,10 +578,17 @@ export function draw(canvas: HTMLCanvasElement, state: RenderState): void {
     bx + bwid / 2, l.oy + bht / 2, Math.max(bwid, bht) * 0.75,
   );
   vg.addColorStop(0, "rgba(0,0,0,0)");
-  vg.addColorStop(1, "rgba(0,0,0,0.45)");
+  vg.addColorStop(1, cute ? "rgba(40,0,40,0.3)" : "rgba(0,0,0,0.45)");
   ctx.fillStyle = vg;
   ctx.fillRect(bx - pp, l.oy - pp, bwid + pp * 2, bht + pp * 2);
+  if (cute) drawKawaiiDecor(ctx, bx - pp, l.oy - pp, bwid + pp * 2, bht + pp * 2, time, reduce);
   ctx.restore();
+  if (cute) {
+    roundRect(ctx, bx - pp, l.oy - pp, bwid + pp * 2, bht + pp * 2, 10);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(255, 143, 200, 0.45)";
+    ctx.stroke();
+  }
 
   const hasDrop = !!state.dropCell;
   const pulse1 = 0.5 + 0.5 * Math.sin(time / 180);
@@ -547,17 +626,26 @@ export function draw(canvas: HTMLCanvasElement, state: RenderState): void {
       // their queue position, so filled slots stand out and the room left reads.
       const empty = !unit && spot < capacityOf(board, side);
       roundRect(ctx, x, y, w, h, r);
-      ctx.fillStyle = empty ? "rgba(42, 38, 64, 0.35)" : COLORS.slot;
+      ctx.fillStyle = cute ? (empty ? "rgba(255, 143, 200, 0.07)" : "rgba(74, 40, 92, 0.92)") : empty ? "rgba(42, 38, 64, 0.35)" : COLORS.slot;
       ctx.fill();
-      ctx.fillStyle = side === "player" ? "rgba(58,134,214,0.07)" : "rgba(209,72,58,0.07)";
+      ctx.fillStyle = cute
+        ? side === "player" ? "rgba(255,143,200,0.08)" : "rgba(209,72,58,0.06)"
+        : side === "player" ? "rgba(58,134,214,0.07)" : "rgba(209,72,58,0.07)";
       ctx.fill();
       if (empty) {
         const k = h * contentScale(h); // where a unit's character would stand
         ctx.font = `700 ${Math.round(Math.max(10, k * 0.3))}px system-ui, sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillStyle = side === "player" ? "rgba(125, 184, 255, 0.28)" : "rgba(255, 133, 119, 0.24)";
-        ctx.fillText(`${spot + 1}`, x + k * CHAR_X, y + h / 2);
+        if (cute) {
+          // Empty slots hold a little heart instead of a number.
+          ctx.fillStyle = side === "player" ? "rgba(255, 143, 200, 0.3)" : "rgba(255, 133, 119, 0.22)";
+          heartPath(ctx, x + k * CHAR_X, y + h / 2, k * 0.12);
+          ctx.fill();
+        } else {
+          ctx.fillStyle = side === "player" ? "rgba(125, 184, 255, 0.28)" : "rgba(255, 133, 119, 0.24)";
+          ctx.fillText(`${spot + 1}`, x + k * CHAR_X, y + h / 2);
+        }
         ctx.textAlign = "left";
       }
 
@@ -577,13 +665,13 @@ export function draw(canvas: HTMLCanvasElement, state: RenderState): void {
         ctx.lineDashOffset = 0;
       } else if (empty) {
         ctx.lineWidth = 1;
-        ctx.strokeStyle = "rgba(90, 81, 128, 0.45)";
+        ctx.strokeStyle = cute ? "rgba(255, 143, 200, 0.4)" : "rgba(90, 81, 128, 0.45)";
         ctx.setLineDash(DASH_EMPTY);
         ctx.stroke();
         ctx.setLineDash(NO_DASH);
       } else {
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = COLORS.slotEdge;
+        ctx.lineWidth = cute ? 1.5 : 1;
+        ctx.strokeStyle = cute ? "rgba(255, 143, 200, 0.5)" : COLORS.slotEdge;
         ctx.stroke();
       }
 
@@ -677,10 +765,11 @@ export function draw(canvas: HTMLCanvasElement, state: RenderState): void {
     const e = energy;
     ctx.save();
     ctx.lineCap = "round";
-    ctx.strokeStyle = COLORS.energy;
+    const energyCol = cute ? "#ff8fc8" : COLORS.energy;
+    ctx.strokeStyle = energyCol;
     ctx.globalAlpha = 0.18 + 0.12 * (0.5 + 0.5 * Math.sin(time / 420)) + 0.5 * e;
     ctx.lineWidth = 3 + 5 * e;
-    ctx.shadowColor = COLORS.energy;
+    ctx.shadowColor = energyCol;
     ctx.shadowBlur = 8 + 18 * e;
     ctx.beginPath();
     ctx.moveTo(bx, midY);
@@ -688,7 +777,7 @@ export function draw(canvas: HTMLCanvasElement, state: RenderState): void {
     ctx.stroke();
     ctx.shadowBlur = 0;
     ctx.globalAlpha = 0.55 + 0.45 * e;
-    ctx.strokeStyle = e > 0.2 ? "#d9d2ff" : COLORS.mid;
+    ctx.strokeStyle = cute ? (e > 0.2 ? "#ffe0f0" : "#b0609a") : e > 0.2 ? "#d9d2ff" : COLORS.mid;
     ctx.lineWidth = 2;
     ctx.setLineDash(DASH_MID);
     ctx.lineDashOffset = -time * (0.03 + 0.08 * e);
@@ -700,11 +789,14 @@ export function draw(canvas: HTMLCanvasElement, state: RenderState): void {
     if (animated) {
       const px = bx + (((time * (0.0003 + 0.0006 * e)) % 1 + 1) % 1) * bwid;
       ctx.globalAlpha = 0.5 + 0.5 * e;
-      ctx.fillStyle = "#fff";
-      ctx.shadowColor = COLORS.energy;
+      ctx.fillStyle = cute ? "#ffd6ec" : "#fff";
+      ctx.shadowColor = energyCol;
       ctx.shadowBlur = 12;
-      ctx.beginPath();
-      ctx.arc(px, midY, 2 + 2 * e, 0, Math.PI * 2);
+      if (cute) heartPath(ctx, px, midY, 3.5 + 2 * e);
+      else {
+        ctx.beginPath();
+        ctx.arc(px, midY, 2 + 2 * e, 0, Math.PI * 2);
+      }
       ctx.fill();
     }
     ctx.restore();

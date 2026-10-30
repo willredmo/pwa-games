@@ -88,6 +88,9 @@ export interface FxSpawn {
   /** For "damage": what armour or a shield soaked, and what the unit healed back this beat (lifesteal), shown small under the number instead of as numbers of their own. */
   blocked?: number;
   healed?: number;
+  /** Where the unit's body is, when it isn't (x, y): "damage" bleeds from it. */
+  ux?: number;
+  uy?: number;
   /** For "last-breath": optional target point the wisp travels to. */
   tx?: number;
   ty?: number;
@@ -213,6 +216,9 @@ function mkParticle(): Particle {
   };
 }
 
+/** Kawaii hearts, in turn. */
+const HEARTS = ["#ff5c9d", "#ff8fc8", "#ffb3d9", "#ff3d7f"];
+
 const sideCol = (s?: Side) => (s === "enemy" ? COL.enemy : s === "player" ? COL.player : COL.gold);
 const sideLight = (s?: Side) =>
   s === "enemy" ? COL.enemyLight : s === "player" ? COL.playerLight : COL.goldLight;
@@ -240,7 +246,7 @@ export class FxLayer {
     switch (fx.kind) {
       case "damage":
         this.addNumber(fx, now);
-        if (bloodOn() && (fx.amount ?? 0) > 0) this.bleed(x, y, s, fx.amount!, fx.side, now);
+        if (bloodOn() && (fx.amount ?? 0) > 0) this.bleed(fx.ux ?? x, fx.uy ?? y, s, fx.amount!, fx.side, now);
         break;
       case "slash":
         this.fx(ET.Slash, now, 260, x, y, s, sideCol(fx.side), sideLight(fx.side), 0, false, fx.side === "enemy" ? -1 : 1);
@@ -774,11 +780,31 @@ export class FxLayer {
       this.emit(PT.Sparkle, now, 600 + Math.random() * 400, x, y, Math.cos(a) * sp, Math.sin(a) * sp - s * 0.8,
         s * 1.2, s * (0.05 + Math.random() * 0.04), i % 3 === 0 ? "#fff" : i % 3 === 1 ? "#ffd6ec" : "#ff8fc8");
     }
-    const hearts = this.count(6);
+    const hearts = this.count(10);
     for (let i = 0; i < hearts; i++) {
-      this.emit(PT.Heart, now + i * 40, 900 + Math.random() * 300, x + (Math.random() - 0.5) * s * 0.6, y - s * 0.1,
-        (Math.random() - 0.5) * s * 0.8, -s * (0.9 + Math.random() * 0.8), -s * 0.15, s * (0.07 + Math.random() * 0.04),
-        i % 2 ? "#ff5c9d" : "#ff8fc8");
+      this.emit(PT.Heart, now + i * 50, 900 + Math.random() * 400, x + (Math.random() - 0.5) * s * 0.8, y - s * 0.1,
+        (Math.random() - 0.5) * s * 0.9, -s * (0.9 + Math.random() * 0.9), -s * 0.15, s * (0.07 + Math.random() * 0.05),
+        HEARTS[i % HEARTS.length]);
+    }
+    // As the hop ends (the dying pose is 680 ms): a pink flash, a ring of
+    // hearts bursting outward, and one big heart that pops and floats up.
+    const end = now + 560;
+    this.fx(ET.Flash, end, 200, x, y, s * 0.7, "#fff0f7", "#ff8fc8", 0, false, 0);
+    this.fx(ET.Ring, end, 520, x, y, s * 1.3, "#ffd6ec", "#ff5c9d", 0, false, 0);
+    const ring = this.count(12);
+    for (let i = 0; i < ring; i++) {
+      const a = (i / ring) * Math.PI * 2;
+      const sp = s * (1.6 + Math.random() * 0.8);
+      this.emit(PT.Heart, end, 800 + Math.random() * 300, x, y, Math.cos(a) * sp, Math.sin(a) * sp - s * 0.4,
+        -s * 0.4, s * (0.08 + Math.random() * 0.04), HEARTS[i % HEARTS.length]);
+    }
+    this.emit(PT.Heart, end, 1300, x, y, 0, -s * 0.7, 0, s * 0.3, "#ff5c9d");
+    const sparkles = this.count(10);
+    for (let i = 0; i < sparkles; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = s * (1 + Math.random() * 2);
+      this.emit(PT.Sparkle, end + Math.random() * 80, 600 + Math.random() * 300, x, y, Math.cos(a) * sp, Math.sin(a) * sp,
+        0, s * (0.04 + Math.random() * 0.04), i % 2 ? "#fff" : "#ffe27a");
     }
   }
 
@@ -1394,7 +1420,7 @@ export class FxLayer {
         case PT.Heart: {
           ctx.globalAlpha = t < 0.6 ? 1 : 1 - (t - 0.6) / 0.4;
           ctx.fillStyle = p.color;
-          const r = p.size * (1 - t * 0.2);
+          const r = p.size * (0.4 + 0.6 * easeOutBack(clamp01(t / 0.18))) * (1 - t * 0.2);
           ctx.beginPath();
           ctx.moveTo(p.x, p.y + r * 1.1);
           ctx.bezierCurveTo(p.x - r * 1.6, p.y, p.x - r * 1.1, p.y - r * 1.3, p.x, p.y - r * 0.45);
@@ -1472,20 +1498,21 @@ export class FxLayer {
       const y = e.y - e.size * 0.2 - rise;
       ctx.globalAlpha = t < 0.65 ? 1 : 1 - (t - 0.65) / 0.35;
       ctx.font = `900 ${px.toFixed(1)}px system-ui, -apple-system, sans-serif`;
-      const text = big ? `☠ −${e.amount}` : st === 1 || st === 3 ? `+${e.amount}` : st === 2 ? `−${e.amount} blocked` : `−${e.amount}`;
+      const cute = kawaiiOn();
+      const text = big ? `${cute ? "💖" : "☠"} −${e.amount}` : st === 1 || st === 3 ? `+${e.amount}` : st === 2 ? `−${e.amount} blocked` : `−${e.amount}`;
       ctx.lineWidth = Math.max(2.5, px * (st === 0 || big ? 0.26 : 0.2));
-      ctx.strokeStyle = big ? "#4a0f0a" : st === 0 ? "#2a0705" : e.color2;
+      ctx.strokeStyle = big ? (cute ? "#6b1240" : "#4a0f0a") : st === 0 ? "#2a0705" : e.color2;
       // A short red glow as the number pops, fading before it rises away.
       if ((st === 0 || big) && t < 0.4) {
-        ctx.shadowColor = "rgba(255, 60, 40, 0.9)";
+        ctx.shadowColor = big && cute ? "rgba(255, 92, 157, 0.9)" : "rgba(255, 60, 40, 0.9)";
         ctx.shadowBlur = px * 0.5 * (1 - t / 0.4);
       }
       ctx.strokeText(text, x, y);
       ctx.shadowBlur = 0;
       if (big) {
         const g = ctx.createLinearGradient(0, y - px * 0.5, 0, y + px * 0.5);
-        g.addColorStop(0, COL.goldLight);
-        g.addColorStop(1, "#ff5a43");
+        g.addColorStop(0, cute ? "#ffd6ec" : COL.goldLight);
+        g.addColorStop(1, cute ? "#ff5c9d" : "#ff5a43");
         ctx.fillStyle = g;
       } else if (st === 0) {
         const g = ctx.createLinearGradient(0, y - px * 0.5, 0, y + px * 0.5);

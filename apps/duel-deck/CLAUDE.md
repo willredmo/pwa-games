@@ -892,6 +892,9 @@ Style "Bloody" (see Style below). Cosmetic and local, a module flag like Kawaii
   a gash past 30% and a red wash past half. Full health draws none, so
   nothing shows while picking. Portraits never pass it.
 Canvas only, no `ctx.filter`; `count()` thins the particles under reduced motion.
+Deaths (every style) and blood land on the unit's body, `unitCenter` in
+render.ts (CHAR_X across the scaled slot), not the slot's middle where
+`cellCenter` puts numbers: the gore used to burst over the stats.
 
 ### Ability beats
 Charge and death buffs (Bodyguard, Pass the torch, Last rally) get their own
@@ -1079,7 +1082,17 @@ module flags from it (`setKawaii`, `setBlood`), so it can change mid-match.
 ### Kawaii mode (game/kawaii.ts) — Style "Kawaii"
 Nobody dies: the `"dying"` pose becomes a happy hop away (bouncing sideways,
 happy eyes, fading), for both sides' units; the `"death"` fx is a pink pop of
-sparkles and hearts (`PT.Heart`), the lost-match row explosion is confetti
+sparkles and hearts (`PT.Heart`, popping in), then as the hop ends (560 ms) a
+flash, a ring of hearts bursting outward and one big heart floating up. No
+skulls: a killing blow reads "💖 −N" in pink, and the Kills columns show 💖.
+The board goes pink and lavender (render.ts reads `kawaiiOn()`): arena
+gradient, pink slot edges, a little heart in each empty slot instead of its
+number, a pink centre line whose travelling dot is a heart, and faint hearts
+drifting up and sparkles twinkling behind the slots (`drawKawaiiDecor`). The
+page follows via `html[data-look]` (App sets it): plum page, pink/lavender
+glows, polka dots, and a tile of hearts on `.app-root::after` drifting up one
+tile per loop (reduced motion: still).
+The lost-match row explosion is confetti
 (no fireball or shake), and the log says "hops away happily". Otherwise
 your units only: a pink palette (`KAWAII_PLAYER`), bigger pupils with two
 sparkles, blush, an ω mouth and a bow (`drawBow`), all in board/characters.ts

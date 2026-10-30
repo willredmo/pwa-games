@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import "./overlays.css";
-import { kawaiiName } from "../game/kawaii";
+import { isKawaii, kawaiiName } from "../game/kawaii";
 import type { AugmentDef, AugmentState } from "../game/augments";
 import { OFFERED_AUGMENTS as AUGMENTS, RALLY_CAP, getAugment, rarityOf, unitsAffectedBy, type Rarity } from "../game/augments";
 import { ARCHETYPES, KNIGHT_LEVEL, MAX_LEVEL, SYNERGIES, UNITS, UNIT_KEYS, levelOf } from "../engine/units";
@@ -628,7 +628,7 @@ function UnitLedger({ stats, winner, cap, round }: { stats: MatchStats; winner: 
               <th title="Damage taken">💢<span className="ledger__word"> Taken</span></th>
               <th title="Damage blocked by armour, shields and dodges">🛡<span className="ledger__word"> Blocked</span></th>
               <th title="Health restored (Mend, lifesteal)">✚<span className="ledger__word"> Healed</span></th>
-              <th title="Kills">☠<span className="ledger__word"> Kills</span></th>
+              <th title="Kills">{isKawaii() ? "💖" : "☠"}<span className="ledger__word"> Kills</span></th>
               <th title="Times it fell">↓<span className="ledger__word"> Fell</span></th>
             </tr>
           </thead>
@@ -1052,7 +1052,7 @@ export function RoundStatsPanel({ round, stats, winner, cap, onClose }: {
     ["⚔ Damage dealt", stats.unitDamage, stats.unitDamageTaken],
     ["🛡 Blocked", stats.unitBlocked ?? 0, foeSum((t) => t.blocked ?? 0)],
     ["✚ Healed", stats.unitHealing ?? 0, foeSum((t) => t.healing ?? 0)],
-    ["☠ Kills", stats.kills, stats.losses],
+    [`${isKawaii() ? "💖" : "☠"} Kills`, stats.kills, stats.losses],
   ];
   return (
     <div className="overlay" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()}>

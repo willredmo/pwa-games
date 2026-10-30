@@ -68,7 +68,7 @@ import { growthSince, permanentStats, settleRound, type Growth } from "../game/r
 const auraIcon = (id: string) =>
   getAugment(id)?.icon ??
   (id === "herald" ? "📯" : id === "warden" ? "🔰" : id === "acolyte" ? "💞" : id === "drill" ? "🎯" : id.startsWith("syn-") ? (SYNERGIES[id.slice(4) as Archetype]?.icon ?? "✦") : "✦");
-import { cellCenter, draw, pixelToCell, type Cell, type TargetKind } from "../board/render";
+import { cellCenter, draw, pixelToCell, unitCenter, type Cell, type TargetKind } from "../board/render";
 import { POSE_MS, prefersReducedMotion, type Pose, type PoseState } from "../board/anim";
 import { FxLayer, RELAY_HOP_MS, type FxKind } from "../board/fx";
 import { setBattleView } from "../board/render";
@@ -615,8 +615,13 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     extra: { amount?: number; lethal?: boolean; text?: string; blocked?: number; healed?: number } = {},
   ) => {
     const canvas = canvasRef.current;
-    const c = canvas && cellCenter(canvas, b, cell);
-    if (c) fxRef.current.add({ kind, x: c.x, y: c.y, size: c.size, side: cell.side, ...extra }, performance.now());
+    if (!canvas) return;
+    // A death bursts from the unit's body, not the slot's middle; a hit's
+    // number stays mid-slot, but its blood (Bloody style) comes from the body.
+    const body = kind === "death" || kind === "damage" ? unitCenter(canvas, b, cell) : null;
+    const c = kind === "death" ? body : cellCenter(canvas, b, cell);
+    const at = kind === "damage" && body ? { ux: body.x, uy: body.y } : {};
+    if (c) fxRef.current.add({ kind, x: c.x, y: c.y, size: c.size, side: cell.side, ...at, ...extra }, performance.now());
   };
 
   /** An effect that travels from one cell to another (beam, flame, shockwave). */

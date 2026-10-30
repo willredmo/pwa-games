@@ -80,6 +80,8 @@ export default function App() {
   useEffect(() => saveSettings(settings), [settings]);
   useEffect(() => setSoundEnabled(settings.sound), [settings.sound]);
   useEffect(() => {
+    // The page's own look (App.css: html[data-look]) follows it too.
+    document.documentElement.dataset.look = settings.look;
     setKawaii(settings.look === "kawaii");
     setBlood(settings.look === "bloody");
   }, [settings.look]);
