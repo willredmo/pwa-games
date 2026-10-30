@@ -423,6 +423,44 @@
 }
 .confirm-actions button { white-space: nowrap; padding-left: 0.8rem; padding-right: 0.8rem; }
 
+/* --- Last round, unit by unit (between rounds) --- */
+.panel.panel--round-stats { max-width: 30rem; max-height: 86dvh; overflow-y: auto; }
+.panel--round-stats h2 { margin: 0 0 0.2rem; font-size: 1.1rem; }
+.round-stats__vs { width: 100%; border-collapse: collapse; margin: 0.5rem 0 0.8rem; font-size: 0.85rem; }
+.round-stats__vs th, .round-stats__vs td { padding: 0.2rem 0.4rem; text-align: right; font-variant-numeric: tabular-nums; }
+.round-stats__vs td:first-child { text-align: left; color: var(--muted); font-weight: 600; }
+.round-stats__you { color: #7db8ff; }
+.round-stats__foe { color: #ff8577; }
+.round-stats__more { font-weight: 800; color: #f0e7c8; }
+
+/* --- Units upgraded (permanent gains between rounds) --- */
+.panel.panel--growth { max-width: 22rem; max-height: 86dvh; overflow-y: auto; }
+.panel--growth h2 { margin: 0 0 0.3rem; font-size: 1.1rem; }
+.growth-list { list-style: none; margin: 0.6rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.growth-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.5rem 0.3rem 0.3rem;
+  border-radius: 10px;
+  background: rgba(240, 180, 41, 0.08);
+  border: 1px solid rgba(240, 180, 41, 0.28);
+  text-align: left;
+}
+.growth-row__name { flex: 1; font-weight: 700; font-size: 0.88rem; min-width: 0; }
+.growth-row__name .result-mvp__level { font-size: 0.62rem; padding: 0 0.3rem; margin-left: 0.15rem; }
+.growth-row__gains { display: flex; flex-direction: column; align-items: flex-end; gap: 0.15rem; }
+.growth-gain { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1; }
+.growth-gain__stats { display: flex; gap: 0.3rem; font-size: 0.9rem; }
+.growth-gain__lv { color: #f0c93a; }
+.growth-gain small { font-size: 0.68rem; color: var(--muted); font-weight: 600; }
+@media (prefers-reduced-motion: no-preference) {
+  .growth-row {
+    animation: ov-item 0.4s cubic-bezier(0.2, 0.9, 0.3, 1) backwards;
+    animation-delay: calc(0.2s + var(--i, 0) * 70ms);
+  }
+}
+
 /* --- Rarity --- */
 .tags { display: inline-flex; gap: 0.3rem; align-items: center; }
 .rarity {
@@ -527,6 +565,8 @@
 .ledger__name small { font-size: 0.66rem; font-weight: 600; color: var(--muted); }
 .ledger__name .result-mvp__level { font-size: 0.62rem; padding: 0 0.3rem; margin-left: 0.15rem; }
 .ledger__row--gone { opacity: 0.5; }
+/* Seven columns on a phone: the headers keep just their icons. */
+@media (max-width: 520px) { .ledger__word { display: none; } }
 .ledger__table tfoot td { border-top: 1px solid rgba(255, 255, 255, 0.18); color: #f0e7c8; }
 @media (max-width: 420px) {
   .ledger__table { font-size: 0.74rem; }

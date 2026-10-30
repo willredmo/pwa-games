@@ -47,10 +47,10 @@ function describeTraits(t: UnitTraits): string[] {
     out.push(
       `heals the unit in front of it ${t.mend}♥ after each exchange (${3 + (t.mendMore ?? 0)} times a round)${t.mendAtk ? `, each time +${t.mendAtk}⚔` : ""}; leading the row, heals itself`,
     );
-  if (t.rally) out.push(`start of round: the unit in front of it gets +${t.rally}⚔${t.rallyHp ? ` +${t.rallyHp}♥` : ""}`);
+  if (t.rally) out.push(`start of round: the unit in front of it gets +${t.rally}⚔${t.rallyHp ? ` +${t.rallyHp}♥` : ""}; leading the row, it does`);
   if (t.barrier)
     out.push(
-      `start of round: the unit in front of it gets a ${t.barrier}-damage shield${t.barrierReach ? ` (and the ${t.barrierReach === 1 ? "unit" : `${t.barrierReach} units`} ahead of that)` : ""}${t.barrierSelf ? ", and so does the Warden" : ""}`,
+      `start of round: the unit in front of it gets a ${t.barrier}-damage shield${t.barrierReach ? ` (and the ${t.barrierReach === 1 ? "unit" : `${t.barrierReach} units`} ahead of that)` : ""}${t.barrierSelf ? ", and so does the Warden" : "; leading the row, the Warden does"}`,
     );
   if (t.relay) {
     const x = String(Math.round(t.relay) / 100);
@@ -60,7 +60,7 @@ function describeTraits(t: UnitTraits): string[] {
   }
   if (t.shield) out.push(`shield: the first ${t.shield} damage it takes this round is absorbed`);
   if (t.lifebond)
-    out.push(`start of round: gives half its health to the unit in front of it${t.lifebond > 1 ? ` (x${t.lifebond})` : ""}${t.lifebondAtk ? `, plus +${t.lifebondAtk}⚔` : ""}`);
+    out.push(`start of round: gives half its health to the unit in front of it${t.lifebond > 1 ? ` (x${t.lifebond})` : ""}${t.lifebondAtk ? `, plus +${t.lifebondAtk}⚔` : ""}; leading the row, keeps it and gains a shield that size`);
   if (t.trueStrike) out.push("its blows can't be dodged");
   if (t.endure) out.push("survives the first blow each round that would kill it, on 1♥");
   if (t.barrierSelf && !t.barrier) out.push("shields itself with its Barrier too");

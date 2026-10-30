@@ -62,7 +62,7 @@ import {
   type AugmentDef,
   type AugmentState,
 } from "../game/augments";
-import { settleRound } from "../game/roundEnd";
+import { growthSince, permanentStats, settleRound, type Growth } from "../game/roundEnd";
 
 /** Badge glyph for an augment id — "✦" if an id ever outlives its definition. */
 const auraIcon = (id: string) =>
@@ -84,7 +84,9 @@ import {
   AugmentPanel,
   AugmentsView,
   ConfirmPanel,
+  GrowthPanel,
   HelpPanel,
+  RoundStatsPanel,
   ResultPanel,
   CodexView,
 } from "./Overlays";
@@ -437,6 +439,13 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   /** The win's slow-motion HP-bar explosion is playing (and the bar stays gone). */
   const [barBlast, setBarBlast] = useState(false);
   const [phase, setPhase] = useState<Phase>(saved?.augmentPending ? "augment" : "pick");
+  /**
+   * Permanent gains your units just got (Veteran, Fortify, a choose-a-unit
+   * upgrade), shown as their own step before the picks. `pendingGrowth`
+   * holds a round's gains from its end until the next round deals.
+   */
+  const [growth, setGrowth] = useState<Growth[] | null>(null);
+  const pendingGrowth = useRef<Growth[]>([]);
   // Calm music while planning, the driving loop in battle (a replay too), none on the result screen.
   useEffect(() => setMusic(phase === "battle" ? "battle" : phase === "over" ? null : "plan"), [phase]);
   const [result, setResult] = useState<RoundResult | null>(null);
@@ -1112,6 +1121,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       const syn = synergyOf(sideUnits(next, PLAYER), capacityOf(next, PLAYER));
       const synNote = syn ? ` · ${SYNERGIES[syn].icon} ${SYNERGIES[syn].name}!` : "";
       showBanner(augs.length > 0 ? `Round ${roundNum} · Upgrade!${synNote}` : `Round ${roundNum}${synNote}`, "neutral");
+      setGrowth(pendingGrowth.current.length > 0 ? pendingGrowth.current : null);
+      pendingGrowth.current = [];
       setPhase(augs.length > 0 ? "augment" : "pick");
     },
     [refreshed, showBanner],
@@ -1140,6 +1151,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   /** While a replay runs: where to go back to when it ends (the phase and board it interrupted). */
   const replayFrom = useRef<{ phase: Phase; board: Board } | null>(null);
   const [replaying, setReplaying] = useState(false);
+  /** The last round's unit-by-unit breakdown is open. */
+  const [showRoundStats, setShowRoundStats] = useState(false);
 
   /** Start playback of a fully-assembled round (both rows final, stats applied). */
   const playRound = useCallback((committed: Board) => {
@@ -1782,10 +1795,14 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   const onPickAugment = (id: string, unitId?: string) => {
     sfx("upgrade");
     const units = sideUnits(board, PLAYER);
+    const before = permanentStats(units, playerAug.current);
     const cost = takeAugment(playerAug.current, id, units, startHpOf(board));
     const next = cloneBoard(board);
     if (cost) next.hp.player = Math.max(1, next.hp.player - cost);
     if (unitId) applyTarget(playerAug.current, id, next, PLAYER, unitId);
+    const def = getAugment(id);
+    const grew = growthSince(before, permanentStats(sideUnits(next, PLAYER), playerAug.current), def?.name ?? id, def?.icon ?? "⬆");
+    if (grew.length > 0) setGrowth(grew);
 
     // Against the CPU, it upgrades now too. Online, the opponent is choosing
     // at the same time on their own device; their pick reaches us with their
@@ -1852,7 +1869,9 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           }
         }
       }
-      const healed = settleRound(result, PLAYER, playerAug.current, committed);
+      const grew: Growth[] = [];
+      const healed = settleRound(result, PLAYER, playerAug.current, committed, grew);
+      pendingGrowth.current = grew;
       const enemyHealed = settleRound(result, ENEMY, enemyAug.current, committed);
       recordRound(statsRef.current, result, committed, PLAYER, healed);
       const log = roundLog.current;
@@ -2269,6 +2288,31 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       `hp ${board.hp.player}/${board.hp.enemy} of ${startHpOf(board)}`,
     ].join(" · ");
 
+  /** One round's tallies alone, from your side, for the round breakdown. */
+  const roundStatsOf = (f: { committed: Board; result: RoundResult }) => {
+    const s = emptyStats();
+    recordRound(s, f.result, f.committed, PLAYER, 0);
+    return s;
+  };
+
+  /** Gains grouped by unit, in row order, for the units-upgraded step. */
+  const growthRows = (list: Growth[]) =>
+    sideUnits(board, PLAYER).flatMap((unit) => {
+      const gains = list.filter((g) => g.unit === unit.id);
+      return gains.length > 0 ? [{ unit, gains }] : [];
+    });
+
+  /** Close the units-upgraded step, flashing each gain on the board as it goes. */
+  const closeGrowth = () => {
+    for (const g of growth ?? []) {
+      const cell = findUnitCell(board, g.unit);
+      if (!cell) continue;
+      fxAt(board, cell, "merge");
+      fxAt(board, cell, "stat-gain", { text: [g.levels ? `+${g.levels} Lv` : "", statText(g.atk, g.hp)].filter(Boolean).join(" ") });
+    }
+    setGrowth(null);
+  };
+
   const newMatch = () => {
     if (!online && !tutorial) clearMatch();
     onExit();
@@ -2422,7 +2466,10 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
             }}
           />
         )}
-        {phase === "augment" && (
+        {growth && (phase === "pick" || phase === "augment") && (
+          <GrowthPanel rows={growthRows(growth)} onClose={closeGrowth} />
+        )}
+        {phase === "augment" && !growth && (
           <AugmentPanel
             round={round}
             offers={augOffers}
@@ -2501,6 +2548,15 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
             online={!!online}
           />
         )}
+        {showRoundStats && lastFight.current && phase === "pick" && (
+          <RoundStatsPanel
+            round={lastFight.current.round}
+            stats={roundStatsOf(lastFight.current)}
+            winner={lastFight.current.result.roundWinner}
+            cap={levelCapOf(board)}
+            onClose={() => setShowRoundStats(false)}
+          />
+        )}
         {showHelp && <HelpPanel onClose={() => setShowHelp(false)} />}
         {showUnits && <CodexView onClose={() => setShowUnits(false)} />}
         {showNotes && <PatchNotes onClose={() => setShowNotes(false)} />}
@@ -2537,9 +2593,14 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         ) : (
           lastFight.current &&
           phase === "pick" && (
-            <button className="link-btn replay-btn" onClick={startReplay} title="Watch the last fight again">
-              ↻ Replay
-            </button>
+            <>
+              <button className="link-btn replay-btn" onClick={() => setShowRoundStats(true)} title="Last round, unit by unit">
+                📊 Stats
+              </button>
+              <button className="link-btn replay-btn" onClick={startReplay} title="Watch the last fight again">
+                ↻ Replay
+              </button>
+            </>
           )
         )}
       </div>

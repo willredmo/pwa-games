@@ -18,6 +18,10 @@ export interface UnitTally {
   taken?: number;
   /** Times it fell. */
   falls?: number;
+  /** Damage it blocked: armour, shields and dodges. Absent in older saves. */
+  blocked?: number;
+  /** Health it restored: its Mends, and its own lifesteal. Absent in older saves. */
+  healing?: number;
   /** Rounds it was on the committed row. */
   rounds?: number;
   /**
@@ -37,6 +41,9 @@ export interface MatchStats {
   /** Damage your units dealt / took in fights. */
   unitDamage: number;
   unitDamageTaken: number;
+  /** Damage your units blocked, and health they restored (absent in older saves). */
+  unitBlocked?: number;
+  unitHealing?: number;
   kills: number;
   losses: number;
   biggestHit: { amount: number; key: string; name: string } | null;
@@ -60,6 +67,8 @@ export function emptyStats(): MatchStats {
     poolTaken: 0,
     unitDamage: 0,
     unitDamageTaken: 0,
+    unitBlocked: 0,
+    unitHealing: 0,
     kills: 0,
     losses: 0,
     biggestHit: null,
@@ -137,9 +146,13 @@ export function recordRound(
         if (mine.has(ev.source)) stats.abilities++;
         continue;
       }
-      // A Medic's Mend (lifesteal heals carry no source).
+      // A Medic's Mend (lifesteal heals carry no source: the unit healed itself).
       if (ev.type === "heal") {
         if (ev.source && mine.has(ev.source)) stats.abilities++;
+        const healer = ev.source ?? ev.unit;
+        const h = mine.has(healer) || theirs.has(healer) ? tally(healer) : undefined;
+        if (h) h.healing = (h.healing ?? 0) + ev.amount;
+        if (mine.has(healer)) stats.unitHealing = (stats.unitHealing ?? 0) + ev.amount;
         continue;
       }
       if (ev.type !== "attack") continue;
@@ -149,6 +162,7 @@ export function recordRound(
       const d = tally(ev.target);
       if (a) a.damage += ev.damage;
       if (d) d.taken = (d.taken ?? 0) + ev.damage;
+      if (d && ev.blocked) d.blocked = (d.blocked ?? 0) + ev.blocked;
       const killing =
         dead.has(ev.target) &&
         [...tick.events].reverse().find((e) => e.type === "attack" && e.target === ev.target && e.damage > 0) === ev;
@@ -157,6 +171,7 @@ export function recordRound(
       // Side-wide figures, from `side`'s point of view (unchanged).
       if (mine.has(ev.target)) {
         stats.unitDamageTaken += ev.damage;
+        stats.unitBlocked = (stats.unitBlocked ?? 0) + (ev.blocked ?? 0);
         if (ev.tag === "dodge") stats.abilities++;
         continue;
       }

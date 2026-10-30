@@ -12,6 +12,7 @@ import { prefersReducedMotion } from "../board/anim";
 import { UNIT_LORE } from "../game/lore";
 import { UnitPortrait } from "./UnitPortrait";
 import { ResultBackdrop } from "./ResultBackdrop";
+import type { Growth } from "../game/roundEnd";
 
 // Overlays: the augment offer track, the match-over panel, and help.
 // Presentational — match state is owned by App.
@@ -593,7 +594,7 @@ function LevelChip({ merges, cap = MAX_LEVEL }: { merges: number; cap?: number }
  * falls. Units that left the row (merged into another, or replaced) stay
  * listed, faded, so the totals add up.
  */
-function UnitLedger({ stats, winner, cap }: { stats: MatchStats; winner: "player" | "enemy"; cap?: number }) {
+function UnitLedger({ stats, winner, cap, round }: { stats: MatchStats; winner: "player" | "enemy" | null; cap?: number; round?: boolean }) {
   const [tab, setTab] = useState<"player" | "enemy">("player");
   const total = roundsPlayed(stats);
   const bookFor = (s: "player" | "enemy") => (s === "player" ? stats.units : (stats.foes ?? {}));
@@ -623,10 +624,12 @@ function UnitLedger({ stats, winner, cap }: { stats: MatchStats; winner: "player
           <thead>
             <tr>
               <th className="ledger__unit">Unit</th>
-              <th title="Damage dealt">⚔ Dealt</th>
-              <th title="Damage taken">🛡 Taken</th>
-              <th title="Kills">☠ Kills</th>
-              <th title="Times it fell">↓ Fell</th>
+              <th title="Damage dealt">⚔<span className="ledger__word"> Dealt</span></th>
+              <th title="Damage taken">💢<span className="ledger__word"> Taken</span></th>
+              <th title="Damage blocked by armour, shields and dodges">🛡<span className="ledger__word"> Blocked</span></th>
+              <th title="Health restored (Mend, lifesteal)">✚<span className="ledger__word"> Healed</span></th>
+              <th title="Kills">☠<span className="ledger__word"> Kills</span></th>
+              <th title="Times it fell">↓<span className="ledger__word"> Fell</span></th>
             </tr>
           </thead>
           <tbody>
@@ -636,12 +639,12 @@ function UnitLedger({ stats, winner, cap }: { stats: MatchStats; winner: "player
                 <tr key={id} className={gone ? "ledger__row--gone" : undefined} title={gone ? "Left the row (merged or replaced)" : undefined}>
                   <td className="ledger__unit">
                     {/* The winners dance, the losers mope. */}
-                    <UnitPortrait unitKey={t.key} side={tab} size={30} merges={t.merges ?? 0} pose={tab === winner ? "dance" : "sad"} bleed={8} />
+                    <UnitPortrait unitKey={t.key} side={tab} size={30} merges={t.merges ?? 0} pose={!winner ? "idle" : tab === winner ? "dance" : "sad"} bleed={8} />
                     <span className="ledger__name">
                       <span>
                         {tab === "player" ? kawaiiName(t.key, t.name) : t.name} <LevelChip merges={t.merges ?? 0} cap={cap} />
                       </span>
-                      {t.rounds ? (
+                      {t.rounds && !round ? (
                         <small>
                           {t.rounds} round{t.rounds === 1 ? "" : "s"}
                           {gone ? " · left the row" : ""}
@@ -651,6 +654,8 @@ function UnitLedger({ stats, winner, cap }: { stats: MatchStats; winner: "player
                   </td>
                   <td>{t.damage}</td>
                   <td>{t.taken ?? 0}</td>
+                  <td>{t.blocked ?? 0}</td>
+                  <td>{t.healing ?? 0}</td>
                   <td>{t.kills}</td>
                   <td>{t.falls ?? 0}</td>
                 </tr>
@@ -662,6 +667,8 @@ function UnitLedger({ stats, winner, cap }: { stats: MatchStats; winner: "player
               <td className="ledger__unit">Total</td>
               <td>{sum((t) => t.damage)}</td>
               <td>{sum((t) => t.taken ?? 0)}</td>
+              <td>{sum((t) => t.blocked ?? 0)}</td>
+              <td>{sum((t) => t.healing ?? 0)}</td>
               <td>{sum((t) => t.kills)}</td>
               <td>{sum((t) => t.falls ?? 0)}</td>
             </tr>
@@ -720,14 +727,14 @@ export function ResultPanel({ winner, round, stats, hp, startHp, upgrades, oppon
           <Stat i={1} label="Damage to enemy HP" value={stats.poolDealt} />
           <Stat i={2} label="Damage taken" value={stats.poolTaken} />
           <Stat i={3} label="Enemies slain" value={stats.kills} sub={`${stats.losses} of yours fell`} />
-          <Stat i={4} label="Unit damage dealt" value={stats.unitDamage} sub={`${stats.unitDamageTaken} taken`} />
+          <Stat i={4} label="Unit damage dealt" value={stats.unitDamage} sub={`${stats.unitDamageTaken} taken · ${stats.unitBlocked ?? 0} blocked`} />
           <Stat
             i={5}
             label="Biggest hit"
             value={stats.biggestHit?.amount ?? 0}
             sub={stats.biggestHit ? `by a ${stats.biggestHit.name}` : undefined}
           />
-          <Stat i={6} label="Abilities fired" value={stats.abilities} />
+          <Stat i={6} label="Abilities fired" value={stats.abilities} sub={stats.unitHealing ? `${stats.unitHealing} healing done` : undefined} />
           <Stat i={7} label="Best win streak" value={stats.bestStreak} sub={stats.healed > 0 ? `healed ${stats.healed} HP` : undefined} />
         </div>
 
@@ -1020,6 +1027,115 @@ export function ConfirmPanel(p: ConfirmPanelProps) {
           </button>
           <button className="primary-btn" onClick={p.onConfirm}>
             {p.confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The last round, unit by unit (opened from the log row between rounds): who
+ * dealt, took, blocked and healed what. `stats` holds that round alone.
+ */
+export function RoundStatsPanel({ round, stats, winner, cap, onClose }: {
+  round: number;
+  stats: MatchStats;
+  winner: "player" | "enemy" | null;
+  cap?: number;
+  onClose: () => void;
+}) {
+  const verdict = winner === "player" ? "You held the row" : winner === "enemy" ? "The enemy held the row" : "Both rows fell";
+  const foes = Object.values(stats.foes ?? {});
+  const foeSum = (k: (t: UnitTally) => number) => foes.reduce((n, t) => n + k(t), 0);
+  const rows: [string, number, number][] = [
+    ["⚔ Damage dealt", stats.unitDamage, stats.unitDamageTaken],
+    ["🛡 Blocked", stats.unitBlocked ?? 0, foeSum((t) => t.blocked ?? 0)],
+    ["✚ Healed", stats.unitHealing ?? 0, foeSum((t) => t.healing ?? 0)],
+    ["☠ Kills", stats.kills, stats.losses],
+  ];
+  return (
+    <div className="overlay" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()}>
+      <div
+        className="panel panel--center panel--round-stats"
+        role="dialog"
+        aria-labelledby="round-stats-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="round-stats-title">Round {round}</h2>
+        <p className="panel__hint">{verdict}</p>
+        <table className="round-stats__vs">
+          <thead>
+            <tr>
+              <th />
+              <th className="round-stats__you">You</th>
+              <th className="round-stats__foe">Enemy</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(([label, you, foe]) => (
+              <tr key={label}>
+                <td>{label}</td>
+                <td className={you > foe ? "round-stats__more" : undefined}>{you}</td>
+                <td className={foe > you ? "round-stats__more" : undefined}>{foe}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <UnitLedger stats={stats} winner={winner} cap={cap} round />
+        <div className="confirm-actions">
+          <button className="primary-btn" onClick={onClose} autoFocus>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The "units upgraded" step: which of your units just gained permanent stats
+ * (Veteran, Fortify, a choose-a-unit upgrade…) and from what, before the
+ * round's picks. Gains are easy to miss as a number on the board.
+ */
+export function GrowthPanel({ rows, onClose }: { rows: { unit: Unit; gains: Growth[] }[]; onClose: () => void }) {
+  return (
+    <div className="overlay" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()}>
+      <div
+        className="panel panel--center panel--growth"
+        role="dialog"
+        aria-labelledby="growth-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="growth-title">⬆ Units upgraded</h2>
+        <p className="panel__hint">Permanent, for the rest of the match.</p>
+        <ul className="growth-list">
+          {rows.map(({ unit, gains }, i) => (
+            <li key={unit.id} className="growth-row" style={{ "--i": i } as React.CSSProperties}>
+              <UnitPortrait unitKey={unit.key} side="player" size={36} merges={unit.merges} pose="dance" bleed={8} />
+              <span className="growth-row__name">
+                {kawaiiName(unit.key, unit.name)} <LevelChip merges={unit.merges} />
+              </span>
+              <span className="growth-row__gains">
+                {gains.map((g, j) => (
+                  <span key={j} className="growth-gain">
+                    <span className="growth-gain__stats">
+                      {g.levels ? <b className="growth-gain__lv">+{g.levels} Lv</b> : null}
+                      {g.atk > 0 ? <b className="stat stat--atk">+{g.atk}⚔</b> : null}
+                      {g.hp > 0 ? <b className="stat stat--hp">+{g.hp}♥</b> : null}
+                    </span>
+                    <small>
+                      <span aria-hidden="true">{g.icon}</span> {g.source}
+                    </small>
+                  </span>
+                ))}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <div className="confirm-actions">
+          <button className="primary-btn" onClick={onClose} autoFocus>
+            Got it
           </button>
         </div>
       </div>

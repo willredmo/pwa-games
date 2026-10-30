@@ -859,6 +859,26 @@ gets First strike in the opening exchange and +3 on that blow (+4 measured
   title as a gold block. That iPhone's screenshot drew the reduced-motion title,
   so its "no menu animations" report is most likely iOS Reduce Motion.
 
+### Feedback features (2026-10-30)
+- **Units upgraded step:** permanent gains between rounds get their own
+  panel before the picks (`GrowthPanel`): Veteran and Fortify from
+  `settleRound` (its optional `grew` list), and pick-time ones (Last stand,
+  choose-a-unit upgrades) from diffing `permanentStats` (base + grant +
+  level) around the pick (`growthSince`). Closing it flashes each gain on
+  the board. Enemy gains aren't shown.
+- **Supports leading the row** use their ability on themselves, as the
+  Medic's Mend always did: Rally and Barrier land on the leader, and Lifebond
+  becomes a shield the size of the gift (it keeps its health). An Aegis
+  Warden isn't shielded twice. Beacon unchanged (a relay does nothing alone).
+  Engine change: PROTOCOL 14. Sim (3000): Herald 47→50%, Acolyte 52→54%,
+  within noise; `pnpm upgrades` checks it (`lead-support`).
+- **Blocked and healed stats:** tallies gain `blocked` (armour, shields,
+  dodges, from `AttackEvent.blocked`) and `healing` (Mends credit the Medic,
+  lifesteal the unit itself); the ledger has both columns (icons only on
+  phones), the result tiles and the wide side panel show the totals.
+- **Round breakdown:** "📊 Stats" beside Replay opens the last round unit
+  by unit (`RoundStatsPanel`), from a fresh `recordRound` over `lastFight`.
+
 ### Ability beats
 Charge and death buffs (Bodyguard, Pass the torch, Last rally) get their own
 `"ability"` frame (`ABILITY_MS`) — Charge before the lunge, death buffs after

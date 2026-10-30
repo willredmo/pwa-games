@@ -75,7 +75,7 @@ export const UNITS: Record<string, UnitStats> = {
     classes: ["herald", "support"],
     archetype: "support",
     role: "Support: lifts the unit in front of it",
-    ability: { name: "Rally", trigger: "Start of round", text: "The unit directly in front of it gains +3 attack for the round.", scaling: "+1 attack every 2 levels" },
+    ability: { name: "Rally", trigger: "Start of round", text: "The unit directly in front of it gains +3 attack for the round. Leading the row, it rallies itself.", scaling: "+1 attack every 2 levels" },
     mastery: "Rally also gives that unit as much health as attack.",
   },
   // Reaches past the front: every blow it lands also stabs the unit behind.
@@ -113,7 +113,7 @@ export const UNITS: Record<string, UnitStats> = {
     classes: ["warden", "support"],
     archetype: "support",
     role: "Support: shields the unit in front of it",
-    ability: { name: "Barrier", trigger: "Start of round", text: "The unit directly in front of it gets a shield that absorbs the first 4 damage it takes.", scaling: "+1 shield per level" },
+    ability: { name: "Barrier", trigger: "Start of round", text: "The unit directly in front of it gets a shield that absorbs the first 4 damage it takes. Leading the row, it shields itself.", scaling: "+1 shield per level" },
     mastery: "The unit in front of that one gets the same shield.",
   },
   // Gives itself away: half its health moves to the front each round. Big
@@ -126,7 +126,7 @@ export const UNITS: Record<string, UnitStats> = {
     classes: ["acolyte", "support"],
     archetype: "support",
     role: "Support: gives half its health to the unit in front of it",
-    ability: { name: "Lifebond", trigger: "Start of round", text: "It gives half its health to the unit directly in front of it for the round.", scaling: "Its health grows with levels, so the gift does too" },
+    ability: { name: "Lifebond", trigger: "Start of round", text: "It gives half its health to the unit directly in front of it for the round. Leading the row, it keeps it and gains a shield that size instead.", scaling: "Its health grows with levels, so the gift does too" },
     mastery: "That unit also gains +2 attack.",
   },
   // The answer to a runaway hitter: the harder it's struck, the harder it

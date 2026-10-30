@@ -493,6 +493,30 @@ function mendHeals(ctx: TickCtx): void {
   return ctx.attempted;
 }
 
+/** A supporter leading its row: its start-of-round ability lands on itself (see openingBuffs). */
+function selfSupport(u: Unit, events: BattleEvent[]): void {
+  const rally = u.traits?.rally ?? 0;
+  if (rally > 0) {
+    const hp = u.traits?.rallyHp ?? 0;
+    u.atk += rally;
+    u.maxHp += hp;
+    u.hp += hp;
+    events.push({ type: "buff", unit: u.id, source: u.id, atk: rally, hp, label: "Rally" });
+  }
+  const barrier = u.traits?.barrierSelf ? 0 : (u.traits?.barrier ?? 0);
+  const gift = (u.traits?.lifebond ?? 0) > 0 ? Math.floor(u.maxHp / 2) * u.traits!.lifebond! : 0;
+  if (barrier > 0) {
+    u.traits = { ...u.traits, shield: (u.traits?.shield ?? 0) + barrier };
+    events.push({ type: "buff", unit: u.id, source: u.id, atk: 0, hp: 0, shield: barrier, label: "Barrier" });
+  }
+  if (gift > 0) {
+    const atk = u.traits?.lifebondAtk ?? 0;
+    u.atk += atk;
+    u.traits = { ...u.traits, shield: (u.traits?.shield ?? 0) + gift };
+    events.push({ type: "buff", unit: u.id, source: u.id, atk, hp: 0, shield: gift, label: "Lifebond" });
+  }
+}
+
 /**
  * Start-of-round support: Herald's Rally, Warden's Barrier and Acolyte's
  * Lifebond, each landing on the unit directly in front of the supporter (or
@@ -513,6 +537,14 @@ function openingBuffs(board: Board): BattleEvent[] {
           const own = u.traits.barrier!;
           u.traits = { ...u.traits, shield: (u.traits.shield ?? 0) + own };
           events.push({ type: "buff", unit: u.id, source: u.id, atk: 0, hp: 0, shield: own, label: "Aegis" });
+        }
+        // Leading the row, with no one in front, a supporter uses its ability
+        // on itself (as a Medic's Mend always has): Rally and Barrier land on
+        // it, and Lifebond, which can't give health to its own giver, becomes
+        // a shield of the gift. An Aegis Warden has already shielded itself.
+        if (i === 0) {
+          selfSupport(u, events);
+          return;
         }
         const t = supportTarget(queue, i);
         if (!t) return;

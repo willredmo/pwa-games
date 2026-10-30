@@ -40,6 +40,7 @@ export function SidePanels({
     ["Rounds won · lost", `${stats.won} · ${stats.lost}${stats.drawn ? ` · ${stats.drawn} drawn` : ""}`],
     ["HP dealt · taken", `${stats.poolDealt} · ${stats.poolTaken}`],
     ["Kills · losses", `${stats.kills} · ${stats.losses}`],
+    ["Blocked · healed", `${stats.unitBlocked ?? 0} · ${stats.unitHealing ?? 0}`],
     ["Biggest hit", stats.biggestHit ? `${stats.biggestHit.amount} (${stats.biggestHit.name})` : "—"],
     ["Win streak", `${stats.streak} (best ${stats.bestStreak})`],
   ];

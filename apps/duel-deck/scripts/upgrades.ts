@@ -535,6 +535,20 @@ for (const cap of [8, 10, 12, 15]) {
   check("aegis", "a Warden at the front shields itself, 2 more (4 + 2)", b?.unit === s.p[0].id && b.shield === 6, b);
 }
 {
+  // Not an upgrade: a supporter leading its row uses its ability on itself.
+  const lead = (key: string) => {
+    const s = setup([key, "guard"], ["guard"]);
+    return buffs(resolveRound(s.board)).filter((e) => e.unit === s.p[0].id);
+  };
+  const [h, w, a] = [lead("herald"), lead("warden"), lead("acolyte")];
+  check("lead-support", "a leading Herald rallies itself (+3)", h.length === 1 && h[0].atk === 3, h);
+  check("lead-support", "a leading Warden shields itself (4)", w.length === 1 && w[0].shield === 4, w);
+  check("lead-support", "a leading Acolyte keeps its health, shielded for half (4)", a.length === 1 && a[0].shield === 4 && a[0].hp === 0, a);
+  const aegis = setup(["warden", "guard"], ["guard"], ["aegis"]);
+  const ab = buffs(resolveRound(aegis.board)).filter((e) => e.unit === aegis.p[0].id);
+  check("lead-support", "an Aegis Warden isn't shielded twice", ab.length === 1 && ab[0].label === "Aegis", ab);
+}
+{
   const d = delta(["guard", "acolyte"], ["guard"], ["devotion"], 1);
   check("devotion", "+6 health to Acolytes", d.hp === 6, d.hp);
   const s = setup(["guard", "acolyte"], ["guard"], ["devotion"]);
