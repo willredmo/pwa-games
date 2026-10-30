@@ -5,6 +5,7 @@ import { DIFFICULTIES, LEVEL_CAP_OPTIONS, START_HP_MAX, START_HP_MIN, START_HP_O
 import type { SavedMatch } from "../game/save";
 import { DIFFICULTY_INFO } from "./Overlays";
 import { TitleDuel } from "./TitleDuel";
+import { LevelChip } from "./Progress";
 
 // The main menu. Everything that used to be decided inside a running match —
 // which opponent, whether a save is resumed — is decided here instead, so the
@@ -13,8 +14,9 @@ import { TitleDuel } from "./TitleDuel";
 // Laid out to fit a 360×640 phone without scrolling: the hero, then the one
 // thing you're most likely here to do (Continue, or the tutorial the first
 // time), a "vs CPU" card with the opponent as a segmented control and one Play
-// button, an online card, the match settings as a one-line chip that opens a
-// sheet, and the rest as an icon dock. It still scrolls when it can't fit
+// button, an online card, and the rest as an icon dock. Match settings aren't
+// on the menu itself: Play and Host open a sheet with them and the button that
+// actually starts, so they're chosen for the match about to begin. It still scrolls when it can't fit
 // (a save, a rejoin and the tutorial all at once on a short phone).
 
 const DIFFICULTY_LABEL: Record<Difficulty, string> = { easy: "Easy", normal: "Normal", hard: "Hard" };
@@ -23,13 +25,14 @@ export interface TitleProps {
   saved: SavedMatch | null;
   difficulty: Difficulty;
   onDifficulty: (d: Difficulty) => void;
-  /** Settings for a new CPU match, and for a duel you host. */
+  /** Settings for a new CPU match, and for a duel you host: set in the sheet Play and Host open. */
   rules: MatchRules;
   onRules: (r: Partial<MatchRules>) => void;
   sound: boolean;
   onSound: (on: boolean) => void;
   music: boolean;
   onMusic: (on: boolean) => void;
+  /** Start a CPU match, from the pre-match sheet. */
   onPlay: () => void;
   onResume: () => void;
   onHelp: () => void;
@@ -44,6 +47,7 @@ export interface TitleProps {
   /** An online duel this device can rejoin after a reload. */
   rejoinCode: string | null;
   notice: string | null;
+  /** Host a duel, from the pre-match sheet. */
   onHost: () => void;
   onJoin: () => void;
   onRejoin: () => void;
@@ -52,11 +56,20 @@ export interface TitleProps {
   /** How battles look: cosmetic, so it sits under the match settings rather than in them. */
   look: Look;
   onLook: (look: Look) => void;
+  /** The account chip: "Guest · Sign in", the player's name, or "Confirm email". */
+  accountLabel: string;
+  /** An email account waiting for its link: the chip asks for attention. */
+  accountAlert: boolean;
+  onAccount: () => void;
+  /** Open the progression track. */
+  onProgress: () => void;
 }
 
 export function Title(props: TitleProps) {
   const { saved, difficulty } = props;
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  /** The pre-match sheet: which match it's about to start, or closed. */
+  const [setup, setSetup] = useState<"cpu" | "host" | null>(null);
+  const closeSetup = () => setSetup(null);
   const info = DIFFICULTY_INFO[difficulty] ?? { icon: "🤖", blurb: "" };
   const savedLabel = saved
     ? `Round ${saved.round}${saved.difficulty ? ` · vs ${DIFFICULTY_LABEL[saved.difficulty]}` : ""}`
@@ -64,6 +77,16 @@ export function Title(props: TitleProps) {
 
   return (
     <div className="title">
+      <LevelChip onClick={props.onProgress} />
+      {/* Accounts are optional: a corner chip, so the title never reads as a sign-in wall. */}
+      <button
+        className={`title-account${props.accountAlert ? " title-account--alert" : ""}`}
+        onClick={props.onAccount}
+        aria-label={`Account: ${props.accountLabel}`}
+        title={props.accountLabel}
+      >
+        <span aria-hidden="true">👤</span> <span className="title-account__name">{props.accountLabel}</span>
+      </button>
       <header className="title__hero">
         <div className="title__emblem" aria-hidden="true">⚔</div>
         <h1 data-text="Duel Deck">Duel Deck</h1>
@@ -115,7 +138,7 @@ export function Title(props: TitleProps) {
             ))}
           </div>
           <p className="title-card__blurb" aria-live="polite">{info.blurb}</p>
-          <button className={`title-play${saved ? " title-play--quiet" : ""}`} onClick={props.onPlay}>
+          <button className={`title-play${saved ? " title-play--quiet" : ""}`} onClick={() => setSetup("cpu")}>
             {saved ? `New match vs ${DIFFICULTY_LABEL[difficulty]}` : `Play vs ${DIFFICULTY_LABEL[difficulty]}`}
           </button>
           {saved && <p className="title__warn">Ends the match in progress.</p>}
@@ -131,7 +154,7 @@ export function Title(props: TitleProps) {
             </button>
           )}
           <div className="title__row">
-            <button className="title-btn" onClick={props.onHost}>
+            <button className="title-btn" onClick={() => setSetup("host")}>
               Host a duel <small>Your settings</small>
             </button>
             <button className="title-btn" onClick={props.onJoin}>
@@ -141,14 +164,6 @@ export function Title(props: TitleProps) {
           {props.notice && <p className="title__notice" role="status">{props.notice}</p>}
         </section>
 
-        {/* One line, since most matches use the defaults; the sheet holds the rest. */}
-        <button className="settings-chip" onClick={() => setSettingsOpen(true)} aria-haspopup="dialog">
-          <span aria-hidden="true">⚙️</span>
-          <span className="settings-chip__text">
-            Match settings <strong>{settingsText(props.rules)}</strong>
-          </span>
-          <span className="settings-chip__go" aria-hidden="true">›</span>
-        </button>
       </main>
 
       <nav className="title-dock" aria-label="More">
@@ -171,26 +186,37 @@ export function Title(props: TitleProps) {
         <DockButton icon="🐞" label="Feedback" onClick={props.onFeedback} />
       </nav>
 
-      {settingsOpen && (
-        <div className="overlay overlay--sheet" onClick={() => setSettingsOpen(false)}>
+      {setup && (
+        <div className="overlay overlay--sheet" onClick={closeSetup}>
           <div
             className="panel sheet"
             role="dialog"
             aria-labelledby="settings-title"
             onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.key === "Escape" && setSettingsOpen(false)}
+            onKeyDown={(e) => e.key === "Escape" && closeSetup()}
           >
             <div className="panel__head">
-              <h2 id="settings-title">Match settings</h2>
-              <button className="close-btn" onClick={() => setSettingsOpen(false)} aria-label="Close">✕</button>
+              <h2 id="settings-title">
+                {setup === "cpu" ? `${info.icon} vs ${DIFFICULTY_LABEL[difficulty]} CPU` : "🌐 Host a duel"}
+              </h2>
+              <button className="close-btn" onClick={closeSetup} aria-label="Close">✕</button>
             </div>
             <p className="panel__hint">
-              For both <strong>🤖 matches vs the CPU</strong> and <strong>🌐 duels you host</strong>. Joining a duel uses the host's.
+              {setup === "cpu" ? "Match settings for this match." : "Match settings for this duel. Your opponent plays under them too."}
             </p>
             <MatchSettings rules={props.rules} onRules={props.onRules} />
             <LookSelect look={props.look} onLook={props.onLook} />
-            <button className="primary-btn primary-btn--wide sheet__done" onClick={() => setSettingsOpen(false)} autoFocus>
-              Done
+            {setup === "cpu" && saved && <p className="title__warn sheet__warn">Ends the match in progress.</p>}
+            <button
+              className="primary-btn primary-btn--wide sheet__done"
+              onClick={() => {
+                closeSetup();
+                if (setup === "cpu") props.onPlay();
+                else props.onHost();
+              }}
+              autoFocus
+            >
+              {setup === "cpu" ? "Start match" : "Host duel"}
             </button>
           </div>
         </div>
@@ -321,16 +347,4 @@ function MatchSettings({ rules, onRules }: { rules: MatchRules; onRules: (r: Par
       </div>
     </div>
   );
-}
-
-/** The settings in a few words, for the settings chip. */
-function settingsText(r: MatchRules): string {
-  const parts = [
-    `♥${r.startHp}`,
-    r.easy ? "Easy mode" : null,
-    r.synergies ? null : "No class bonuses",
-    r.upgrades ? null : "No upgrades",
-    r.levelCap !== 10 ? `Lv cap ${r.levelCap}` : null,
-  ].filter(Boolean);
-  return parts.length === 1 ? `${parts[0]} · Standard` : parts.join(" · ");
 }

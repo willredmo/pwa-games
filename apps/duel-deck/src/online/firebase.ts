@@ -1,4 +1,4 @@
-import { configure } from "@pwa-games/backend-client";
+import { configure, connectEmulators } from "@pwa-games/backend-client";
 
 // The Firebase project every online feature talks to (rooms, telemetry).
 // Imported for its side effect; configure() loads nothing until first use.
@@ -6,8 +6,21 @@ import { configure } from "@pwa-games/backend-client";
 // Public web config: it identifies the project; the database rules guard it.
 configure({
   apiKey: "AIzaSyDSy9OF5r3sJ13D3IhgEACL5oVffWm33Nk",
-  authDomain: "roguelike-games.firebaseapp.com",
+  // On the live site, the game's own Hosting site, not roguelike-games.firebaseapp.com:
+  // Google sign-in by redirect (installed iOS apps) only keeps its state when the
+  // auth handler is on the same domain as the game (see backend-client auth.ts).
+  // Anywhere else (the dev server), the default domain: a browser that has
+  // played the live game may hold a service worker there that answers the
+  // handler with the game (builds before 1.8.0 did), and dev uses the popup.
+  authDomain:
+    typeof location !== "undefined" && location.hostname === "duel-deck-game.web.app"
+      ? "duel-deck-game.web.app"
+      : "roguelike-games.firebaseapp.com",
   databaseURL: "https://roguelike-games-default-rtdb.firebaseio.com",
   projectId: "roguelike-games",
   appId: "1:130931296377:web:6b48e09eb320de0fb62ca8",
 });
+
+// `pnpm dev:emu`: talk to the local emulators (`pnpm emulators` at the repo root).
+// (`env` is Vite's: the node scripts that bundle room.ts with esbuild have none.)
+if (import.meta.env?.VITE_FIREBASE_EMULATORS) connectEmulators();

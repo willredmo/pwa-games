@@ -1,10 +1,11 @@
 {
   "name": "duel-deck",
   "private": true,
-  "version": "1.8.0",
+  "version": "1.10.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:emu": "vite --mode emulator",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

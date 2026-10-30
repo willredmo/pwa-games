@@ -1243,6 +1243,8 @@ export const rarityOf = (a: AugmentDef): Rarity => a.rarity ?? "silver";
 export interface OfferContext {
   board: Board;
   side: Side;
+  /** The upgrades this side has unlocked (game/progression.ts); absent = all of them (the CPU). */
+  allowed?: ReadonlySet<string>;
 }
 
 /** Upgrades `state` could be dealt now, of `rarity`, leaving out `skip`. */
@@ -1255,6 +1257,7 @@ function offerPool(state: AugmentState, rarity: Rarity, ctx?: OfferContext, skip
       !state.active.includes(a.id) &&
       !excluded.has(a.id) &&
       !skip.includes(a.id) &&
+      (!ctx?.allowed || ctx.allowed.has(a.id)) &&
       (!a.target || !ctx || units.some((u) => a.target!.can(u, ctx.board, ctx.side))),
   );
 }

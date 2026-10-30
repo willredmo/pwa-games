@@ -1214,7 +1214,7 @@ button.menu-item:hover { border-color: #5a5180; }
   gap: 0.9rem;
   padding: max(1rem, env(safe-area-inset-top)) 16px calc(0.8rem + env(safe-area-inset-bottom));
 }
-.title > :first-child { margin-top: auto; }
+.title > .title__hero { margin-top: auto; }
 .title > :last-child { margin-bottom: auto; }
 .title__hero { text-align: center; position: relative; }
 .title__emblem {
@@ -1424,7 +1424,7 @@ button.menu-item:hover { border-color: #5a5180; }
 .title-nudge__text { flex: 1; display: flex; flex-direction: column; }
 .title-nudge__text strong { color: #ffd666; }
 .title-nudge__text small { font-size: 0.74rem; color: var(--muted); }
-.title-nudge__go, .settings-chip__go { font-size: 1.4rem; color: var(--muted); line-height: 1; }
+.title-nudge__go { font-size: 1.4rem; color: var(--muted); line-height: 1; }
 
 .title__row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
 .title-btn {
@@ -1445,25 +1445,6 @@ button.menu-item:hover { border-color: #5a5180; }
 .title-btn:active { transform: translateY(1px); }
 .title-btn:focus-visible { outline: 2px solid #f0b429; outline-offset: 2px; }
 
-.settings-chip {
-  font: inherit;
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  width: 100%;
-  min-height: 2.75rem;
-  padding: 0.45rem 0.8rem;
-  border-radius: 12px;
-  border: 1px dashed #4a4370;
-  background: transparent;
-  color: #cfc8e8;
-  cursor: pointer;
-  text-align: left;
-  font-size: 0.84rem;
-}
-.settings-chip:hover { border-color: #7a6fb0; }
-.settings-chip__text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.settings-chip__text strong { color: #fff; margin-left: 0.3rem; }
 
 .title__warn { margin: -0.2rem 0 0; text-align: center; font-size: 0.74rem; color: var(--muted); }
 .title__notice { margin: 0; text-align: center; font-size: 0.84rem; color: #ffb4a8; }
@@ -1499,7 +1480,7 @@ button.menu-item:hover { border-color: #5a5180; }
 .dock-btn__label { font-size: 0.66rem; font-weight: 700; letter-spacing: 0.01em; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-/* Match settings, in a sheet from the bottom on phones (centred on bigger screens). */
+/* Match settings before a match starts, in a sheet from the bottom on phones (centred on bigger screens). */
 .overlay.overlay--sheet {
   position: fixed;
   inset: 0;
@@ -1521,6 +1502,7 @@ button.menu-item:hover { border-color: #5a5180; }
   .sheet { border-radius: 16px; }
 }
 .sheet__done { margin-top: 0.9rem; min-height: 2.75rem; }
+.sheet__warn { margin: 0.8rem 0 -0.4rem; }
 .match-settings { display: flex; flex-direction: column; gap: 0.5rem; }
 .match-settings__label { font-size: 0.76rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
 .match-settings__toggles { display: grid; gap: 0.6rem; margin-top: 0.4rem; }
@@ -2009,6 +1991,66 @@ button.menu-item:hover { border-color: #5a5180; }
 .feedback .confirm-actions { justify-content: flex-end; }
 .feedback__done { font-size: 2.6rem; }
 
+/* --- Account (title chip and ui/Account.tsx) --- */
+.title-account {
+  font: inherit;
+  position: fixed;
+  top: max(0.6rem, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: min(11rem, 40vw);
+  padding: 0.3rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--fg);
+  background: rgba(39, 35, 56, 0.85);
+  border: 1px solid #3a3454;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.title-account:hover { border-color: #5a4f80; }
+.title-account__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.title-account--alert { border-color: #f0b429; box-shadow: 0 0 0 1px rgba(240, 180, 41, 0.4); }
+/* Short phones hide the emblem, so the title's top line reaches the chip: icon only there. */
+@media (max-width: 380px), (max-height: 600px) {
+  .title-account__name { display: none; }
+}
+.account__google { display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
+.account__g {
+  display: grid;
+  place-items: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 50%;
+  background: #fff;
+  color: #4285f4;
+  font-weight: 900;
+  font-size: 0.85rem;
+}
+.account__or { display: flex; align-items: center; gap: 0.6rem; font-size: 0.76rem; color: var(--muted); }
+.account__or::before,
+.account__or::after { content: ""; flex: 1; height: 1px; background: #3a3454; }
+.account__form { display: flex; flex-direction: column; gap: 0.6rem; }
+.account__forgot { align-self: center; }
+.account__guest { align-self: center; }
+.account__who { display: flex; align-items: center; gap: 0.7rem; }
+.account__who small { display: block; font-size: 0.78rem; color: var(--muted); }
+.account__avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #4a3f78, #221d38 70%);
+  box-shadow: 0 0 0 1px rgba(240, 180, 41, 0.45);
+  font-weight: 900;
+  font-size: 1.2rem;
+}
+
 /* --- Online rematch, on the result screen --- */
 .result-rematch {
   display: flex;
@@ -2172,3 +2214,57 @@ button.menu-item:hover { border-color: #5a5180; }
   .app--battle .menu-btn { position: static; flex: none; }
   .app--battle .next-upgrade { margin: 0; flex: none; }
 }
+
+/* The progression chip, top-left, mirroring the account chip. */
+.title-level {
+  font: inherit;
+  position: fixed;
+  top: max(0.6rem, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--fg);
+  background: rgba(39, 35, 56, 0.85);
+  border: 1px solid #3a3454;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.title-level:hover { border-color: #5a4f80; }
+.title-level--new { border-color: #f0b429; box-shadow: 0 0 0 1px rgba(240, 180, 41, 0.4); }
+/* The count of upgrades waiting to be claimed. */
+.title-level__badge {
+  position: absolute;
+  top: -0.45rem;
+  right: -0.45rem;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.3rem;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #e5484d;
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 900;
+  box-shadow: 0 0 0 2px #14121f;
+}
+.title-level__bar { width: 2.6rem; height: 0.3rem; border-radius: 999px; background: #1f1b2e; overflow: hidden; }
+.title-level__bar span { display: block; height: 100%; background: linear-gradient(90deg, #c9952c, #f0b429); }
+@media (max-width: 380px), (max-height: 600px) {
+  .title-level__bar { display: none; }
+}
+
+/* Username on the account screen. */
+.account__username { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin-top: 0.8rem; font-size: 0.88rem; }
+.account__username .link-btn { padding-right: 0; }
+.account__username-form { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.8rem; }
+.account__username-input { display: flex; align-items: center; gap: 0.35rem; margin-top: 0.3rem; }
+.account__username-input > span { font-weight: 800; color: var(--muted); }
+.account__username-hint--bad { color: #ffb4a8; }
+.account__username-hint--ok { color: #7fdc9a; }

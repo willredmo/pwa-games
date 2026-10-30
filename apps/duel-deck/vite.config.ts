@@ -34,7 +34,9 @@ export default defineConfig({
       injectRegister: false,
       // mp3: the three music loops (src/assets/music, ~2.4 MB together), so an
       // installed copy has its music offline too.
-      workbox: { cleanupOutdatedCaches: true, globPatterns: ["**/*.{js,css,html,mp3}"] },
+      // /__/ is Firebase Hosting's own (the Google sign-in handler): answering
+      // it with the app shell would swallow a sign-in redirect's return.
+      workbox: { cleanupOutdatedCaches: true, globPatterns: ["**/*.{js,css,html,mp3}"], navigateFallbackDenylist: [/^\/__\//] },
       includeAssets: ["icon.svg", "apple-touch-icon.png"],
       manifest: {
         name: "Duel Deck",

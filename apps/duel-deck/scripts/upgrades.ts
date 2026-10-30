@@ -38,6 +38,7 @@ import {
   type MatchRules,
 } from "../src/game/match";
 import { settleRound } from "../src/game/roundEnd";
+import { MAX_LEVEL as PROGRESSION_MAX, MAX_MATCH_XP, STARTER, TRACK, levelOf, matchXp, unlockedAt, xpToNext } from "../src/game/progression";
 
 // --- Harness ---------------------------------------------------------------
 
@@ -799,6 +800,51 @@ const gain = (r: ReturnType<typeof landOn>, i: number) => ({
   const dealt = new Set<string>();
   for (let i = 0; i < 300; i++) for (const a of offerAugments(st, 3, "prismatic", { board: full, side: PLAYER })) dealt.add(a.id);
   check("offers", "a full row isn't dealt Mirror image", !dealt.has("mirror-image"));
+}
+
+// --- Progression: the unlock track ---------------------------------------------
+
+{
+  const placed = [...STARTER, ...Object.values(TRACK).flat()];
+  const offered = new Set(OFFERED_AUGMENTS.map((a) => a.id));
+  check("progression", "every track entry is an offered upgrade", placed.every((id) => offered.has(id)), placed.filter((id) => !offered.has(id)));
+  check("progression", "no upgrade is on the track twice", new Set(placed).size === placed.length);
+  const missing = [...offered].filter((id) => !placed.includes(id));
+  check("progression", "every offered upgrade is a starter or on the track", missing.length === 0, missing);
+  check("progression", "every level from 2 to the top unlocks something", Array.from({ length: PROGRESSION_MAX - 1 }, (_, i) => i + 2).every((lv) => (TRACK[lv]?.length ?? 0) > 0));
+  for (const r of ["silver", "gold", "prismatic"] as const) {
+    const starters = STARTER.filter((id) => rarityOf(getAugment(id)!) === r).length;
+    check("progression", `enough ${r} starters for a full hand (${starters})`, starters >= 4);
+  }
+  // A starter-only player is never dealt a locked upgrade, at any rarity, nor on a reroll.
+  const st = createAugmentState();
+  const b = newBoard();
+  insertUnit(b, PLAYER, 0, 0, mk("guard", PLAYER));
+  const allowed = unlockedAt(1);
+  const ctx = { board: b, side: PLAYER, allowed };
+  let leaked = "";
+  for (let i = 0; i < 300 && !leaked; i++)
+    for (const r of ["silver", "gold", "prismatic"] as const) {
+      const o = offerAugments(st, 3, r, ctx);
+      const re = o[0] ? rerollAugment(st, o[0], o.map((a) => a.id), ctx) : null;
+      for (const a of [...o, ...(re ? [re] : [])]) if (!allowed.has(a.id)) leaked = a.id;
+    }
+  check("progression", "a starter-only player is never dealt a locked upgrade", !leaked, leaked);
+  check("progression", "level 30 unlocks every offered upgrade", unlockedAt(PROGRESSION_MAX).size === offered.size);
+  check("progression", "XP: a win earns more than a loss", matchXp(true, 200) > matchXp(false, 200));
+  check("progression", "XP: more starting health earns more", matchXp(true, 300) > matchXp(true, 200) && matchXp(false, 100) < matchXp(false, 200));
+  check("progression", "XP: never above the per-match cap the rules allow", matchXp(true, 999) <= MAX_MATCH_XP);
+  const top = Array.from({ length: PROGRESSION_MAX - 1 }, (_, i) => xpToNext(i + 1)).reduce((x, y) => x + y, 0);
+  // database.rules.json checks a claim with this closed form of the XP to reach level n.
+  const reach = (n: number) => 150 * (n - 1) + (15 * (n - 1) * (n - 2)) / 2;
+  let sum = 0;
+  let same = true;
+  for (let n = 2; n <= PROGRESSION_MAX; n++) {
+    sum += xpToNext(n - 1);
+    if (sum !== reach(n)) same = false;
+  }
+  check("progression", "the claim rule's XP formula matches the track (change both together)", same);
+  check("progression", "levels: the XP to the top lands on the top level", levelOf(top).level === PROGRESSION_MAX && levelOf(top - 1).level === PROGRESSION_MAX - 1);
 }
 
 // --- Coverage ----------------------------------------------------------------

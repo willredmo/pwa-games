@@ -6,3 +6,4 @@ dist-ssr
 .vite
 .firebase
 firebase-debug.log
+database-debug.log

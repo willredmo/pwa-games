@@ -115,6 +115,7 @@ import {
 import { UpdatePrompt } from "./UpdatePrompt";
 import { displayName, isKawaii, kawaiiName, uwu, uwuWords } from "../game/kawaii";
 import { MenuPanel } from "./MenuPanel";
+import { awardMatch, unlockedUpgrades, type XpAward } from "../online/progress";
 import { SidePanels } from "./SidePanels";
 
 // Battle playback pacing. Each tick is three beats: wind-up (lunge toward the
@@ -375,9 +376,11 @@ export interface GameProps {
   onRematch?: (match: number) => void;
   /** Report a bug or suggest a feature; `context` says where the player was. */
   onFeedback: (context: string) => void;
+  /** Open the progression track (from the result screen's XP bar). */
+  onProgress?: () => void;
 }
 
-export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, sound, onSound, music, onMusic, look, onLook, battleLog, onBattleLog, onExit, online, tutorial, rules: startRules, onRematch, onFeedback }: GameProps) {
+export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, sound, onSound, music, onMusic, look, onLook, battleLog, onBattleLog, onExit, online, tutorial, rules: startRules, onRematch, onFeedback, onProgress }: GameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   /** The match being resumed, if any; resuming always lands in the pick phase. */
@@ -474,6 +477,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   const [showNotes, setShowNotes] = useState(false);
   /** Battle was pressed with picks still unspent; waiting on "battle anyway?". */
   const [confirmCommit, setConfirmCommit] = useState(false);
+  /** A replace waiting on the player's OK: the offer card and the slot it would land on. */
+  const [confirmReplace, setConfirmReplace] = useState<{ offerIndex: number; cell: Cell } | null>(null);
   const [showAugments, setShowAugments] = useState(false);
   /** Augment offer temporarily hidden so the player can inspect the board. */
   const [peeking, setPeeking] = useState(false);
@@ -484,9 +489,11 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
    */
   const [difficulty] = useState<Difficulty>(() => saved?.difficulty ?? startDifficulty);
   const difficultyRef = useRef(difficulty);
+  /** The progression XP the match earned, once it's over (none for the tutorial). */
+  const [xpAward, setXpAward] = useState<XpAward | null>(null);
   const [augOffers, setAugOffers] = useState<AugmentDef[]>(() =>
     saved?.augmentPending
-      ? offerAugments(saved.player, augmentOfferCount(saved.player), rarityFor(saved.round), { board: saved.board, side: PLAYER })
+      ? offerAugments(saved.player, augmentOfferCount(saved.player), rarityFor(saved.round), { board: saved.board, side: PLAYER, allowed: unlockedUpgrades() })
       : [],
   );
   /** The last round's one-line summary, in full and in a phone-width form. */
@@ -1099,7 +1106,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       // Upgrade rounds open with the upgrade, so it can shape this round's picks.
       // The pool is never refilled, so an exhausted one just skips the choice.
       const augs = rules.upgrades && isAugmentRound(roundNum)
-        ? offerAugments(playerAug.current, augmentOfferCount(playerAug.current), rarityFor(roundNum), { board: next, side: PLAYER })
+        ? offerAugments(playerAug.current, augmentOfferCount(playerAug.current), rarityFor(roundNum), { board: next, side: PLAYER, allowed: unlockedUpgrades() })
         : [];
       save({
         board: next,
@@ -1446,13 +1453,21 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   const justMastered = (before: Unit | null | undefined, after: Unit | null | undefined) =>
     !!before && !!after && !isMastered(before.merges, levelCapOf(board)) && isMastered(after.merges, levelCapOf(board));
 
-  /** Place a new unit from the offer into the queue at `cell`. */
+  /**
+   * Place a new unit from the offer into the queue at `cell`. A replace asks
+   * first (it throws the old unit and its levels away), and lands once
+   * `confirmed`.
+   */
   const placeFromOffer = useCallback(
-    (offerIndex: number, cell: Cell) => {
+    (offerIndex: number, cell: Cell, confirmed = false) => {
       if (picksLeft <= 0 || usedOffers.includes(offerIndex)) return;
       const next = cloneBoard(board);
       const key = offer[offerIndex];
       const action = dropActionFor(cell, key);
+      if (action === "replace" && !confirmed) {
+        setConfirmReplace({ offerIndex, cell });
+        return;
+      }
       const ok =
         action === "merge"
           ? upgradeUnit(next, PLAYER, cell.lane, cell.spot, key, mergeRatioFor(playerAug.current))
@@ -1793,7 +1808,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   const rerollAugmentCard = (i: number) => {
     const card = augOffers[i];
     if (phase !== "augment" || !card || (augRerolls[i] ?? 0) <= 0) return;
-    const next = rerollAugment(playerAug.current, card, augSeen.current, { board, side: PLAYER });
+    const next = rerollAugment(playerAug.current, card, augSeen.current, { board, side: PLAYER, allowed: unlockedUpgrades() });
     if (!next) return;
     augSeen.current.push(next.id);
     setAugOffers((o) => o.map((a, j) => (j === i ? next : a)));
@@ -1895,6 +1910,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         hp: [result.board.hp.player, result.board.hp.enemy],
       });
       if (result.matchWinner) {
+        // Progression XP: every finished match, more for a win. Not the tutorial.
+        if (!tutorial) setXpAward(awardMatch(result.matchWinner === PLAYER, startHpOf(result.board)));
         matchLog.end({
           won: result.matchWinner === PLAYER ? 1 : -1,
           rounds: round,
@@ -2518,6 +2535,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
                 : undefined
             }
             onFeedback={() => onFeedback(feedbackContext())}
+            xp={xpAward ?? undefined}
+            onProgress={onProgress}
           />
         )}
         {showMenu && (
@@ -2585,6 +2604,29 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
             onCancel={() => setConfirmCommit(false)}
           />
         )}
+        {confirmReplace && phase === "pick" && (() => {
+          const old = board.slots.player[confirmReplace.cell.lane][confirmReplace.cell.spot];
+          const key = offer[confirmReplace.offerIndex];
+          if (!old || !UNITS[key]) return null;
+          const incoming = { name: displayName({ key, name: UNITS[key].name, side: PLAYER }) };
+          const level = levelOf(old.merges);
+          return (
+            <ConfirmPanel
+              title={`Replace ${displayName(old)}?`}
+              message={
+                `${displayName(old)}${level > 1 ? ` (level ${level})` : ""} leaves your row` +
+                `${level > 1 ? " with all its levels" : ""}, and a ${incoming.name} takes its place. You can undo until Battle.`
+              }
+              confirmLabel={`Replace with ${incoming.name}`}
+              cancelLabel="Keep it"
+              onConfirm={() => {
+                setConfirmReplace(null);
+                placeFromOffer(confirmReplace.offerIndex, confirmReplace.cell, true);
+              }}
+              onCancel={() => setConfirmReplace(null)}
+            />
+          );
+        })()}
         {showAugments && (
           <AugmentsView
             player={playerAug.current}

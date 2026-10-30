@@ -3,14 +3,15 @@
 // rooms/<game>/<code>, where the code is a short, unambiguous join code that
 // players read to each other or share as a link.
 //
-// No sign-in: a device is identified by a random id kept in localStorage, and
-// a room is only reachable by knowing its code. The database rules
+// Rooms need no sign-in: a device is identified by a random id kept in
+// localStorage, and a room is only reachable by knowing its code. Optional
+// accounts (Firebase Authentication) are in auth.ts. The database rules
 // (database.rules.json at the repo root) check the shape of every write.
 //
 // Firebase is loaded on first use, so games that only use this for an
 // optional online mode don't pay for it up front.
 
-import type { FirebaseOptions } from "firebase/app";
+import type { FirebaseApp, FirebaseOptions } from "firebase/app";
 import type { Database, DatabaseReference } from "firebase/database";
 
 export type { FirebaseOptions };
@@ -18,20 +19,52 @@ export type { FirebaseOptions };
 type DbModule = typeof import("firebase/database");
 
 let options: FirebaseOptions | null = null;
+let appReady: Promise<FirebaseApp> | null = null;
 let ready: Promise<{ db: Database; m: DbModule }> | null = null;
+
+/** Local emulators to talk to instead of the real project (`firebase emulators:start`). */
+export interface Emulators {
+  host: string;
+  database: number;
+  auth: number;
+}
+let emulators: Emulators | null = null;
 
 /** Set the Firebase web config. Call once at startup; nothing loads until a room is used. */
 export function configure(config: FirebaseOptions): void {
   options = config;
 }
 
-function backend(): Promise<{ db: Database; m: DbModule }> {
+/**
+ * Use the local emulators (database and auth) instead of the real project.
+ * Call before anything loads, right after configure().
+ */
+export function connectEmulators(e: Partial<Emulators> = {}): void {
+  // The page's own host by default: Google sign-in's redirect reads its
+  // result through an iframe on the auth emulator, and a browser partitions
+  // that iframe's storage when it's another site (127.0.0.1 vs localhost).
+  emulators = { host: location.hostname, database: 9000, auth: 9099, ...e };
+}
+
+/** @internal The emulators in use, if any (for auth.ts). */
+export function emulatorConfig(): Emulators | null {
+  return emulators;
+}
+
+/** @internal The one Firebase app, loaded on first use (shared with auth.ts). */
+export function firebaseApp(): Promise<FirebaseApp> {
   if (!options) throw new Error("backend-client: call configure() first");
   const config = options;
+  appReady ??= import("firebase/app").then(({ initializeApp, getApps }) => getApps()[0] ?? initializeApp(config));
+  return appReady;
+}
+
+function backend(): Promise<{ db: Database; m: DbModule }> {
   ready ??= (async () => {
-    const [{ initializeApp, getApps }, m] = await Promise.all([import("firebase/app"), import("firebase/database")]);
-    const app = getApps()[0] ?? initializeApp(config);
-    return { db: m.getDatabase(app), m };
+    const [app, m] = await Promise.all([firebaseApp(), import("firebase/database")]);
+    const db = m.getDatabase(app);
+    if (emulators) m.connectDatabaseEmulator(db, emulators.host, emulators.database);
+    return { db, m };
   })();
   return ready;
 }
@@ -184,6 +217,49 @@ export async function writeAt(fullPath: string, value: unknown): Promise<void> {
   await m.set(m.ref(db, fullPath), value ?? null);
 }
 
+/** Read a value at any database path outside the rooms, once. */
+export async function readAt<T>(fullPath: string): Promise<T | null> {
+  const { db, m } = await backend();
+  return (await m.get(m.ref(db, fullPath))).val() as T | null;
+}
+
+/**
+ * Write several database paths in one atomic update (keys are full paths,
+ * null deletes). Either every path passes the rules and is written, or none is.
+ */
+export async function updateAt(updates: Record<string, unknown>): Promise<void> {
+  const { db, m } = await backend();
+  await m.update(m.ref(db), updates);
+}
+
+/**
+ * Read-modify-write a value at any database path outside the rooms, e.g. a
+ * counter several devices add to. Same contract as `transactRoom`: `fn` may
+ * first see null before the server's copy loads; return undefined to abort.
+ */
+export async function transactAt<T>(
+  fullPath: string,
+  fn: (cur: T | null) => T | null | undefined,
+): Promise<{ committed: boolean; data: T | null }> {
+  const { db, m } = await backend();
+  const res = await m.runTransaction(m.ref(db, fullPath), (cur) => fn(cur as T | null));
+  return { committed: res.committed, data: res.snapshot.val() as T | null };
+}
+
+/** Follow a value at any database path outside the rooms. Returns an unsubscribe function. */
+export function watchAt<T>(fullPath: string, cb: (value: T | null) => void): () => void {
+  let off: (() => void) | null = null;
+  let cancelled = false;
+  void backend().then(({ db, m }) => {
+    if (cancelled) return;
+    off = m.onValue(m.ref(db, fullPath), (snap) => cb(snap.val() as T | null));
+  });
+  return () => {
+    cancelled = true;
+    off?.();
+  };
+}
+
 /** Whether the database connection is up right now (for "reconnecting…" UI). */
 export function watchConnection(cb: (connected: boolean) => void): () => void {
   let off: (() => void) | null = null;
@@ -197,3 +273,5 @@ export function watchConnection(cb: (connected: boolean) => void): () => void {
     off?.();
   };
 }
+
+export * from "./auth";

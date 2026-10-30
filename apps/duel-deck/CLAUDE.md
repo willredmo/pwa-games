@@ -117,8 +117,11 @@ round (`applyAugments`), rather than mutated into units once. Stacking counters
 
 Replace is recoverable: like every pick-phase action it pushes an undo
 snapshot (board with merges, used offers, picks, grants) first, so ↶ Undo /
-Ctrl/⌘+Z restores the discarded unit until Commit or a unit reroll. No confirm
-dialog is needed on top of the colour coding and hint.
+Ctrl/⌘+Z restores the discarded unit until Commit or a unit reroll. It also
+asks first (added 2026-10-24 at the user's request): a drop or click that
+would replace opens a `ConfirmPanel` naming the unit and its level
+(`confirmReplace` in Game.tsx; `placeFromOffer(…, confirmed)` lands it), for
+drag and click alike since both go through `placeFromOffer`.
 
 ### Click and drag are the same code path
 Every board action — place, merge, replace, reorder, merge-placed — is reachable
@@ -433,10 +436,12 @@ Sim after the cap (`pnpm sim 12000 --aug=random`, 2026-10-13): units 44-59%
 upgrades 43-60% (Bloodpact, Champion, Legion top; Squire upgrades fell to
 44-45%), median match 21 rounds, median unit level 7 and most rows' best unit
 at 10, Drill in 0.7% of rounds.
-### Match settings (title screen, and the host's for a duel)
+### Match settings (chosen as a match starts, and the host's for a duel)
 `MatchRules` (game/match.ts): starting health, **Easy mode**, **Class
-bonuses** and **Upgrades**. Set in the title screen's collapsible "Match
-settings" block (`Settings`), used for a new CPU match and for a duel you
+bonuses** and **Upgrades**. Chosen in a sheet that opens between pressing
+Play (vs CPU) or Host a duel and the match starting (`setup` in Title.tsx;
+its button is Start match / Host duel), not on the menu itself. The last
+choices are remembered (`Settings`). Used for a new CPU match and for a duel you
 host: the room stores them (`Room.rules`, create-only in the database rules,
 startHp must be 100/200/300) and the guest's `Session.rules` comes from the
 room, so both devices build the same board. They ride on the board
@@ -727,7 +732,9 @@ supports), so real-player telemetry will be the better measure.
 The reference screen, from the title screen and ☰ (it was "Units"; renamed so
 it can hold more than units). Two tabs: **Units**, with the three classes and
 their full-row bonuses at the top and the units grouped under their class, and
-**Upgrades**, every augment by category. They link both ways: a unit in a
+**Upgrades**, every augment grouped by rarity (silver, gold, prismatic, each
+headed with its count and odds), by category within each, the card showing
+its category. They link both ways: a unit in a
 class card jumps to its entry, a unit's upgrade chips jump to the upgrade, and
 an upgrade's unit chips jump back (`unitsAffectedBy`; upgrades touching every
 unit or none list no units). The target scrolls under the sticky header
@@ -1074,7 +1081,7 @@ database rules allow `match` only to go up by one. `PROTOCOL` 9, so both
 sides of a duel have rematch.
 
 ### Style: Normal / Kawaii / Bloody (`Settings.look`, ui/LookSelect.tsx)
-One dropdown, in Match settings (title) and the in-game ☰ menu, replaces the
+One dropdown, in the pre-match sheet (Play / Host) and the in-game ☰ menu, replaces the
 old hidden Kawaii switch (five taps on the heading) and the Blood switch;
 `loadSettings` migrates the old `kawaii` / `blood` booleans. App sets both
 module flags from it (`setKawaii`, `setBlood`), so it can change mid-match.
@@ -1142,12 +1149,18 @@ and bug / idea filters, screenshots inline, and Fixed / Won't fix / Reopen /
 Remove buttons. It reads the database once per page load (no polling; Refresh
 reloads). Both scripts share `scripts/feedbackDb.ts`. Actions take a JSON POST
 from the page's own origin only, so another site can't close reports.
+It was rebuilt on 2026-10-25 (the first version was never committed). It
+listens on 127.0.0.1 only and shows reports newest first, with the account
+(`u`) when there is one. `feedbackDb.ts` reads through `database:get
+--output <file>`: piped, the Firebase CLI exited before the ~700 KB of
+screenshots was written, and the JSON arrived cut short.
 
 **Who sent it:** `c`, the sender's device id (`clientId()`, random per
 browser/install, the same id telemetry's `meta.c` records), shown as a short
 label (#1 is the first device to report) with its report count, plus the
-optional `contact`. There are no accounts: a person on two devices is two ids,
-and clearing site data makes a new one. As of 2026-10-23 every report (4) came
+optional `contact`, and `u`, the account, when the sender is signed in (see
+"Accounts"). A guest on two devices is two ids, and clearing site data makes a
+new one. As of 2026-10-23 every report (4) came
 from one iPhone, with no contact. Nothing prunes reports.
 
 ### Telemetry (game/telemetry.ts, scripts/telemetry.ts)
@@ -1172,6 +1185,160 @@ Retention is three weeks. Grouping by day makes a prune one delete per day:
 `pnpm telemetry` prunes on every run (`--prune` only prunes), and
 `.github/workflows/telemetry-prune.yml` does it daily once the repo secret
 `FIREBASE_SERVICE_ACCOUNT` (a service-account key) is set.
+### Accounts (online/account.ts, ui/Account.tsx, backend-client auth.ts)
+Optional, added 2026-10-24. **Guest is the default and nothing asks you to
+sign in**: the title screen has a small 👤 chip top-right ("Guest · Sign in",
+the player's name, or "Confirm email"; icon only under 380px wide or 600px
+tall, where it would touch the title). Firebase Authentication on the free
+Spark plan, through `@pwa-games/backend-client` (`auth.ts`, generic):
+- **Guests load nothing new.** firebase/auth (~190 KB, its own chunk) loads
+  only when the account screen opens, or at startup when this device signed in
+  before (`pwa-games:account` in localStorage: `"1"` signed in, `"redirect"`
+  mid-Google-redirect; `hasAccountHint`). Checked: a guest's page makes no
+  auth requests.
+- **Google:** a popup, except in an installed iOS app (`prefersRedirect`:
+  `navigator.standalone` or iOS + `display-mode: standalone`), where a popup
+  opens in a sheet that can't report back, so it redirects to Google and back.
+  A blocked popup falls back to the redirect. Two things make the redirect
+  work under Safari's storage partitioning: `authDomain` is the game's own
+  site, `duel-deck-game.web.app` (online/firebase.ts; Hosting serves
+  `/__/auth/` on every site), and the service worker doesn't answer `/__/`
+  navigations with the app shell (`navigateFallbackDenylist` in
+  vite.config.ts). Off the live site (the dev server) `authDomain` is the
+  default `roguelike-games.firebaseapp.com`: a browser that had played the
+  live game kept a pre-1.8.0 service worker on duel-deck-game.web.app, which
+  answered the sign-in popup with the game (found 2026-10-24). Returning from a redirect opens the account screen by
+  itself (`googleRedirectPending`) to show the result or error.
+- **Email + password, confirmed by Firebase's own link** (not a code: a code
+  needs a Cloud Function and an email service, so the Blaze plan; the user
+  chose free). Create account sends the link (`sendEmailVerification`, with
+  this page as the continue URL). The link usually opens in Safari or a mail
+  app, not the installed game, which is fine: verification is server-side, so
+  the account screen asks every 4 s while open (`VERIFY_POLL_MS`) and the app
+  asks again whenever it comes back to the foreground (`checkVerified`: reload
+  the user, then force a token refresh so the database rules see
+  `email_verified`). Until then the account counts for nothing and the player
+  is effectively a guest. Forgot password sends Firebase's reset link.
+- **What an account does:** links devices. A verified account writes
+  `users/<uid>/devices/<clientId>` = last seen (ms) and `users/<uid>/name`
+  (`linkDevice`, once per page; retried once after 1.5 s, since straight after
+  verification the database can still hold the old token and refuse it). The
+  device id is the same `clientId()` telemetry and feedback already record as
+  `c`, so one player's devices can be joined. Telemetry `meta` and feedback
+  reports also get `u` = the uid (`accountUid()`, verified accounts only; not
+  sent while auth is still loading at the start of a match).
+- **Rules** (database.rules.json): `users/$uid` readable by its owner, writable
+  by its owner only with `email_verified`, `name` ≤ 40 chars, `devices/$id`
+  numbers, nothing else. Telemetry and feedback `u` must equal `auth.uid`, so
+  it can't be forged. **Deploy the rules before a build that writes `u`**:
+  older rules reject the unknown field, and telemetry `meta` is create-only,
+  so a signed-in player's match would lose its meta.
+- **Sign out** clears the hint; the saved match and settings stay (they're per
+  device, not per account).
+
+**Usernames** (added 2026-10-24): a verified account can pick a username on
+the account screen (`UsernameField` in ui/Account.tsx) and change it any time.
+3-20 letters, numbers or `_`; unique across all players, case-insensitively.
+Stored as typed at `users/<uid>/username` and claimed in an index,
+`usernames/<lowercase>` = uid. `claimUsername` (online/account.ts) writes the
+index entry, the username and the old entry's removal in one atomic
+multi-path update (`updateAt` in backend-client); the rules accept an index
+write only while the name is free or already the writer's, a removal only of
+the writer's own entry and only once its username has moved off it, and a
+username only when the index points back at the account. So a race for a name
+has one winner; the loser's Save says "Taken". The field checks availability
+as you type (`usernameAvailable`, `readAt`), which only signed-in players may
+read. The title's account chip shows `@username` once there is one. Nothing
+else uses it yet (online duels still don't show names). **Deploy the rules
+before shipping**: until then Save fails with "Couldn't save it".
+
+**Before it works on the live site** (Firebase console, all free): enable
+Authentication; turn on the Email/Password and Google providers; add
+`duel-deck-game.web.app` to Authorized domains (localhost is there by
+default); add `https://duel-deck-game.web.app/__/auth/handler` as an
+authorized redirect URI on the Google provider's OAuth web client (Google
+Cloud console → Credentials); deploy the rules. Until then the account screen
+says "Accounts aren't switched on yet" (`accountErrorText`). Google sign-in in
+an installed iPhone app has only been tested against the emulator: try it on
+a phone after setup.
+
+**Local testing:** `pnpm emulators` at the repo root (auth on 9099, database
+on 9000, UI on http://localhost:4000; launch config `firebase-emulators`),
+then `pnpm dev:emu` here (`vite --mode emulator`, `.env.emulator` sets
+`VITE_FIREBASE_EMULATORS`; launch config `duel-deck-emu`, port 5178). The
+emulator sends no email: its verification links are listed at
+`http://127.0.0.1:9099/emulator/v1/projects/roguelike-games/oobCodes` and in
+the emulator UI. `connectEmulators` uses the page's own host: with the game
+on localhost and the auth emulator on 127.0.0.1, the browser partitions the
+redirect's iframe storage and Google sign-in comes back signed out (the same
+problem `authDomain` solves in production). The browser pane can't open
+popups, so the Google popup path is untested there; the redirect path was
+tested by setting `navigator.standalone`. Verified 2026-10-24: guest loads no
+auth, email sign-up → link → linked device without a reload, Google by
+redirect, sign-out, and the rules (forged `u`, another user's data, an
+unverified account's writes all refused).
+
+Later, accounts could carry: cloud save (`duel-deck:match` and settings under
+`users/<uid>/duel-deck`), the player's name in online duels (the room's
+`host`/`guest` are device ids today), replies to feedback without the contact
+field, and `pnpm telemetry`/`pnpm feedback` grouping by account.
+
+### Progression (game/progression.ts, online/progress.ts, ui/Progress.tsx)
+A battle-pass-style track, added 2026-10-24 at the user's request: playing
+earns XP, levels unlock upgrades.
+- **The track** (`TRACK`): 30 levels (`MAX_LEVEL`). `STARTER` (36: 16 silver,
+  12 gold, 8 prismatic, the simpler and more general ones) is open from level
+  1; the other 51 unlock one or two a level from 2 to 30, prismatics mostly
+  late (Apotheosis last). Level n to n+1 costs `xpToNext` = 150 + 15(n−1), so
+  the top is 10,440 XP, about 100 matches at a 50% win rate.
+- **XP** (`matchXp`): every finished match, 60 for a loss and 150 for a win,
+  times starting health / 200 (the user asked for more XP with more starting
+  health), at least 10, at most `MAX_MATCH_XP` 750. CPU and online alike; not
+  the tutorial, replays or abandoned matches. Awarded in playback's `finish`
+  beside `matchLog.end`; the result screen shows it (`XpResult`: the bar
+  filling, any level up and what it unlocked).
+- **Only the player's own offers are gated**: `OfferContext.allowed`, passed
+  by Game to `offerAugments`/`rerollAugment` as `unlockedUpgrades()`. The CPU
+  draws from every upgrade (the user's call). Online needs nothing synced or
+  no `PROTOCOL` bump: each device rolls its own offers, and only taken
+  upgrades travel.
+- **Accounts only** (the user's call, 2026-10-24): a guest (or an email
+  account not yet confirmed) earns no XP and is dealt only the starters. The
+  result screen tells them what the match would have earned and to sign in;
+  the track shows them at level 1. (A first version banked guest XP on the
+  device for the account to claim; dropped before release.) `pending`
+  (`duel-deck:xp-pending`) now only holds an account's XP not yet on the
+  server: offline, or auth still loading when the match ended.
+- **Storage:** `users/<uid>/duel-deck/xp`, added by transaction (`transactAt`
+  in backend-client) in steps of at most 750, and followed with `watchAt`.
+  `duel-deck:xp-cache` holds the last account's XP so its unlocks apply while
+  auth loads. The client writes its own XP (free plan, no Cloud Functions,
+  the user accepted that), so the rules only let it rise, by at most 750 a
+  write: a tampered client can only unlock upgrades for itself. **Deploy the
+  rules before shipping**: until then the write is refused and XP stays
+  pending on the device (nothing is lost).
+- **UI:** ⭐ level chip top-left of the title (mirrors the account chip),
+  opening the track (`ProgressPanel`: every level and its rewards, ✓
+  unlocked or 🔒 locked, and a Sign in prompt for guests). The Codex marks
+  locked upgrades "🔒 Lv N" and fades them.
+- **Claiming** (2026-10-24, the user's call): reaching a level doesn't
+  unlock its upgrades; the player claims them on the track (Claim on a level,
+  which takes the levels before it too, or Claim all). Only claimed upgrades
+  are dealt (`unlockedLevel` = the claimed level). The account stores the
+  highest level claimed, `users/<uid>/duel-deck/claimed` (absent = 1), and the
+  rules accept a claim only upward, up to 30, and only to a level the stored
+  `xp` has reached (a closed form of `xpToNext`'s sum, which `pnpm upgrades`
+  checks against the track, so change both together). XP still waiting to
+  reach the server can't be claimed yet (the level's button waits). While
+  any wait, the ⭐ chip carries a red badge with the count
+  (`ProgressState.newUpgrades`), the result screen lists them as "Ready to
+  claim" with a link, and the Codex tags them "⭐ Claim".
+- `pnpm upgrades` checks the track: every offered upgrade is a starter or on
+  it exactly once, every level unlocks something, each rarity has at least
+  4 starters, a starter-only player is never dealt (or rerolled into) a
+  locked upgrade, and the XP rules. **A new upgrade must be added to
+  `STARTER` or `TRACK`**, or the check fails.
+
 ### Sound (game/sound.ts)
 Effects are synthesized, no audio files (`?sounds` on the dev server plays every one). The
 master chain is a compressor plus a short generated room reverb, and combat
@@ -1369,8 +1536,8 @@ Every screen is meant to work on a 320×568 phone without anything important
 off screen. What that took, screen by screen:
 - **Title** (`ui/Title.tsx`): hero, Continue (gold) or the tutorial nudge, a
   "vs CPU" card (opponent as a three-way segmented control, its blurb, one
-  Play button), an online card, match settings as a one-line chip that opens
-  a bottom sheet, and an icon dock (Tutorial, Rules, Codex, New, Sound,
+  Play button), an online card (Play and Host open the match settings in
+  a bottom sheet before starting), and an icon dock (Tutorial, Rules, Codex, New, Sound,
   Music, Feedback). Fits 360×640 with no scroll; `max-height` 700px and 600px steps
   drop the unit lineup, shrink the emblem, then hide the tagline. It still
   scrolls itself if it must (`.title` is the scroller; the page never is).

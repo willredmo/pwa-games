@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import "./overlays.css";
 import { isKawaii, kawaiiName } from "../game/kawaii";
 import type { AugmentDef, AugmentState } from "../game/augments";
-import { OFFERED_AUGMENTS as AUGMENTS, RALLY_CAP, getAugment, rarityOf, unitsAffectedBy, type Rarity } from "../game/augments";
+import { unlockLevel } from "../game/progression";
+import { useProgress, type XpAward } from "../online/progress";
+import { XpResult } from "./Progress";
+import { OFFERED_AUGMENTS as AUGMENTS, RALLY_CAP, RARITIES, RARITY_ODDS, getAugment, rarityOf, unitsAffectedBy, type Rarity } from "../game/augments";
 import { ARCHETYPES, KNIGHT_LEVEL, MAX_LEVEL, SYNERGIES, UNITS, UNIT_KEYS, levelOf } from "../engine/units";
 import { levelLabel, levelTier } from "../board/render";
 import type { Unit } from "../engine/types";
@@ -431,6 +434,10 @@ interface ResultPanelProps {
   onFeedback?: () => void;
   /** The match's level cap, for the level chips. */
   levelCap?: number;
+  /** Progression XP this match earned (none for the tutorial). */
+  xp?: XpAward;
+  /** Open the progression track. */
+  onProgress?: () => void;
 }
 
 export interface RematchState {
@@ -679,7 +686,7 @@ function UnitLedger({ stats, winner, cap, round }: { stats: MatchStats; winner: 
   );
 }
 
-export function ResultPanel({ winner, round, stats, hp, startHp, upgrades, opponent, onNewMatch, newMatchLabel, onReplay, rematch, onFeedback, levelCap }: ResultPanelProps) {
+export function ResultPanel({ winner, round, stats, hp, startHp, upgrades, opponent, onNewMatch, newMatchLabel, onReplay, rematch, onFeedback, levelCap, xp, onProgress }: ResultPanelProps) {
   const won = winner === "player";
   const mvp = mvpOf(stats);
   const rounds = stats.won + stats.lost + stats.drawn;
@@ -706,6 +713,8 @@ export function ResultPanel({ winner, round, stats, hp, startHp, upgrades, oppon
             <b>{Math.max(0, hp.enemy)}</b>
           </div>
         </div>
+
+        {xp && <XpResult award={xp} onOpen={onProgress} />}
 
         {mvp && (
           <div className="result-mvp">
@@ -943,19 +952,29 @@ function CodexUnits({ onUnit, onAug }: { onUnit: (key: string) => void; onAug: (
 }
 
 function CodexUpgrades({ onUnit }: { onUnit: (key: string) => void }) {
+  const progress = useProgress();
   return (
     <>
       <p className="panel__hint">
         Every upgrade that can be offered. You pick one every {AUGMENT_EVERY} rounds and each can be taken once per
         match. Each choice deals three cards of one rarity, the same for both players: silver, gold or prismatic,
-        at 50%, 35% and 15% every time. Each card can be rerolled once.
+        at 50%, 35% and 15% every time. Each card can be rerolled once. Upgrades marked 🔒 unlock as you level up, and
+        are claimed on the progression track (⭐ on the title screen); the CPU can draw any of them.
       </p>
-      {CATEGORY_ORDER.map((cat) => {
-        const defs = AUGMENTS.filter((a) => a.category === cat);
+      {/* Grouped by rarity, since that's how they're dealt; by category within each. */}
+      {RARITIES.map((rarity, r) => {
+        const defs = AUGMENTS.filter((a) => rarityOf(a) === rarity).sort(
+          (a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category),
+        );
         if (defs.length === 0) return null;
         return (
-          <section key={cat}>
-            <h3>{CATEGORY_LABEL[cat]}</h3>
+          <section key={rarity}>
+            <h3 className="codex-rarity">
+              <RarityTag rarity={rarity} />
+              <span className="codex-rarity__meta">
+                {defs.length} upgrades · {Math.round(RARITY_ODDS[r] * 100)}% of choices
+              </span>
+            </h3>
             <div className="cards">
               {defs.map((a, i) => {
                 const units = isGeneral(a.id) ? [] : (AFFECTS.get(a.id) ?? []);
@@ -963,14 +982,21 @@ function CodexUpgrades({ onUnit }: { onUnit: (key: string) => void }) {
                   <div
                     key={a.id}
                     id={augAnchor(a.id)}
-                    className={`card-row card-row--static card-row--${a.category} codex-anchor`}
+                    className={`card-row card-row--static card-row--${a.category} codex-anchor${unlockLevel(a.id) > progress.unlockedLevel ? " card-row--locked" : ""}`}
                     style={{ "--i": i } as React.CSSProperties}
                   >
                     <span className="card-row__head">
                       <span className="card-row__name">
                         <span className="aura-icon">{a.icon}</span> {a.name}
                       </span>
-                      <RarityTag rarity={rarityOf(a)} />
+                      <span className="tags">
+                        {unlockLevel(a.id) > progress.unlockedLevel && (
+                          <span className="codex-lock" title={`Unlocks at progression level ${unlockLevel(a.id)}`}>
+                            {unlockLevel(a.id) <= progress.level ? "⭐ Claim" : `🔒 Lv ${unlockLevel(a.id)}`}
+                          </span>
+                        )}
+                        <span className={`tag tag--${a.category}`}>{a.target ? "Choose a unit" : CATEGORY_LABEL[a.category]}</span>
+                      </span>
                     </span>
                     <span className="card-row__desc">{a.description}</span>
                     {units.length > 0 && (
