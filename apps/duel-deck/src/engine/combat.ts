@@ -163,10 +163,13 @@ function strike(
     shieldLeft = shield - soak;
     target.shieldLeft = shieldLeft;
   }
-  // Sanctuary: the first blow each round that would kill it leaves it on 1.
+  // Endure (Phoenix, Undying, Vanguard's vow): the first blow each round that
+  // would kill it leaves it on 1.
+  let endured = false;
   if (target.traits?.endure && target.hp > 0 && target.hp - damage <= 0 && !round.endured.has(target.id)) {
     round.endured.add(target.id);
     damage = target.hp - 1;
+    endured = true;
   }
   const blocked = raw - damage;
   const hpBefore = target.hp;
@@ -182,6 +185,7 @@ function strike(
   if (blocked > 0) ev.blocked = blocked;
   if (opening > 0) ev.opening = opening;
   if (shieldLeft !== undefined) ev.shieldLeft = shieldLeft;
+  if (endured) ev.endured = true;
   events.push(ev);
 
   // Cleave: only a main blow carries overkill on (not thorns / last breath),

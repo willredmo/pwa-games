@@ -250,6 +250,8 @@ export interface AttackEvent {
   opening?: number;
   /** The target's shield after this blow, when a shield soaked some of it. */
   shieldLeft?: number;
+  /** The blow would have killed the target, but it endured on 1 health (Phoenix, Undying, Vanguard's vow). */
+  endured?: true;
 }
 /** A death-triggered buff landing on an ally, for the rest of the round. */
 export interface BuffEvent {

@@ -172,7 +172,7 @@ export function AugmentPanel({
         ) : (
           <>
             <div
-              className={`aug-cards${picked ? " aug-cards--picked" : ""}`}
+              className={`aug-cards${offers.length > 3 ? " aug-cards--many" : ""}${picked ? " aug-cards--picked" : ""}`}
               style={{ "--n": offers.length } as React.CSSProperties}
             >
               {offers.map((a, i) => (
@@ -186,6 +186,7 @@ export function AugmentPanel({
                     aria-pressed={selected === a.id}
                     tabIndex={peeking ? -1 : undefined}
                   >
+                    <span className="aug-card__bg" aria-hidden="true" />
                     <span className="aug-card__inner">
                       <span className="aug-card__icon" aria-hidden="true">
                         {a.icon}

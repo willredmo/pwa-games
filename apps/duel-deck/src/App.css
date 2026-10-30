@@ -1220,18 +1220,37 @@ button.menu-item:hover { border-color: #5a5180; }
 .title__lineup { position: relative; height: 58px; margin-top: 0.4rem; pointer-events: none; }
 .title__duel { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); width: min(22rem, calc(100vw - 32px)); height: 84px; display: block; }
 
-/* Motion around the logo: a light sweep across the title every few seconds,
-   a slow glowing ring round the emblem, and the menu rising in on open. */
+/* Motion around the logo: a glint across the title every few seconds, a slow
+   glowing ring round the emblem, and the menu rising in on open. Opacity and
+   transform only: the glint used to animate background-position on clipped
+   text and the pulse a box-shadow, which iOS Safari didn't play (feedback
+   2026-10-30, iPhone 15 on iOS 18). */
+.title__hero h1 { position: relative; }
 @media (prefers-reduced-motion: no-preference) {
-  .title__hero h1 {
-    background:
-      linear-gradient(105deg, transparent 42%, rgba(255, 255, 255, 0.85) 50%, transparent 58%) 160% 0 / 250% 100% no-repeat,
-      linear-gradient(180deg, #fff 15%, #ffd666 60%, #e8962a 110%);
+  /* A copy of the title with a white band across it, faded in and out. */
+  .title__hero h1::after {
+    content: attr(data-text);
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.9) 48%, transparent 66%);
     -webkit-background-clip: text;
     background-clip: text;
-    animation: title-shine 5.5s ease-in-out 1.2s infinite;
+    color: transparent;
+    opacity: 0;
+    pointer-events: none;
+    animation: title-glint 5.5s ease-in-out 1.2s infinite;
   }
-  .title__emblem { position: relative; animation: emblem-pulse 3.2s ease-in-out infinite; }
+  .title__emblem { position: relative; }
+  .title__emblem::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px rgba(240, 180, 41, 0.6), 0 0 40px rgba(240, 180, 41, 0.55);
+    opacity: 0;
+    pointer-events: none;
+    animation: emblem-pulse 3.2s ease-in-out infinite;
+  }
   .title__emblem::before {
     content: "";
     position: absolute;
@@ -1253,10 +1272,8 @@ button.menu-item:hover { border-color: #5a5180; }
   .title__main > :nth-child(5) { animation-delay: 0.32s; }
   .title-dock { animation-delay: 0.38s; }
 }
-@keyframes title-shine { 0%, 60% { background-position: 160% 0, 0 0; } 100% { background-position: -60% 0, 0 0; } }
-@keyframes emblem-pulse {
-  50% { box-shadow: 0 0 0 1px rgba(240, 180, 41, 0.6), 0 0 40px rgba(240, 180, 41, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.15); }
-}
+@keyframes title-glint { 0%, 62% { opacity: 0; } 76% { opacity: 1; } 90%, 100% { opacity: 0; } }
+@keyframes emblem-pulse { 50% { opacity: 1; } }
 @keyframes title-rise { from { opacity: 0; transform: translateY(14px); } }
 
 .title__main { width: min(100%, 26rem); display: flex; flex-direction: column; gap: 0.6rem; }

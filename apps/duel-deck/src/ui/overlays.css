@@ -766,9 +766,17 @@ button.unit-entry__aug:hover, button.unit-entry__aug:focus-visible { border-colo
   margin-top: 0.7rem;
 }
 .aug-col { display: flex; flex-direction: column; align-items: center; gap: 0.55rem; min-width: 0; }
-/* Every card as tall as the tallest, so the rerolls line up. */
-.aug-col .aug-card { display: flex; flex: 1; }
-.aug-col .aug-card__inner { flex: 1; height: auto; }
+/* Every card as tall as the tallest, so the rerolls line up. The dark panel
+   is its own absolutely placed layer (.aug-card__bg) rather than the content
+   stretched to fill: iOS Safari didn't stretch a <button>'s flex child, so
+   short cards showed a bare strip of frame under the panel (feedback
+   2026-10-28, worst with Tactician's four narrow cards). */
+.aug-col .aug-card { flex: 1; }
+/* Tactician's four cards are narrow on a phone: smaller names, tighter
+   padding, and a long one-word name may break rather than spill off the card. */
+.aug-cards--many .aug-card__inner { padding-left: clamp(0.2rem, 1.2vw, 0.9rem); padding-right: clamp(0.2rem, 1.2vw, 0.9rem); }
+.aug-cards--many .aug-card__name { font-size: clamp(0.64rem, 2.4vw, 1.08rem); overflow-wrap: anywhere; }
+.aug-cards--many .aug-card__desc { font-size: clamp(0.58rem, 2.5vw, 0.82rem); }
 
 .aug-card {
   --frame: linear-gradient(160deg, #fbfbff, #9ca1b9 45%, #e9eaf5 70%, #8d92aa);
@@ -798,20 +806,25 @@ button.unit-entry__aug:hover, button.unit-entry__aug:focus-visible { border-colo
   --glow: rgba(186, 140, 255, 0.6);
   --accent: #c9b2ff;
 }
-.aug-card__inner {
-  position: relative;
+.aug-card__bg {
+  position: absolute;
   z-index: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.45rem;
-  height: 100%;
-  padding: clamp(0.7rem, 3vw, 1.3rem) clamp(0.35rem, 1.8vw, 0.9rem) 0.9rem;
+  inset: 4px;
   border-radius: 10px;
   background:
     radial-gradient(120% 70% at 50% 0%, rgba(255, 255, 255, 0.07), transparent 60%),
     linear-gradient(180deg, #121b24, #070b11 75%);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07), inset 0 0 18px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+}
+.aug-card__inner {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  padding: clamp(0.7rem, 3vw, 1.3rem) clamp(0.35rem, 1.8vw, 0.9rem) 0.9rem;
   text-align: center;
 }
 .aug-card__icon {
@@ -849,7 +862,7 @@ button.unit-entry__aug:hover, button.unit-entry__aug:focus-visible { border-colo
 }
 .aug-card__check {
   position: absolute;
-  z-index: 2;
+  z-index: 3;
   top: 0.45rem;
   right: 0.45rem;
   display: grid;
@@ -866,6 +879,7 @@ button.unit-entry__aug:hover, button.unit-entry__aug:focus-visible { border-colo
 .aug-card--selected::after {
   content: "";
   position: absolute;
+  z-index: 3;
   inset: 0;
   border-radius: 14px;
   box-shadow: inset 0 0 0 2px #fff, 0 0 24px var(--glow);
@@ -958,5 +972,6 @@ button.unit-entry__aug:hover, button.unit-entry__aug:focus-visible { border-colo
 @media (max-width: 420px) {
   .aug-cards { gap: 0.35rem; }
   .aug-card { padding: 3px; border-radius: 11px; }
-  .aug-card__inner { border-radius: 8px; gap: 0.3rem; }
+  .aug-card__bg { inset: 3px; border-radius: 8px; }
+  .aug-card__inner { gap: 0.3rem; }
 }

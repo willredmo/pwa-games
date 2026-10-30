@@ -66,6 +66,8 @@ export type FxKind =
   | "fortify"
   /** An ability's stat gain on the unit receiving it ("+2⚔", "+3♥"; needs `text`). */
   | "stat-gain"
+  /** Endure (Phoenix, Undying, Vanguard's vow): a killing blow left it on 1♥. Flash, flame ring, rising embers. */
+  | "rebirth"
   /** The losing row blows up at the end of a match: flash, fireball, shockwave, debris, smoke. `size` is a cell. */
   | "explosion";
 
@@ -81,6 +83,9 @@ export interface FxSpawn {
   amount?: number;
   /** For "damage": the blow was fatal (show it bigger / differently). */
   lethal?: boolean;
+  /** For "damage": what armour or a shield soaked, and what the unit healed back this beat (lifesteal), shown small under the number instead of as numbers of their own. */
+  blocked?: number;
+  healed?: number;
   /** For "last-breath": optional target point the wisp travels to. */
   tx?: number;
   ty?: number;
@@ -453,6 +458,18 @@ export class FxLayer {
         e.text = `+${fx.amount ?? 1}♥ forever`;
         break;
       }
+      case "rebirth": {
+        this.fx(ET.Flash, now, 320, x, y, s * 0.9, "#fff", COL.goldLight, 0, false, 0);
+        this.fx(ET.Ring, now + 60, 700, x, y, s * 1.8, COL.ember, COL.gold, 0, false, 0);
+        // Embers rising off it, fanned upward like wings.
+        const n = this.count(18);
+        for (let i = 0; i < n; i++) {
+          const a = -Math.PI / 2 + ((i / n) - 0.5) * Math.PI * 1.2;
+          const v = s * (1.6 + (i % 4) * 0.45);
+          this.emit(PT.Spark, now + (i % 3) * 40, 760, x, y + s * 0.2, Math.cos(a) * v, Math.sin(a) * v, -s * 0.8, s * 0.08, i % 3 ? COL.ember : COL.goldLight);
+        }
+        break;
+      }
       case "explosion":
         this.explode(x, y, s, fx.side, now);
         break;
@@ -495,6 +512,13 @@ export class FxLayer {
     this.drawParticles(ctx, now, dt);
     this.drawNumbers(ctx, now);
     ctx.restore();
+  }
+
+  /** Anything still on screen or still to come (particles, effects, shake), so the caller can't drop frames. */
+  busy(now: number): boolean {
+    if (this.effects.length > 0 || this.currentTrauma(now) > 0) return true;
+    for (const p of this.parts) if (p.alive) return true;
+    return false;
   }
 
   /** Remove everything (new match). */
@@ -548,6 +572,9 @@ export class FxLayer {
       fx.y - stack * fx.size * 0.34, fx.size, fx.lethal ? COL.goldLight : "#fff", fx.lethal ? COL.enemy : INK,
       fx.amount ?? 0, !!fx.lethal, fx.side === "enemy" ? -1 : 1);
     e.done = false;
+    // Number effects don't travel, so tx / ty carry the folded-in block and heal.
+    e.tx = style === 0 ? fx.blocked ?? 0 : 0;
+    e.ty = style === 0 ? fx.healed ?? 0 : 0;
     if (style > 0) {
       e.style = style;
       e.flag = false;
@@ -1282,6 +1309,19 @@ export class FxLayer {
         ctx.fillStyle = st === 1 ? COL.green : e.color;
       }
       ctx.fillText(text, x, y);
+      // Blocked and healed ride along under the damage (feedback 2026-10-30:
+      // too many numbers at once on a phone).
+      if (st === 0 && (e.tx > 0 || e.ty > 0)) {
+        const sub = [e.tx > 0 ? `🛡${e.tx}` : "", e.ty > 0 ? `+${e.ty}` : ""].filter(Boolean).join(" ");
+        const spx = px * 0.46;
+        const sy = y + px * 0.62;
+        ctx.font = `800 ${spx.toFixed(1)}px system-ui, -apple-system, sans-serif`;
+        ctx.lineWidth = Math.max(2, spx * 0.24);
+        ctx.strokeStyle = e.ty > 0 ? "#1c5a33" : INK;
+        ctx.strokeText(sub, x, sy);
+        ctx.fillStyle = e.ty > 0 ? COL.green : COL.grey;
+        ctx.fillText(sub, x, sy);
+      }
     }
     ctx.globalAlpha = 1;
   }

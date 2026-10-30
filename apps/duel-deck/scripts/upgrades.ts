@@ -294,6 +294,14 @@ for (const cap of [8, 10, 12, 15]) {
   check("lifesteal", "and it happens in combat (what it lost, back)", !!h && h.amount === lost, [h?.amount, lost]);
 }
 {
+  // Feedback 2026-10-30: lifesteal mustn't heal off damage a shield soaked.
+  const s = setup(["skirmisher"], [{ key: "bulwark", hp: 99 }], ["lifesteal"]);
+  s.e[0].traits = { ...s.e[0].traits, shield: 999 };
+  const r = resolveRound(s.board);
+  const healed = heals(r).filter((e) => e.unit === s.p[0].id).reduce((n, e) => n + e.amount, 0);
+  check("lifesteal", "no heal from blows a shield soaks", healed === 0, healed);
+}
+{
   const s = setup(["guard", "bulwark", "guard", "striker"], ["guard"], ["shield-wall"]);
   check("shield-wall", "front takes 1 less, +1 per Guard/Bulwark behind (3)", s.p[0].traits?.damageReduction === 3 && !s.p[1].traits?.damageReduction, s.p.map((u) => u.traits?.damageReduction));
 }
@@ -716,6 +724,12 @@ const gain = (r: ReturnType<typeof landOn>, i: number) => ({
 {
   const s = setup(["striker", "lancer", "medic"], ["guard"], ["phoenix"]);
   check("phoenix", "the first two endure, the third doesn't", !!s.p[0].traits?.endure && !!s.p[1].traits?.endure && !s.p[2].traits?.endure);
+}
+{
+  const s = setup([{ key: "striker", hp: 3 }], [{ key: "guard", atk: 9, hp: 99 }], ["phoenix"]);
+  const r = resolveRound(s.board);
+  const saved = attacks(r).find((a) => a.target === s.p[0].id && a.endured);
+  check("phoenix", "a killing blow leaves it on 1, flagged for playback", !!saved && saved.damage === 2, saved);
 }
 {
   const s = setup(["striker", "lancer"], ["guard"], ["ironclad"]);

@@ -76,7 +76,7 @@ export function Title(props: TitleProps) {
     <div className="title">
       <header className="title__hero">
         <div className="title__emblem" aria-hidden="true">⚔</div>
-        <h1>Duel Deck</h1>
+        <h1 data-text="Duel Deck">Duel Deck</h1>
         <p className="title__tagline">Build a row. Merge it. Outlast them.</p>
         <div className="title__lineup" aria-hidden="true">
           <TitleDuel />

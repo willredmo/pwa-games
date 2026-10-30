@@ -829,6 +829,36 @@ Sim after (6000): Legion 48.6%, Mixed formation 56.3%. Also new, gold:
 gets First strike in the opening exchange and +3 on that blow (+4 measured
 61%, +2 55%, +3 57.8%; +3 was the user's pick). Pool: 32 silver, 29 gold, 26 prismatic.
 
+### Feedback fixes (2026-10-30)
+- **Upgrade cards on iOS:** the dark panel is its own layer (`.aug-card__bg`,
+  absolutely inset 4px) instead of the content stretched to fill the
+  `<button>`, which iOS Safari didn't do: short cards showed a bare strip of
+  frame. Four-card hands (Tactician) get `.aug-cards--many`: smaller names and
+  padding, so "Executioner" fits a 430px phone.
+- **Endure is shown** (Phoenix, Undying, Vanguard's vow): the attack event
+  carries `endured`, and playback adds a `"rebirth"` fx (flash, flame ring,
+  rising embers) and a label naming the upgrade ("Phoenix: survives on 1♥").
+  It used to look like a unit that simply didn't die. `pnpm upgrades` checks
+  the flag.
+- **Abilities fired** counts the opening buffs (Rally, Barrier, Lifebond,
+  from `RoundResult.opening`), Mends, Impale, Riposte and Retaliate. A
+  support row read 0.
+- **Fewer numbers per blow:** a main blow's block, and lifesteal on a unit hit
+  in the same beat, ride under its damage number (`blocked` / `healed` on the
+  `"damage"` fx, drawn as a small second line) instead of floating their own.
+- **Board frame cap:** the render loop draws at most 60 fps while anything
+  moves (battle, a drag, a pose, live fx: `FxLayer.busy`) and 30 while only the
+  idle bob does. It drew every rAF, 120 Hz on ProMotion iPhones, all the time.
+- **Lifesteal vs shields:** already right (it reads damage after the shield
+  soaks); `pnpm upgrades` now checks it.
+- **Title motion** is opacity only: the glint is a copy of the title
+  (`h1::after`, `content: attr(data-text)`) fading in, the emblem pulse a
+  glow layer fading in. They animated `background-position` on clipped text
+  and `box-shadow`. The feedback screenshot's gradient-text fix now handles
+  multi-layer backgrounds (`background-clip: "text, text"`), which drew the
+  title as a gold block. That iPhone's screenshot drew the reduced-motion title,
+  so its "no menu animations" report is most likely iOS Reduce Motion.
+
 ### Ability beats
 Charge and death buffs (Bodyguard, Pass the torch, Last rally) get their own
 `"ability"` frame (`ABILITY_MS`) — Charge before the lunge, death buffs after

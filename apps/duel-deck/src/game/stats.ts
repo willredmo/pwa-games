@@ -122,6 +122,8 @@ export function recordRound(
 
   /** Opening blows already counted as a Charge this round. */
   const charged = new Set<string>();
+  // Rally, Barrier and Lifebond fire as the round opens, before the first tick.
+  for (const ev of result.opening ?? []) if (ev.type === "buff" && mine.has(ev.source)) stats.abilities++;
   for (const tick of result.ticks) {
     const dead = new Set(tick.events.flatMap((e) => (e.type === "death" ? [e.unit] : [])));
     for (const ev of tick.events) {
@@ -133,6 +135,11 @@ export function recordRound(
       }
       if (ev.type === "buff") {
         if (mine.has(ev.source)) stats.abilities++;
+        continue;
+      }
+      // A Medic's Mend (lifesteal heals carry no source).
+      if (ev.type === "heal") {
+        if (ev.source && mine.has(ev.source)) stats.abilities++;
         continue;
       }
       if (ev.type !== "attack") continue;
@@ -165,6 +172,9 @@ export function recordRound(
         stats.abilities++;
       }
       if (ev.tag === "cleave" && mine.get(ev.attacker)?.key === "berserker") stats.abilities++;
+      // Impale, and Riposte / Retaliate (thorns from an upgrade aren't an ability).
+      const src = mine.get(ev.attacker);
+      if (ev.tag === "pierce" || (ev.tag === "thorns" && (src?.traits?.riposte || src?.traits?.reflect))) stats.abilities++;
     }
   }
   // Fortify: surviving Bulwarks.

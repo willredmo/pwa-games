@@ -151,6 +151,13 @@ const OVERFLOW_TRAVEL_MS = 620;
 const EXTRA_STEP_MS = 380;
 /** Extra hold on a clash with an in-swing ability (dodge, Overflow, Riposte). */
 const ABILITY_HOLD_MS = 650;
+/** Board redraw intervals: while anything moves, and while only the idle bob does. */
+const FRAME_MS_MOVING = 1000 / 60;
+const FRAME_MS_STILL = 1000 / 30;
+/** Endure's rebirth plays this long after the blow, once its damage number is up. */
+const ENDURE_DELAY_MS = 280;
+/** Upgrades that grant `endure`, in the order a label names them when several are held. */
+const ENDURE_AUGMENTS = ["phoenix", "vanguards-vow", "undying"];
 /** Pause on the round-result banner before the next round deals. */
 const RESULT_MS = 1500;
 /** Matches the phone breakpoint in App.css. */
@@ -591,7 +598,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     b: Board,
     cell: Cell,
     kind: FxKind,
-    extra: { amount?: number; lethal?: boolean; text?: string } = {},
+    extra: { amount?: number; lethal?: boolean; text?: string; blocked?: number; healed?: number } = {},
   ) => {
     const canvas = canvasRef.current;
     const c = canvas && cellCenter(canvas, b, cell);
@@ -989,16 +996,28 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     battle: phase === "battle",
   };
 
-  // Render loop: draws every frame (also covers resizes, since draw sizes the canvas).
+  // Render loop (also covers resizes, since draw sizes the canvas). Capped:
+  // ProMotion iPhones run rAF at 120 Hz, and drawing the whole board that
+  // often while only the idle bob moves ran the battery down (feedback
+  // 2026-10-30). 60 fps while anything moves, 30 while the board is still.
   useEffect(() => {
     let raf = 0;
-    const frame = () => {
+    let last = -Infinity;
+    const frame = (now: number) => {
+      raf = requestAnimationFrame(frame);
       const canvas = canvasRef.current;
       const view = viewRef.current;
-      if (canvas && view) {
-        draw(canvas, { ...view, time: performance.now(), poses: posesRef.current, fx: fxRef.current });
-      }
-      raf = requestAnimationFrame(frame);
+      if (!canvas || !view) return;
+      const moving =
+        view.battle ||
+        !!view.draggingId ||
+        !!view.dropCell ||
+        Object.values(posesRef.current).some((p) => now < p.start + p.duration) ||
+        fxRef.current.busy(now);
+      // A little under the interval, so a 60 Hz screen doesn't skip every other frame.
+      if (now - last < (moving ? FRAME_MS_MOVING : FRAME_MS_STILL) - 4) return;
+      last = now;
+      draw(canvas, { ...view, time: performance.now(), poses: posesRef.current, fx: fxRef.current });
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
@@ -2015,12 +2034,18 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       // Health comes off as the blows land — before any ability beat that follows.
       const apply = liveBoard(f);
       for (const ev of attacks) apply(ev);
-      for (const ev of all) {
+      // A main blow's block glints now; its amount rides on the damage number
+      // below (a side hit's goes with its own number when it lands).
+      const blockedOn = new Map<string, number>();
+      for (const ev of attacks) {
         if (ev.blocked && ev.blocked > 0) {
+          blockedOn.set(ev.target, (blockedOn.get(ev.target) ?? 0) + ev.blocked);
           const at = findUnitCell(f.board, ev.target);
-          if (at) fxAt(f.board, at, "block", { amount: ev.blocked });
+          if (at) fxAt(f.board, at, "block");
         }
       }
+      // Lifesteal on a unit that was also hit this beat: one number, not two.
+      const healedOn = new Map<string, number>();
       for (const ev of attacks) {
         const a = unitAt(f.board, ev.attacker)?.unit;
         const d = unitAt(f.board, ev.target)?.unit;
@@ -2077,12 +2102,37 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           );
         }
       }
+      /**
+       * Endure: a killing blow left the unit on 1 health. Without a beat of its
+       * own it just looked like a unit that didn't die (feedback 2026-10-30:
+       * "make sure Phoenix is working").
+       */
+      const rebirth = (ev: AttackEvent) => {
+        const at = findUnitCell(f.board, ev.target);
+        const u = at && f.board.slots[at.side][at.lane][at.spot];
+        if (!at || !u) return;
+        const aug = (u.side === PLAYER ? playerAug : enemyAug).current;
+        const source = ENDURE_AUGMENTS.find((id) => aug.active.includes(id));
+        const name = source ? getAugment(source)?.name : undefined;
+        fxAt(f.board, at, "rebirth");
+        abilityLabel(f.board, at, `${name ?? "Endure"}: survives on 1♥`);
+      };
+      const endured = attacks.filter((e) => e.endured);
+      if (endured.length > 0) {
+        abilityFired = true;
+        later(ENDURE_DELAY_MS, () => endured.forEach(rebirth));
+      }
+      for (const ev of f.events) {
+        if (ev.type === "heal" && !ev.source && dmg.has(ev.unit) && !dying.has(ev.unit)) {
+          healedOn.set(ev.unit, (healedOn.get(ev.unit) ?? 0) + ev.amount);
+        }
+      }
       for (const [id, amount] of dmg) {
         const cell = findUnitCell(f.board, id);
         const lethal = dying.has(id);
         if (cell) {
           fxAt(f.board, cell, "slash");
-          fxAt(f.board, cell, "damage", { amount, lethal });
+          fxAt(f.board, cell, "damage", { amount, lethal, blocked: blockedOn.get(id), healed: healedOn.get(id) });
           if (lethal) fxAt(f.board, cell, "death");
         }
         setPose(id, lethal ? "dying" : "hit", lethal ? POSE_MS.dying : POSE_MS.hit);
@@ -2128,9 +2178,11 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
             fxAt(f.board, kind === "last-breath" ? src.cell : cell, kind);
           }
           if (!dmg.has(ev.target) || overflow) setPose(ev.target, lethal ? "dying" : "hit", lethal ? POSE_MS.dying : POSE_MS.hit);
-          fxAt(f.board, cell, "damage", { amount: ev.damage, lethal });
+          if (ev.blocked) fxAt(f.board, cell, "block");
+          fxAt(f.board, cell, "damage", { amount: ev.damage, lethal, blocked: ev.blocked });
           if (lethal) fxAt(f.board, cell, "death");
           if (overflow && !prefersReducedMotion()) fxRef.current.shake(0.35, performance.now());
+          if (ev.endured) rebirth(ev);
         });
         t = lands + EXTRA_STEP_MS;
       }
@@ -2145,6 +2197,11 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           const hops = [healer, ...ev.via.flatMap((id) => findUnitCell(f.board, id) ?? []), cell];
           relayHops(later, f.board, hops, healAt);
           healAt += relayTime(hops);
+        }
+        // Already shown under this unit's damage number: just apply it.
+        if (healedOn.has(ev.unit) && !ev.source) {
+          later(healAt, () => apply(ev));
+          continue;
         }
         later(healAt, () => {
           apply(ev);

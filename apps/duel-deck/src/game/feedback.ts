@@ -57,9 +57,12 @@ export async function captureScreenshot(): Promise<string | null> {
         if (!view) return;
         for (const el of Array.from(doc.body.querySelectorAll<HTMLElement>("*"))) {
           const cs = view.getComputedStyle(el);
+          // One entry per background layer ("text, text"), so any layer clipped to text counts.
           const clip = cs.backgroundClip || cs.getPropertyValue("-webkit-background-clip");
-          if (clip !== "text") continue;
-          const color = /rgba?\([^)]*\)|#[0-9a-f]{3,8}/i.exec(cs.backgroundImage)?.[0] ?? "#f0c96a";
+          if (!clip.split(",").some((c) => c.trim() === "text")) continue;
+          // The first opaque colour in its gradients; a fully transparent stop would hide the text.
+          const color =
+            (cs.backgroundImage.match(/rgba?\([^)]*\)|#[0-9a-f]{3,8}/gi) ?? []).find((c) => !/,\s*0\)$/.test(c)) ?? "#f0c96a";
           el.style.setProperty("background", "none", "important");
           el.style.setProperty("-webkit-text-fill-color", color, "important");
           el.style.setProperty("color", color, "important");
