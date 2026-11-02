@@ -2255,7 +2255,7 @@ button.menu-item:hover { border-color: #5a5180; }
   box-shadow: 0 0 0 2px #14121f;
 }
 .title-level__bar { width: 2.6rem; height: 0.3rem; border-radius: 999px; background: #1f1b2e; overflow: hidden; }
-.title-level__bar span { display: block; height: 100%; background: linear-gradient(90deg, #c9952c, #f0b429); }
+.title-level__bar span { display: block; height: 100%; transform-origin: left center; background: linear-gradient(90deg, #c9952c, #f0b429); }
 @media (max-width: 380px), (max-height: 600px) {
   .title-level__bar { display: none; }
 }

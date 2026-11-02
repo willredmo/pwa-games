@@ -1,21 +1,22 @@
 import { useSyncExternalStore } from "react";
 import { hasAccountHint, transactAt, watchAt, writeAt } from "@pwa-games/backend-client";
-import { MAX_MATCH_XP, levelOf, matchXp, rewardsAt, unlockedAt } from "../game/progression";
-import type { AugmentDef } from "../game/augments";
+import { MAX_MATCH_XP, levelOf, matchXp, rewardsAt, styleUnlockLevel, unitsAt, unlockedAt, type Reward } from "../game/progression";
+import type { Look } from "../game/save";
 import { accountState, onAccountChange } from "./account";
 
-// The player's progression XP, and so which upgrades they may be dealt.
+// The player's progression XP, and so which upgrades and units they may be
+// dealt and which battle styles they may use.
 //
 // XP lives on the account, at users/<uid>/duel-deck/xp. Progression is for
 // accounts only: a guest (or an email account still waiting for its link)
-// earns no XP and plays with the starter upgrades. "Pending" is XP an account
+// earns no XP and plays with the starters. "Pending" is XP an account
 // earned that isn't on the server yet (offline, or auth still loading at the
 // end of the match), kept on the device so nothing earned is lost.
 //
-// Reaching a level doesn't unlock its upgrades by itself: the player claims
+// Reaching a level doesn't unlock its reward by itself: the player claims
 // them on the progression track. The account keeps the highest level claimed
 // (users/<uid>/duel-deck/claimed, absent = 1), claims go in order, and only
-// claimed upgrades are dealt. Until then the ⭐ chip carries a badge.
+// claimed rewards count. Until then the ⭐ chip carries a badge.
 //
 // The client adds its own XP (free plan, no Cloud Functions), so the database
 // rules only let it rise, by at most `MAX_MATCH_XP` a write, and only let a
@@ -187,14 +188,24 @@ export function unlockedUpgrades(): Set<string> {
   return unlockedAt(state.unlockedLevel);
 }
 
+/** The unit types the player may be dealt right now. */
+export function unlockedUnits(): string[] {
+  return unitsAt(state.unlockedLevel);
+}
+
+/** Whether the player may use a battle style. */
+export function styleUnlocked(look: Look): boolean {
+  return styleUnlockLevel(look) <= state.unlockedLevel;
+}
+
 /** What a finished match earned, for the result screen. */
 export interface XpAward {
   gained: number;
   /** Total XP before and after. */
   from: number;
   to: number;
-  /** Upgrades reached by levelling up this match, waiting to be claimed. */
-  unlocked: AugmentDef[];
+  /** Rewards reached by levelling up this match, waiting to be claimed. */
+  unlocked: Reward[];
   /** False for a guest: nothing was earned, and `gained` is what an account would have got. */
   counts: boolean;
 }
@@ -210,7 +221,7 @@ export function awardMatch(won: boolean, startHp: number): XpAward {
   void flush();
   const before = levelOf(from).level;
   const after = levelOf(from + gained).level;
-  const unlocked: AugmentDef[] = [];
+  const unlocked: Reward[] = [];
   for (let lv = before + 1; lv <= after; lv++) unlocked.push(...rewardsAt(lv));
   return { gained, from, to: from + gained, unlocked, counts: true };
 }

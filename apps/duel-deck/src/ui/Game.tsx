@@ -115,7 +115,7 @@ import {
 import { UpdatePrompt } from "./UpdatePrompt";
 import { displayName, isKawaii, kawaiiName, uwu, uwuWords } from "../game/kawaii";
 import { MenuPanel } from "./MenuPanel";
-import { awardMatch, unlockedUpgrades, type XpAward } from "../online/progress";
+import { awardMatch, unlockedUnits, unlockedUpgrades, type XpAward } from "../online/progress";
 import { SidePanels } from "./SidePanels";
 
 // Battle playback pacing. Each tick is three beats: wind-up (lunge toward the
@@ -398,7 +398,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   const rules = rulesOf(board);
   const [round, setRound] = useState(saved?.round ?? 1);
   const [offer, setOffer] = useState<string[]>(
-    () => saved?.offer ?? (tutorial ? TUTORIAL_OFFERS[1].slice() : rollOffer(OFFER_COUNT, saved?.player)),
+    () => saved?.offer ?? (tutorial ? TUTORIAL_OFFERS[1].slice() : rollOffer(OFFER_COUNT, saved?.player, unlockedUnits())),
   );
   const [picksLeft, setPicksLeft] = useState(PICK_COUNT);
   /** Click-selected and awaiting a destination click. Mirrors `drag`. */
@@ -1118,7 +1118,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       // Frozen cards keep their slot; the rest are dealt fresh.
       const keep = frozenRef.current;
       const prevOffer = offerRef.current;
-      const dealt = tutorial && TUTORIAL_OFFERS[roundNum] ? TUTORIAL_OFFERS[roundNum].slice() : rollOffer(OFFER_COUNT, playerAug.current);
+      const dealt = tutorial && TUTORIAL_OFFERS[roundNum] ? TUTORIAL_OFFERS[roundNum].slice() : rollOffer(OFFER_COUNT, playerAug.current, unlockedUnits());
       const nextOffer = dealt.map((k, i) => (keep.includes(i) && prevOffer[i] ? prevOffer[i] : k));
       // Fallen units respawn with the same ids, so a held `dying` pose (its last
       // frame is fully faded) would leave them invisible. Replay their entrance.
@@ -1813,7 +1813,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     if (phase !== "pick" || unitRerolls <= 0) return;
     // Easy mode: the reroll goes on the undo stack like any other action.
     if (rules.easy) pushUndo();
-    const fresh = rollOffer(OFFER_COUNT, playerAug.current);
+    const fresh = rollOffer(OFFER_COUNT, playerAug.current, unlockedUnits());
     setOffer(offer.map((k, i) => (frozen.includes(i) ? k : fresh[i])));
     setUsedOffers([]);
     setUnitRerolls(unitRerolls - 1);

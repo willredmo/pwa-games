@@ -15,6 +15,9 @@ export const PATCH_NOTES: Release[] = [
     notes: [
       "\"Units upgraded\" no longer needs a tap: after a round your units' new stats show on the board for a moment, then the next round starts by itself.",
       "🦅 Legion buffed: +2 attack and +1 health to every unit (was +1 and +1).",
+      "⭐ Progression goes to level 64, one unlock per level, and now unlocks units and the Kawaii and Bloody styles too. Everyone starts with Striker, Guard and Warden; Sentinel comes last.",
+      "The progression track says what each unlock does, fills your XP bar from where you left it, and animates claiming.",
+      "Skirmishers also dodge the first Retaliate each round, so a Sentinel can't hit them back with their own blow.",
     ],
   },
   {

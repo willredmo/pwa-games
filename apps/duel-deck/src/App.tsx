@@ -19,7 +19,8 @@ import { googleRedirectPending } from "@pwa-games/backend-client";
 import { startAccount, useAccount, useUsername } from "./online/account";
 import { AccountPanel } from "./ui/Account";
 import { ProgressPanel } from "./ui/Progress";
-import "./online/progress";
+import { useProgress } from "./online/progress";
+import { styleUnlockLevel } from "./game/progression";
 import "./App.css";
 
 // Screens. App owns what outlives a single match — the settings, the saved
@@ -92,12 +93,16 @@ export default function App() {
 
   useEffect(() => saveSettings(settings), [settings]);
   useEffect(() => setSoundEnabled(settings.sound), [settings.sound]);
+  // A style is a progression unlock: one this player hasn't claimed (a guest,
+  // or a different account) plays as Normal, and the setting is kept for later.
+  const progress = useProgress();
+  const look = styleUnlockLevel(settings.look) <= progress.unlockedLevel ? settings.look : "normal";
   useEffect(() => {
     // The page's own look (App.css: html[data-look]) follows it too.
-    document.documentElement.dataset.look = settings.look;
-    setKawaii(settings.look === "kawaii");
-    setBlood(settings.look === "bloody");
-  }, [settings.look]);
+    document.documentElement.dataset.look = look;
+    setKawaii(look === "kawaii");
+    setBlood(look === "bloody");
+  }, [look]);
   useEffect(() => setMusicEnabled(settings.music), [settings.music]);
   // The menu track on every screen outside a match; a match sets its own
   // track per phase.
@@ -215,7 +220,7 @@ export default function App() {
             if (music && settings.sound) unlockSound();
             setSettings((s) => ({ ...s, music }));
           }}
-          look={settings.look}
+          look={look}
           onLook={(look) => setSettings((s) => ({ ...s, look }))}
           battleLog={settings.battleLog}
           onBattleLog={(battleLog) => setSettings((s) => ({ ...s, battleLog }))}
@@ -264,7 +269,7 @@ export default function App() {
           }}
           onRejoin={() => void rejoin()}
           onFeedback={() => void openFeedback("title")}
-          look={settings.look}
+          look={look}
           onLook={(look) => setSettings((s) => ({ ...s, look }))}
           accountLabel={
             account.status === "signed-in"

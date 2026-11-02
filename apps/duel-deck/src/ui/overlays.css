@@ -250,6 +250,8 @@
 }
 .result-upgrade--gold { border-color: #e2b24a; }
 .result-upgrade--prismatic { border-color: #b26eff; box-shadow: 0 0 8px rgba(178, 110, 255, 0.35); }
+.result-upgrade--unit { border-color: #4f9bff; box-shadow: 0 0 8px rgba(79, 155, 255, 0.35); }
+.result-upgrade--style { border-color: #ff7eb6; }
 
 @media (prefers-reduced-motion: reduce) {
   .overlay, .overlay *, .overlay *::after {
@@ -1044,14 +1046,16 @@ button.unit-entry__aug:hover, button.unit-entry__aug:focus-visible { border-colo
 
 /* --- Progression (ui/Progress.tsx) --- */
 .xp-bar { height: 0.55rem; border-radius: 999px; background: #1f1b2e; border: 1px solid #3a3454; overflow: hidden; }
+/* Full width, scaled: a transform, since iOS stutters on width transitions. */
 .xp-bar__fill {
   height: 100%;
   border-radius: inherit;
+  transform-origin: left center;
   background: linear-gradient(90deg, #c9952c, #f0b429 70%, #ffe08a);
   box-shadow: 0 0 8px rgba(240, 180, 41, 0.5);
-  transition: width 0.9s cubic-bezier(0.2, 0.8, 0.3, 1);
+  transition: transform 0.9s cubic-bezier(0.2, 0.8, 0.3, 1);
 }
-@media (prefers-reduced-motion: reduce) { .xp-bar__fill { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .xp-bar__fill { transition: opacity 0.4s; } }
 
 .xp-result {
   display: flex;
@@ -1106,7 +1110,46 @@ button.unit-entry__aug:hover, button.unit-entry__aug:focus-visible { border-colo
 .progress-level--done { opacity: 1; background: #211d33; }
 .progress-level--next { opacity: 1; border-color: #f0b429; box-shadow: 0 0 0 1px rgba(240, 180, 41, 0.3); }
 .progress-level__num { font-weight: 900; text-align: center; color: #ffd36b; }
-.progress-level__rewards { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.progress-level__rewards { display: flex; flex-wrap: wrap; gap: 0.3rem; min-width: 0; }
+.progress-panel__since { color: #ffd36b; }
+/* A level's reward: icon, name and kind, what it does. */
+.reward { display: flex; align-items: flex-start; gap: 0.45rem; min-width: 0; text-align: left; }
+.reward__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 50%;
+  font-size: 1rem;
+  background: #1f1b2e;
+  border: 1px solid #3a3454;
+}
+.reward--gold .reward__icon { border-color: #e2b24a; }
+.reward--prismatic .reward__icon { border-color: #b26eff; box-shadow: 0 0 8px rgba(178, 110, 255, 0.35); }
+.reward--unit .reward__icon { border-color: #4f9bff; box-shadow: 0 0 8px rgba(79, 155, 255, 0.35); }
+.reward--style .reward__icon { border-color: #ff7eb6; }
+.reward__text { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.reward__name { font-weight: 800; font-size: 0.86rem; line-height: 1.2; }
+.reward__kind { font-weight: 700; font-size: 0.64rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.reward--unit .reward__kind { color: #8fbfff; }
+.reward--style .reward__kind { color: #ff9cc7; }
+.reward--gold .reward__kind { color: #e2b24a; }
+.reward--prismatic .reward__kind { color: #c99bff; }
+.reward__desc { font-size: 0.74rem; line-height: 1.3; color: #b9b3c9; }
+/* Just claimed: the reward pops in and the tick stamps on, level after level (--d). */
+@media (prefers-reduced-motion: no-preference) {
+  .progress-level--fresh .reward { animation: reward-pop 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.3) backwards; animation-delay: var(--d, 0ms); }
+  .progress-level--fresh .reward__icon { animation: reward-spin 0.7s ease-out backwards; animation-delay: var(--d, 0ms); }
+  .progress-level--fresh .progress-level__state { animation: reward-stamp 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.4) backwards; animation-delay: calc(var(--d, 0ms) + 0.3s); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress-level--fresh .reward { animation: reward-fade 0.4s ease-out backwards; animation-delay: var(--d, 0ms); }
+}
+@keyframes reward-pop { from { opacity: 0; transform: scale(0.8); } 60% { opacity: 1; transform: scale(1.06); } }
+@keyframes reward-spin { from { transform: scale(0.4) rotate(-90deg); } }
+@keyframes reward-stamp { from { opacity: 0; transform: scale(2.2); } }
+@keyframes reward-fade { from { opacity: 0; } }
 .progress-level__rewards .result-upgrade { animation: none; font-size: 0.74rem; }
 .progress-level__starter { font-size: 0.8rem; color: var(--muted); }
 .progress-level__state { text-align: center; }
@@ -1140,3 +1183,4 @@ button.unit-entry__aug:hover, button.unit-entry__aug:focus-visible { border-colo
 /* Codex: an upgrade the player hasn't unlocked yet. */
 .codex-lock { font-size: 0.68rem; font-weight: 800; color: var(--muted); white-space: nowrap; }
 .card-row.card-row--locked { opacity: 0.6; }
+.unit-entry--locked .unit-entry__portrait, .unit-entry--locked .unit-entry__body > :not(.unit-entry__head) { opacity: 0.6; }

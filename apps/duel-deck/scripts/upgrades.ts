@@ -9,7 +9,8 @@
 
 import { cloneBoard, insertUnit, levelCapOf, makeUnit, mergeGain, occupants, upgradeUnit } from "../src/engine/board";
 import { resolveRound } from "../src/engine/combat";
-import { KNIGHT_AT, UNITS, isMastered } from "../src/engine/units";
+import { readFileSync } from "node:fs";
+import { KNIGHT_AT, OFFER_KEYS, UNITS, isMastered } from "../src/engine/units";
 import type { AttackEvent, BattleEvent, Board, BuffEvent, HealEvent, RoundResult, Side, Unit } from "../src/engine/types";
 import {
   OFFERED_AUGMENTS,
@@ -36,9 +37,10 @@ import {
   refreshForRound,
   unitRerollsFor,
   type MatchRules,
+  rollOffer,
 } from "../src/game/match";
 import { settleRound } from "../src/game/roundEnd";
-import { MAX_LEVEL as PROGRESSION_MAX, MAX_MATCH_XP, STARTER, TRACK, levelOf, matchXp, unlockedAt, xpToNext } from "../src/game/progression";
+import { MAX_LEVEL as PROGRESSION_MAX, MAX_MATCH_XP, NEEDS, STARTER, STARTER_UNITS, TRACK, levelOf, matchXp, unitUnlockLevel, unitsAt, unlockedAt, xpToNext } from "../src/game/progression";
 
 // --- Harness ---------------------------------------------------------------
 
@@ -585,6 +587,21 @@ for (const cap of [8, 10, 12, 15]) {
   const raw = 10 + (s.e[0].traits?.openingBonus ?? 0);
   check("vengeance", "a hit sends 60% back", back?.damage === Math.floor(raw * 0.6), [raw, back?.damage]);
 }
+{
+  // Evasion slips the first Retaliate each round, on top of the dodge it
+  // spends on the Sentinel's own blow (a feedback report, 2026-11-02).
+  const s = setup([{ key: "skirmisher", atk: 8, hp: 99 }], [{ key: "sentinel", atk: 1, hp: 999 }]);
+  const evs = attacks(resolveRound(s.board, { tickCap: 4 }));
+  const onSkirm = evs.filter((a) => a.target === s.p[0].id);
+  const reflects = onSkirm.filter((a) => a.tag === "thorns");
+  check("evasion", "Evasion dodges the Sentinel's first blow", onSkirm[0]?.tag === "dodge", onSkirm.slice(0, 2));
+  check(
+    "evasion",
+    "and its first Retaliate (a second dodge), but not the next",
+    onSkirm.filter((a) => a.tag === "dodge").length === 2 && reflects.length > 0 && reflects[0].damage > 0,
+    onSkirm.slice(0, 4).map((a) => [a.tag, a.damage]),
+  );
+}
 
 // --- Beacon chains -------------------------------------------------------------
 
@@ -805,13 +822,27 @@ const gain = (r: ReturnType<typeof landOn>, i: number) => ({
 // --- Progression: the unlock track ---------------------------------------------
 
 {
-  const placed = [...STARTER, ...Object.values(TRACK).flat()];
+  const rewards = Object.values(TRACK);
+  const placed = [...STARTER, ...rewards.filter((r) => r.kind === "upgrade").map((r) => r.id)];
   const offered = new Set(OFFERED_AUGMENTS.map((a) => a.id));
   check("progression", "every track entry is an offered upgrade", placed.every((id) => offered.has(id)), placed.filter((id) => !offered.has(id)));
   check("progression", "no upgrade is on the track twice", new Set(placed).size === placed.length);
   const missing = [...offered].filter((id) => !placed.includes(id));
   check("progression", "every offered upgrade is a starter or on the track", missing.length === 0, missing);
-  check("progression", "every level from 2 to the top unlocks something", Array.from({ length: PROGRESSION_MAX - 1 }, (_, i) => i + 2).every((lv) => (TRACK[lv]?.length ?? 0) > 0));
+  const levels = Array.from({ length: PROGRESSION_MAX - 1 }, (_, i) => i + 2);
+  check("progression", "every level from 2 to the top unlocks one thing", levels.every((lv) => !!TRACK[lv]) && Object.keys(TRACK).length === levels.length);
+  const units = [...STARTER_UNITS, ...rewards.filter((r) => r.kind === "unit").map((r) => r.id)];
+  check("progression", "every offered unit is a starter or on the track, once", new Set(units).size === units.length && OFFER_KEYS.every((k) => units.includes(k)) && units.every((k) => OFFER_KEYS.includes(k)), units);
+  check("progression", "one starting unit of each class", new Set(STARTER_UNITS.map((k) => UNITS[k].archetype)).size === 3);
+  const unitLevels = rewards.flatMap((r, i) => (r.kind === "unit" ? [[r.id, i + 2] as const] : []));
+  check("progression", "Sentinel is the last unit unlocked", unitLevels[unitLevels.length - 1]?.[0] === "sentinel", unitLevels);
+  check("progression", "Kawaii and Bloody styles are on the track", ["kawaii", "bloody"].every((id) => rewards.some((r) => r.kind === "style" && r.id === id)));
+  const early = rewards.flatMap((r, i) =>
+    r.kind === "upgrade" && NEEDS[r.id] && Math.min(...NEEDS[r.id].map(unitUnlockLevel)) > i + 2 ? [r.id] : [],
+  );
+  check("progression", "no unit's upgrade unlocks before its unit", early.length === 0, early);
+  const rulesCap = /newData\.val\(\) <= (\d+) && \(!data\.exists\(\) \|\| newData\.val\(\) > data\.val\(\)\)/.exec(readFileSync("../../database.rules.json", "utf8"));
+  check("progression", "the database rules' claim cap is the top level", Number(rulesCap?.[1]) === PROGRESSION_MAX, rulesCap?.[1]);
   for (const r of ["silver", "gold", "prismatic"] as const) {
     const starters = STARTER.filter((id) => rarityOf(getAugment(id)!) === r).length;
     check("progression", `enough ${r} starters for a full hand (${starters})`, starters >= 4);
@@ -830,7 +861,10 @@ const gain = (r: ReturnType<typeof landOn>, i: number) => ({
       for (const a of [...o, ...(re ? [re] : [])]) if (!allowed.has(a.id)) leaked = a.id;
     }
   check("progression", "a starter-only player is never dealt a locked upgrade", !leaked, leaked);
-  check("progression", "level 30 unlocks every offered upgrade", unlockedAt(PROGRESSION_MAX).size === offered.size);
+  check("progression", "a starter-only player isn't dealt Adrenaline (no Berserker yet)", !allowed.has("adrenaline") && unlockedAt(unitUnlockLevel("berserker")).has("adrenaline"));
+  const dealtUnits = new Set(Array.from({ length: 200 }, () => rollOffer(5, undefined, unitsAt(1))).flat());
+  check("progression", "a starter-only player is only dealt the starting units", [...dealtUnits].every((k) => STARTER_UNITS.includes(k)), [...dealtUnits]);
+  check("progression", "the top level unlocks every offered upgrade and unit", unlockedAt(PROGRESSION_MAX).size === offered.size && unitsAt(PROGRESSION_MAX).length === OFFER_KEYS.length);
   check("progression", "XP: a win earns more than a loss", matchXp(true, 200) > matchXp(false, 200));
   check("progression", "XP: more starting health earns more", matchXp(true, 300) > matchXp(true, 200) && matchXp(false, 100) < matchXp(false, 200));
   check("progression", "XP: never above the per-match cap the rules allow", matchXp(true, 999) <= MAX_MATCH_XP);

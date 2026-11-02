@@ -46,6 +46,8 @@ interface RoundState {
   firstDeathSeen: Record<Side, boolean>;
   /** Dodges each unit has used this round (Evasion). */
   dodged: Map<string, number>;
+  /** Evasion units that have already slipped a Retaliate this round (it gets one of its own). */
+  dodgedReflect: Set<string>;
   /** Units that have made their first attack this round (Charge). */
   opened: Set<string>;
   /** Units each side has lost so far this round (Last light). */
@@ -232,7 +234,19 @@ function strike(
   const reflect = target.traits?.reflect ?? 0;
   if (reflect > 0 && tag !== "thorns") {
     const back = Math.floor((raw * reflect) / 100);
-    if (back > 0) ctx.after.push(() => strike(ctx, lane, target, attacker, back, "thorns"));
+    if (back > 0) {
+      ctx.after.push(() => {
+        // Evasion also slips the first Retaliate each round, on top of its
+        // usual dodge: that one is usually spent on the Sentinel's own swing,
+        // and a Skirmisher being hurt by its own blow read as a missed dodge.
+        if ((attacker.traits?.dodges ?? 0) > 0 && !ctx.round.dodgedReflect.has(attacker.id)) {
+          ctx.round.dodgedReflect.add(attacker.id);
+          ctx.events.push({ type: "attack", lane, attacker: target.id, target: attacker.id, damage: 0, tag: "dodge", blocked: back });
+          return;
+        }
+        strike(ctx, lane, target, attacker, back, "thorns");
+      });
+    }
   }
 }
 
@@ -600,6 +614,7 @@ export function resolveRound(input: Board, opts?: { tickCap?: number }): RoundRe
     kills: { player: 0, enemy: 0 },
     firstDeathSeen: { player: false, enemy: false },
     dodged: new Map(),
+    dodgedReflect: new Set(),
     opened: new Set(),
     fallen: { player: 0, enemy: 0 },
     lit: new Map(),

@@ -189,18 +189,20 @@ export function startHpOf(board: Board): number {
 /**
  * Roll this round's unit offer. Drawn WITH replacement from the flat pool —
  * with only five unit types, sampling without replacement would offer the whole
- * pool every round and make the pick meaningless.
+ * pool every round and make the pick meaningless. `keys` narrows the pool to
+ * the unit types the player has unlocked (progression); the CPU draws from all.
  */
-export function rollOffer(count = OFFER_COUNT, state?: AugmentState): string[] {
-  const weights = OFFER_KEYS.map((k) => offerWeight(k, state));
+export function rollOffer(count = OFFER_COUNT, state?: AugmentState, keys: readonly string[] = OFFER_KEYS): string[] {
+  const pool = keys.length > 0 ? keys : OFFER_KEYS;
+  const weights = pool.map((k) => offerWeight(k, state));
   const total = weights.reduce((a, b) => a + b, 0);
   return Array.from({ length: count }, () => {
     let r = Math.random() * total;
-    for (let i = 0; i < OFFER_KEYS.length; i++) {
+    for (let i = 0; i < pool.length; i++) {
       r -= weights[i];
-      if (r < 0) return OFFER_KEYS[i];
+      if (r < 0) return pool[i];
     }
-    return OFFER_KEYS[OFFER_KEYS.length - 1];
+    return pool[pool.length - 1];
   });
 }
 

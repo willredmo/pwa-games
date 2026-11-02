@@ -40,8 +40,8 @@ export const UNITS: Record<string, UnitStats> = {
     classes: ["skirmisher"],
     archetype: "attack",
     role: "Balanced all-rounder",
-    ability: { name: "Evasion", trigger: "Start of round", text: "Dodges the first hit it takes each round.", scaling: "When it dodges, strikes back for +1 damage every 2 levels" },
-    mastery: "Dodges the first two hits each round.",
+    ability: { name: "Evasion", trigger: "Start of round", text: "Dodges the first hit it takes each round, and the first Retaliate too.", scaling: "When it dodges, strikes back for +1 damage every 2 levels" },
+    mastery: "Dodges the first two hits each round (and the first Retaliate).",
   },
   bulwark: {
     name: "Bulwark",

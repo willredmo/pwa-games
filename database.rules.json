@@ -103,7 +103,7 @@
             ".validate": "newData.isNumber() && ((!data.exists() && newData.val() >= 0 && newData.val() <= 750) || (data.exists() && newData.val() >= data.val() && newData.val() <= data.val() + 750))"
           },
           "claimed": {
-            ".validate": "newData.isNumber() && newData.val() >= 2 && newData.val() <= 30 && (!data.exists() || newData.val() > data.val()) && newData.parent().child('xp').val() >= 150 * (newData.val() - 1) + 15 * (newData.val() - 1) * (newData.val() - 2) / 2"
+            ".validate": "newData.isNumber() && newData.val() >= 2 && newData.val() <= 64 && (!data.exists() || newData.val() > data.val()) && newData.parent().child('xp').val() >= 150 * (newData.val() - 1) + 15 * (newData.val() - 1) * (newData.val() - 2) / 2"
           },
           "$other": { ".validate": false }
         },

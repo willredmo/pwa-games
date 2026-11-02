@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import "./overlays.css";
 import { isKawaii, kawaiiName } from "../game/kawaii";
 import type { AugmentDef, AugmentState } from "../game/augments";
-import { unlockLevel } from "../game/progression";
+import { unitUnlockLevel, unlockLevel } from "../game/progression";
 import { useProgress, type XpAward } from "../online/progress";
 import { XpResult } from "./Progress";
 import { OFFERED_AUGMENTS as AUGMENTS, RALLY_CAP, RARITIES, RARITY_ODDS, getAugment, rarityOf, unitsAffectedBy, type Rarity } from "../game/augments";
@@ -851,6 +851,7 @@ export function CodexView({ onClose, initialTab = "units" }: { onClose: () => vo
 }
 
 function CodexUnits({ onUnit, onAug }: { onUnit: (key: string) => void; onAug: (id: string) => void }) {
+  const progress = useProgress();
   let n = 0;
   return (
     <>
@@ -894,14 +895,26 @@ function CodexUnits({ onUnit, onAug }: { onUnit: (key: string) => void; onAug: (
             const u = UNITS[key];
             const lore = UNIT_LORE[key];
             const related = upgradesFor(key);
+            const at = unitUnlockLevel(key);
+            const locked = at > progress.unlockedLevel;
             return (
-              <article key={key} id={unitAnchor(key)} className="unit-entry codex-anchor" style={{ "--i": n++ } as React.CSSProperties}>
+              <article
+                key={key}
+                id={unitAnchor(key)}
+                className={`unit-entry codex-anchor${locked ? " unit-entry--locked" : ""}`}
+                style={{ "--i": n++ } as React.CSSProperties}
+              >
                 <div className="unit-entry__portrait">
                   <UnitPortrait unitKey={key} side="player" size={72} />
                 </div>
                 <div className="unit-entry__body">
                   <header className="unit-entry__head">
                     <h3>{u.name}</h3>
+                    {locked && (
+                      <span className="codex-lock" title={`Unlocks at progression level ${at}`}>
+                        {at <= progress.level ? "⭐ Claim" : `🔒 Lv ${at}`}
+                      </span>
+                    )}
                     <span className="unit-entry__stats">
                       <span className="stat stat--atk">⚔{u.atk}</span>
                       <span className="stat stat--hp">♥{u.maxHp}</span>

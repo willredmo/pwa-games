@@ -554,6 +554,11 @@ runaway hitter. Played as a thorns blow (never reflects again, so two
 Sentinels can't loop), labelled "Retaliate". Its own class tag (`sentinel`, not
 `tank`), so the tank upgrades whose text names Guards and Bulwarks don't
 silently cover it.
+**Evasion vs Retaliate** (2026-11-01, a feedback report): a unit with Evasion
+also dodges the first Retaliate it meets each round, on top of its usual
+dodge (`RoundState.dodgedReflect`, checked where the reflect is queued). Its
+one dodge was normally spent on the Sentinel's own swing, so the Skirmisher
+took its own blow back, which read as a dodge that failed. `PROTOCOL` 16.
 
 **CPU arrangement** (`supportOrder` in match.ts): sorted by attack, supports
 sat at the back buffing each other. Now: the strongest fighter, every Beacon,
@@ -1295,12 +1300,28 @@ field, and `pnpm telemetry`/`pnpm feedback` grouping by account.
 
 ### Progression (game/progression.ts, online/progress.ts, ui/Progress.tsx)
 A battle-pass-style track, added 2026-10-24 at the user's request: playing
-earns XP, levels unlock upgrades.
-- **The track** (`TRACK`): 30 levels (`MAX_LEVEL`). `STARTER` (36: 16 silver,
-  12 gold, 8 prismatic, the simpler and more general ones) is open from level
-  1; the other 51 unlock one or two a level from 2 to 30, prismatics mostly
-  late (Apotheosis last). Level n to n+1 costs `xpToNext` = 150 + 15(n−1), so
-  the top is 10,440 XP, about 100 matches at a 50% win rate.
+earns XP, levels unlock upgrades, units and battle styles.
+- **The track** (`TRACK`, reworked 2026-11-01 at the user's request: the top
+  came too fast): 64 levels (`MAX_LEVEL`), **one reward a level** (a
+  `Reward`: upgrade, unit or style). Open from level 1: `STARTER` upgrades
+  (36: 16 silver, 12 gold, 8 prismatic, the simpler and more general ones),
+  `STARTER_UNITS` (Striker, Guard, Warden: one per class) and the Normal
+  style. On the track: the other 51 upgrades, prismatics mostly late
+  (Apotheosis last); the other 10 units, weakest first by real players' rows
+  (telemetry 2026-11-01, win rate of rows holding the unit and take rate:
+  Skirmisher 3, Lancer 8, Medic 13, Bulwark 18, Berserker 23, Herald 29,
+  Beacon 35, Squire 41 (Knights come with it), Acolyte 48, Sentinel 56, last
+  at the user's call); and the Kawaii (6) and Bloody (16) styles. Level n to
+  n+1 costs `xpToNext` = 150 + 15(n−1), so the top is 38,745 XP (was 10,440
+  at 30 levels).
+- **Units** gate the player's own unit offers (`rollOffer`'s `keys`, from
+  `unlockedUnits()`); the CPU deals from all of them. **Unit upgrades wait for
+  their unit** (`NEEDS`): `unlockLevel` is the later of the upgrade's own
+  level and its unit's, so a starter like Adrenaline isn't dealt until the
+  Berserker is claimed, and the track places each such upgrade after its unit.
+- **Styles**: a locked style is listed as "🔒 Lv N" in Style and can't be
+  picked; App plays a chosen style the player no longer has (a guest, another
+  account) as Normal, keeping the setting.
 - **XP** (`matchXp`): every finished match, 60 for a loss and 150 for a win,
   times starting health / 200 (the user asked for more XP with more starting
   health), at least 10, at most `MAX_MATCH_XP` 750. CPU and online alike; not
@@ -1328,26 +1349,35 @@ earns XP, levels unlock upgrades.
   rules before shipping**: until then the write is refused and XP stays
   pending on the device (nothing is lost).
 - **UI:** ⭐ level chip top-left of the title (mirrors the account chip),
-  opening the track (`ProgressPanel`: every level and its rewards, ✓
-  unlocked or 🔒 locked, and a Sign in prompt for guests). The Codex marks
-  locked upgrades "🔒 Lv N" and fades them.
+  opening the track (`ProgressPanel`: every level and its reward with what
+  it does (`RewardCard`, from `rewardInfo`), ✓ unlocked or 🔒 locked, and a
+  Sign in prompt for guests). The Codex marks locked upgrades and units
+  "🔒 Lv N" and fades them. **Motion** (feedback 2026-10-30): opening the
+  track fills the bar from the XP it showed last time on this device
+  (`duel-deck:xp-seen`, from empty after a level up) and says "+N XP";
+  claiming pops each claimed level's reward in, one after another, and
+  stamps its ✓ (transform/opacity; a fade under reduced motion). The XP
+  bars are `scaleX` transforms, not widths.
 - **Claiming** (2026-10-24, the user's call): reaching a level doesn't
   unlock its upgrades; the player claims them on the track (Claim on a level,
   which takes the levels before it too, or Claim all). Only claimed upgrades
   are dealt (`unlockedLevel` = the claimed level). The account stores the
   highest level claimed, `users/<uid>/duel-deck/claimed` (absent = 1), and the
-  rules accept a claim only upward, up to 30, and only to a level the stored
+  rules accept a claim only upward, up to 64 (`MAX_LEVEL`), and only to a level the stored
   `xp` has reached (a closed form of `xpToNext`'s sum, which `pnpm upgrades`
   checks against the track, so change both together). XP still waiting to
   reach the server can't be claimed yet (the level's button waits). While
   any wait, the ⭐ chip carries a red badge with the count
   (`ProgressState.newUpgrades`), the result screen lists them as "Ready to
   claim" with a link, and the Codex tags them "⭐ Claim".
-- `pnpm upgrades` checks the track: every offered upgrade is a starter or on
-  it exactly once, every level unlocks something, each rarity has at least
-  4 starters, a starter-only player is never dealt (or rerolled into) a
-  locked upgrade, and the XP rules. **A new upgrade must be added to
-  `STARTER` or `TRACK`**, or the check fails.
+- `pnpm upgrades` checks the track: every offered upgrade and unit is a
+  starter or on it exactly once, every level unlocks one thing, one starting
+  unit per class, Sentinel the last unit, both styles on it, no unit's
+  upgrade before its unit, each rarity has at least 4 starters, a
+  starter-only player is never dealt (or rerolled into) a locked upgrade or
+  unit, the database rules' claim cap equals `MAX_LEVEL`, and the XP rules.
+  **A new upgrade or unit must be added to the starters or `TRACK`** (and a
+  unit's upgrades to `NEEDS`), or the check fails.
 
 ### Sound (game/sound.ts)
 Effects are synthesized, no audio files (`?sounds` on the dev server plays every one). The
