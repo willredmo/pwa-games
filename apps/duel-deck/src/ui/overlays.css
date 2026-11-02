@@ -437,6 +437,7 @@
 
 /* A repeatable upgrade held more than once. */
 .upgrade-count { color: #ffd36b; font-weight: 800; }
+.tag.tag--stacks { color: #ffd36b; border-color: rgba(240, 180, 41, 0.55); background: rgba(240, 180, 41, 0.1); }
 
 /* --- Units upgraded (permanent gains between rounds) --- */
 /* Over the board, taps pass through; Game removes it after --hold. */
