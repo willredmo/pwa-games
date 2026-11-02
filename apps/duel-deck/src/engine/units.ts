@@ -143,10 +143,10 @@ export const UNITS: Record<string, UnitStats> = {
       name: "Retaliate",
       trigger: "When hit",
       text:
-        "Every time it's hit, it deals 40% of that blow's damage straight back to the attacker, rounded down: a 10-damage hit sends 4 back. Counted before its own armour or shields, so the harder something hits it, the more it hurts itself.",
-      scaling: "+5% per level (85% at level 10: a 10-damage hit sends 8 back)",
+        "Every time it's hit, it deals 20% of that blow's damage straight back to the attacker, rounded down: a 10-damage hit sends 2 back. Counted before its own armour or shields, so the harder something hits it, the more it hurts itself.",
+      scaling: "+2.5% per level (42.5% at level 10: a 10-damage hit sends 4 back)",
     },
-    mastery: "Sends back 100% of every blow: a 10-damage hit sends all 10 back.",
+    mastery: "Sends back 50% of every blow: a 10-damage hit sends 5 back.",
   },
   // Carries other supports forward: whatever reaches it goes on to the unit
   // ahead, stronger. Useless alone; the point is a chain from the back.
@@ -355,8 +355,11 @@ export function innateTraits(key: string, merges = 0, cap = MAX_LEVEL): UnitTrai
       return master ? { barrier, barrierReach: 1 } : { barrier };
     }
     case "sentinel":
-      // Percent of each blow: 40% at level 1, 85% at 10, 100% mastered.
-      return { reflect: master ? 100 : 40 + 5 * m };
+      // Percent of each blow: 20% at level 1, 42.5% at 10, 50% mastered.
+      // Halved 2026-11-02 (feedback): 40% +5%, 100% mastered, fronting a
+      // Beacon/Acolyte row won 65/75/91% of rounds at levels 5/8/10 against
+      // random rows (a Guard there 48/50/66%); halved 46/62/77%.
+      return { reflect: master ? 50 : 20 + 2.5 * m };
     case "beacon":
       // Percent: ×1.5 at level 1, ×2.4 at 10, ×3 mastered. In a chain each adds
       // its bonus over ×1, up to RELAY_CAP (combat.ts).

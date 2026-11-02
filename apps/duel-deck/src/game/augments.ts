@@ -841,9 +841,10 @@ export const AUGMENTS: AugmentDef[] = [
     id: "vengeance",
     icon: "⚖️",
     name: "Vengeance",
-    description: "Sentinels send back 20% more of each blow (60% at level 1: a 10-damage hit sends 6 back).",
+    description: "Sentinels send back 10% more of each blow (30% at level 1: a 10-damage hit sends 3 back).",
     category: "class",
-    traits: (u) => (has(u, "sentinel") ? { reflect: 20 } : {}),
+    // Halved with Retaliate (2026-11-02); it was +20%.
+    traits: (u) => (has(u, "sentinel") ? { reflect: 10 } : {}),
   },
 
   // --- 1.7.0: more rares and epics (there were 38 commons to 5 epics) ---

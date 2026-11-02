@@ -67,8 +67,10 @@ interface TickCtx {
   round: RoundState;
   /** HP at the start of the tick, so Executioner ignores same-tick damage. */
   startHp: Map<string, number>;
-  /** Damage each unit dealt this tick, for Lifesteal. */
+  /** Damage each unit dealt this tick, for Lifesteal. Reflected damage isn't counted (`reflecting`). */
   dealt: Map<string, number>;
+  /** A reflected blow (Thorns, Retaliate) is landing: it isn't the reflector's own damage, so no lifesteal. */
+  reflecting: boolean;
   /** Follow-up blows (cleave, thorns) held back so they emit after the main ones. */
   after: (() => void)[];
   total: number;
@@ -178,7 +180,7 @@ function strike(
   target.hp -= damage;
 
   round.damageDealt[attacker.side] += damage;
-  dealt.set(attacker.id, (dealt.get(attacker.id) ?? 0) + damage);
+  if (!ctx.reflecting) dealt.set(attacker.id, (dealt.get(attacker.id) ?? 0) + damage);
   ctx.total += damage;
   if (hpBefore > 0 && target.hp <= 0) round.kills[attacker.side]++;
 
@@ -227,7 +229,7 @@ function strike(
   // Thorns: any hit reflects, but a reflected hit never reflects again.
   const thorns = target.traits?.thorns ?? 0;
   if (thorns > 0 && tag !== "thorns") {
-    ctx.after.push(() => strike(ctx, lane, target, attacker, thorns, "thorns"));
+    ctx.after.push(() => reflectBack(ctx, lane, target, attacker, thorns));
   }
   // Retaliate (Sentinel): a share of the blow's full strength goes back, so
   // the harder it's hit the more it returns. Same rule as thorns: never twice.
@@ -244,9 +246,23 @@ function strike(
           ctx.events.push({ type: "attack", lane, attacker: target.id, target: attacker.id, damage: 0, tag: "dodge", blocked: back });
           return;
         }
-        strike(ctx, lane, target, attacker, back, "thorns");
+        reflectBack(ctx, lane, target, attacker, back);
       });
     }
+  }
+}
+
+/**
+ * A reflected blow (Thorns, Retaliate), played as a thorns hit. Lifesteal
+ * ignores it (2026-11-02): with Blood moon a Sentinel healed off every blow
+ * it took. A Riposte is the dodger's own swing, so it still counts.
+ */
+function reflectBack(ctx: TickCtx, lane: number, from: Unit, to: Unit, damage: number): void {
+  ctx.reflecting = true;
+  try {
+    strike(ctx, lane, from, to, damage, "thorns");
+  } finally {
+    ctx.reflecting = false;
   }
 }
 
@@ -479,6 +495,7 @@ function mendHeals(ctx: TickCtx): void {
     after: [],
     total: 0,
     attempted: 0,
+    reflecting: false,
   };
 
   frontExchange(ctx, lanes);

@@ -18,6 +18,8 @@ export const PATCH_NOTES: Release[] = [
       "⭐ Progression goes to level 64, one unlock per level, and now unlocks units and the Kawaii and Bloody styles too. Everyone starts with Striker, Guard and Warden; Sentinel comes last.",
       "The progression track says what each unlock does, fills your XP bar from where you left it, and animates claiming.",
       "Skirmishers also dodge the first Retaliate each round, so a Sentinel can't hit them back with their own blow.",
+      "🛡️ Sentinel toned down: Retaliate sends back 20% of each blow (+2.5% a level, 50% at max level), half what it did, and Vengeance adds 10%.",
+      "Lifesteal and Blood moon no longer heal from damage a unit reflects (Thorns, Retaliate). A Riposte still counts.",
     ],
   },
   {

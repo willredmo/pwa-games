@@ -547,8 +547,8 @@ trait lines) says "the unit in front of it" for every support, explains the
 Beacon's bounce and gives the Sentinel's reflect with a 10-damage example.
 
 **Sentinel** (defense, pillar, 2/8), **Retaliate** (`reflect`, a percent):
-each blow it takes sends `floor(raw × reflect%)` back at the attacker, 40% +5%
-a level, 100% mastered. Based on the blow's full strength, before its own
+each blow it takes sends `floor(raw × reflect%)` back at the attacker, 20% +2.5%
+a level, 50% mastered (halved 2026-11-02, below). Based on the blow's full strength, before its own
 armour or shields, so it scales with the attacker's attack: the counter to a
 runaway hitter. Played as a thorns blow (never reflects again, so two
 Sentinels can't loop), labelled "Retaliate". Its own class tag (`sentinel`, not
@@ -559,6 +559,18 @@ also dodges the first Retaliate it meets each round, on top of its usual
 dodge (`RoundState.dodgedReflect`, checked where the reflect is queued). Its
 one dodge was normally spent on the Sentinel's own swing, so the Skirmisher
 took its own blow back, which read as a dodge that failed. `PROTOCOL` 16.
+**Retaliate halved; reflected damage feeds no lifesteal** (2026-11-02,
+feedback "very strong when paired with acolytes"): 20% +2.5% a level, 50%
+mastered (was 40% +5%, 100%), and Vengeance +10% (was +20%). Measured one
+round against random rows of the same level, a Sentinel fronting Beacon,
+Acolyte, Herald, Lancer won 65/75/91% at levels 5/8/10 (with Blood moon
+92/96/99); a Guard in its place 48/50/66. Capping each Retaliate (at 1× or
+2× its attack) or a 70% Mastery barely moved it: its value is many small
+reflections off a big health pool. After: 45/62/76 (Blood moon 70/85/93),
+Guard row 56/58/79. Full sim: Sentinel holders 49% → 46.8%. Reflected blows
+(Thorns, Retaliate) land through `reflectBack`, which sets `ctx.reflecting`
+so `dealt` (lifesteal) skips them; a Riposte is the dodger's own swing and
+still counts. `pnpm upgrades` checks both. `PROTOCOL` 17.
 
 **CPU arrangement** (`supportOrder` in match.ts): sorted by attack, supports
 sat at the back buffing each other. Now: the strongest fighter, every Beacon,

@@ -581,11 +581,11 @@ for (const cap of [8, 10, 12, 15]) {
 }
 {
   const s = setup(["sentinel"], [{ key: "striker", atk: 10, hp: 999 }], ["vengeance"]);
-  check("vengeance", "Sentinels reflect 60% at level 1", s.p[0].traits?.reflect === 60);
+  check("vengeance", "Sentinels reflect 30% at level 1", s.p[0].traits?.reflect === 30);
   const back = attacks(resolveRound(s.board)).find((a) => a.tag === "thorns" && a.attacker === s.p[0].id);
   // The Striker's first blow is 10 plus its Charge.
   const raw = 10 + (s.e[0].traits?.openingBonus ?? 0);
-  check("vengeance", "a hit sends 60% back", back?.damage === Math.floor(raw * 0.6), [raw, back?.damage]);
+  check("vengeance", "a hit sends 30% back", back?.damage === Math.floor(raw * 0.3), [raw, back?.damage]);
 }
 {
   // Evasion slips the first Retaliate each round, on top of the dodge it
@@ -740,6 +740,21 @@ const gain = (r: ReturnType<typeof landOn>, i: number) => ({
 {
   const s = setup(["guard", "striker"], ["guard"], ["blood-moon"]);
   check("blood-moon", "every unit heals a quarter", s.p.every((u) => u.traits?.lifesteal === 0.25));
+}
+{
+  // Reflected damage isn't the reflector's own: no lifesteal off Retaliate
+  // (2026-11-02, a Sentinel with Blood moon healed off every blow it took).
+  const s = setup([{ key: "sentinel", atk: 0, hp: 999 }], [{ key: "striker", atk: 20, hp: 999 }], ["blood-moon"]);
+  const r = resolveRound(s.board, { tickCap: 4 });
+  const reflected = attacks(r).filter((a) => a.tag === "thorns" && a.attacker === s.p[0].id);
+  const healed = heals(r).filter((h) => h.unit === s.p[0].id);
+  check("blood-moon", "a Sentinel doesn't heal off its Retaliate", reflected.some((a) => a.damage > 0) && healed.length === 0, [reflected.length, healed]);
+  // A Riposte is the dodger's own swing, so Lifesteal still counts it.
+  const k = setup([{ key: "skirmisher", atk: 0, hp: 99, merges: 4 }], [{ key: "striker", atk: 3, hp: 999 }], ["lifesteal"]);
+  k.p[0].hp = 50; // wounded, so a heal has room
+  const kr = resolveRound(k.board, { tickCap: 3 });
+  const riposte = attacks(kr).find((a) => a.tag === "thorns" && a.attacker === k.p[0].id);
+  check("lifesteal", "a Riposte still feeds Lifesteal", !!riposte && heals(kr).some((h) => h.unit === k.p[0].id), [riposte, heals(kr)]);
 }
 {
   const s = setup(["guard", "striker"], ["guard"], ["avalanche"]);
