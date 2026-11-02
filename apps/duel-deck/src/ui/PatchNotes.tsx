@@ -10,6 +10,14 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.10.1",
+    date: "Nov 1, 2026",
+    notes: [
+      "\"Units upgraded\" no longer needs a tap: after a round your units' new stats show on the board for a moment, then the next round starts by itself.",
+      "🦅 Legion buffed: +2 attack and +1 health to every unit (was +1 and +1).",
+    ],
+  },
+  {
     version: "1.10.0",
     date: "Oct 30, 2026",
     notes: [

@@ -552,13 +552,15 @@ export const AUGMENTS: AugmentDef[] = [
     id: "legion",
     icon: "🦅",
     name: "Legion",
-    description: "+1 attack and +1 health to every unit.",
+    description: "+2 attack and +1 health to every unit.",
     category: "global",
     rarity: "prismatic",
-    // Every unit again (1.8.0, the user's call). From 1.6 to 1.7 it was only
+    // +2/+1 since 2026-11-01 (the user asked for a buff: +1/+1 sat beside
+    // Golden age's +1/+4). Sim 12000 --aug=random: +1/+1 48.7%, +1/+2 52.3%,
+    // +2/+1 56.7%, +2/+2 64.5%; Golden age ~60-66%. Every unit again (1.8.0, the user's call). From 1.6 to 1.7 it was only
     // the row's most common class, after every unit measured 58% (as a
     // common) and 83% for real players.
-    effect: () => ({ atk: 1, hp: 1 }),
+    effect: () => ({ atk: 2, hp: 1 }),
   },
   {
     id: "champion",

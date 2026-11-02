@@ -388,7 +388,7 @@ for (const cap of [8, 10, 12, 15]) {
 {
   const row = ["striker", "guard", "medic", "sentinel", "berserker"];
   const d = row.map((_, i) => delta(row, ["guard"], ["legion"], i));
-  check("legion", "+1/+1 to every unit, whatever its class", d.every((x) => x.atk === 1 && x.hp === 1), d.map((x) => [x.atk, x.hp]));
+  check("legion", "+2/+1 to every unit, whatever its class", d.every((x) => x.atk === 2 && x.hp === 1), d.map((x) => [x.atk, x.hp]));
 }
 {
   const f = delta(["guard", "striker"], ["guard"], ["champion"], 0);

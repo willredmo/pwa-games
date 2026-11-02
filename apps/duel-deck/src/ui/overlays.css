@@ -434,7 +434,28 @@
 .round-stats__more { font-weight: 800; color: #f0e7c8; }
 
 /* --- Units upgraded (permanent gains between rounds) --- */
-.panel.panel--growth { max-width: 22rem; max-height: 86dvh; overflow-y: auto; }
+/* Over the board, taps pass through; Game removes it after --hold. */
+.growth-card {
+  position: absolute;
+  inset: 0;
+  z-index: 31;
+  display: grid;
+  place-items: center;
+  padding: 0.5rem;
+  pointer-events: none;
+  animation: growth-out 0.3s ease-in forwards;
+  animation-delay: calc(var(--hold, 2400ms) - 300ms);
+}
+@keyframes growth-out { to { opacity: 0; } }
+.panel.panel--growth { width: min(100%, 22rem); max-height: 100%; overflow: hidden; padding: 0.8rem 0.9rem; }
+@media (prefers-reduced-motion: no-preference) {
+  .growth-card .panel--growth { animation: growth-in 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.2) backwards; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .growth-card .panel--growth { animation: growth-fade 0.25s ease-out backwards; }
+}
+@keyframes growth-in { from { opacity: 0; transform: translateY(12px) scale(0.92); } }
+@keyframes growth-fade { from { opacity: 0; } }
 .panel--growth h2 { margin: 0 0 0.3rem; font-size: 1.1rem; }
 .growth-list { list-style: none; margin: 0.6rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
 .growth-row {

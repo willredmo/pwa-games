@@ -828,7 +828,10 @@ quarter, +1/+4, 2, +5/+10, in full, 10/25: everything 42–63% (Apotheosis
 fleece 42.2%, Skewer 43%) except Mirror image, 75% on n=126 (it needs an
 empty slot, which sim rows rarely have). Median match 22 rounds. Hard still
 beats Normal 88% (n=400). `PROTOCOL` 13.
-Then, at the user's call: **Legion** back to +1/+1 for every unit (the
+**Legion buffed to +2/+1** (2026-11-01, the user's call: +1/+1 sat beside
+Golden age's +1/+4): sim 56.7%, Golden age ~60-66% (+2/+2 measured 64.5%).
+`PROTOCOL` 15.
+Earlier, at the user's call: **Legion** back to +1/+1 for every unit (the
 most-common-class rule and `legionClass` are gone; it measured 46% as a
 prismatic), **Mixed formation** +2/+2 with 5+ types (was +1/+1, 47%).
 Sim after (6000): Legion 48.6%, Mixed formation 56.3%. Also new, gold:
@@ -868,11 +871,18 @@ gets First strike in the opening exchange and +3 on that blow (+4 measured
 
 ### Feedback features (2026-10-30)
 - **Units upgraded step:** permanent gains between rounds get their own
-  panel before the picks (`GrowthPanel`): Veteran and Fortify from
-  `settleRound` (its optional `grew` list), and pick-time ones (Last stand,
-  choose-a-unit upgrades) from diffing `permanentStats` (base + grant +
-  level) around the pick (`growthSince`). Closing it flashes each gain on
-  the board. Enemy gains aren't shown.
+  beat: Veteran and Fortify from `settleRound` (its optional `grew` list),
+  and pick-time ones (Last stand, choose-a-unit upgrades) from diffing
+  `permanentStats` (base + grant + level) around the pick (`growthSince`).
+  Enemy gains aren't shown. **No tap needed** (2026-11-01, feedback: the
+  first version was a dialog with "Got it" every round, which players found
+  too much): after the round-result banner the row stands back up, each gain
+  flashes on its unit and `GrowthCard` lists them over the board
+  (`showGrowth`; `pointer-events: none`), then the next round deals by
+  itself after `GROWTH_MS` (2.4 s, +0.5 s per further unit, at most 4 s; not
+  scaled by battle speed, it's reading time). A pick-time gain shows the
+  same card for the same time while picking carries on. Rounds with no gain
+  skip the beat.
 - **Supports leading the row** use their ability on themselves, as the
   Medic's Mend always did: Rally and Barrier land on the leader, and Lifebond
   becomes a shield the size of the gift (it keeps its health). An Aegis

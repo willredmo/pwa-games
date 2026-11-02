@@ -1120,20 +1120,16 @@ export function RoundStatsPanel({ round, stats, winner, cap, onClose }: {
 }
 
 /**
- * The "units upgraded" step: which of your units just gained permanent stats
- * (Veteran, Fortify, a choose-a-unit upgrade…) and from what, before the
- * round's picks. Gains are easy to miss as a number on the board.
+ * "Units upgraded": which of your units just gained permanent stats (Veteran,
+ * Fortify, a choose-a-unit upgrade…) and from what. Gains are easy to miss as
+ * a number on the board. A card over the board, not a dialog: it lets taps
+ * through and Game takes it down after `hold` ms, so there's nothing to close.
  */
-export function GrowthPanel({ rows, onClose }: { rows: { unit: Unit; gains: Growth[] }[]; onClose: () => void }) {
+export function GrowthCard({ rows, hold }: { rows: { unit: Unit; gains: Growth[] }[]; hold: number }) {
   return (
-    <div className="overlay" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()}>
-      <div
-        className="panel panel--center panel--growth"
-        role="dialog"
-        aria-labelledby="growth-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 id="growth-title">⬆ Units upgraded</h2>
+    <div className="growth-card" role="status" aria-live="polite" style={{ "--hold": `${hold}ms` } as React.CSSProperties}>
+      <div className="panel panel--growth">
+        <h2>⬆ Units upgraded</h2>
         <p className="panel__hint">Permanent, for the rest of the match.</p>
         <ul className="growth-list">
           {rows.map(({ unit, gains }, i) => (
@@ -1159,11 +1155,6 @@ export function GrowthPanel({ rows, onClose }: { rows: { unit: Unit; gains: Grow
             </li>
           ))}
         </ul>
-        <div className="confirm-actions">
-          <button className="primary-btn" onClick={onClose} autoFocus>
-            Got it
-          </button>
-        </div>
       </div>
     </div>
   );

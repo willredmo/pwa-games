@@ -612,7 +612,7 @@ const AUGMENT_SCORE: Record<string, number> = {
   ironclad: 47,
   "golden-fleece": 42,
   "mantis-shrimp": 58,
-  legion: 49,
+  legion: 57,
   "mixed-formation": 56,
   champion: 49,
   bastion: 50,

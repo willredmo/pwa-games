@@ -84,7 +84,7 @@ import {
   AugmentPanel,
   AugmentsView,
   ConfirmPanel,
-  GrowthPanel,
+  GrowthCard,
   HelpPanel,
   RoundStatsPanel,
   ResultPanel,
@@ -163,6 +163,11 @@ const ENDURE_DELAY_MS = 280;
 const ENDURE_AUGMENTS = ["phoenix", "vanguards-vow", "undying"];
 /** Pause on the round-result banner before the next round deals. */
 const RESULT_MS = 1500;
+/** How long the units-upgraded card stays up: reading time, so not scaled by battle speed. */
+const GROWTH_MS = 2400;
+/** More for each further unit that grew, up to `GROWTH_MAX_MS`. */
+const GROWTH_PER_ROW_MS = 500;
+const GROWTH_MAX_MS = 4000;
 /** Matches the phone breakpoint in App.css. */
 const COMPACT_QUERY = "(max-width: 44.99rem)";
 const DIFFICULTY_LABEL: Record<Difficulty, string> = { easy: "Easy", normal: "Normal", hard: "Hard" };
@@ -449,11 +454,11 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   const [phase, setPhase] = useState<Phase>(saved?.augmentPending ? "augment" : "pick");
   /**
    * Permanent gains your units just got (Veteran, Fortify, a choose-a-unit
-   * upgrade), shown as their own step before the picks. `pendingGrowth`
-   * holds a round's gains from its end until the next round deals.
+   * upgrade), shown on a card over the board that goes by itself
+   * (`showGrowth`). A round's gains get their own beat between its end and
+   * the next round's picks.
    */
-  const [growth, setGrowth] = useState<Growth[] | null>(null);
-  const pendingGrowth = useRef<Growth[]>([]);
+  const [growth, setGrowth] = useState<{ list: Growth[]; nonce: number } | null>(null);
   // Calm music while planning, the driving loop in battle (a replay too), none on the result screen.
   useEffect(() => setMusic(phase === "battle" ? "battle" : phase === "over" ? null : "plan"), [phase]);
   const [result, setResult] = useState<RoundResult | null>(null);
@@ -639,6 +644,30 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     if (a && c) {
       fxRef.current.add({ kind, x: a.x, y: a.y, size: a.size, side: from.side, tx: c.x, ty: c.y }, performance.now());
     }
+  };
+
+  /** How long the units-upgraded card stays up for these gains. */
+  const growthHold = (list: Growth[]) =>
+    Math.min(GROWTH_MAX_MS, GROWTH_MS + (new Set(list.map((g) => g.unit)).size - 1) * GROWTH_PER_ROW_MS);
+
+  const growthTimer = useRef(0);
+  useEffect(() => () => window.clearTimeout(growthTimer.current), []);
+  /**
+   * Show permanent gains: each one flashes on its unit and the card lists
+   * them, then the card goes by itself (nothing to tap). Returns how long it stays.
+   */
+  const showGrowth = (b: Board, list: Growth[]) => {
+    for (const g of list) {
+      const cell = findUnitCell(b, g.unit);
+      if (!cell) continue;
+      fxAt(b, cell, "merge");
+      fxAt(b, cell, "stat-gain", { text: [g.levels ? `+${g.levels} Lv` : "", statText(g.atk, g.hp)].filter(Boolean).join(" ") });
+    }
+    const hold = growthHold(list);
+    setGrowth((cur) => ({ list, nonce: (cur?.nonce ?? 0) + 1 }));
+    window.clearTimeout(growthTimer.current);
+    growthTimer.current = window.setTimeout(() => setGrowth(null), hold);
+    return hold;
   };
 
   /**
@@ -1138,8 +1167,6 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       const syn = synergyOf(sideUnits(next, PLAYER), capacityOf(next, PLAYER));
       const synNote = syn ? ` · ${SYNERGIES[syn].icon} ${SYNERGIES[syn].name}!` : "";
       showBanner(augs.length > 0 ? `Round ${roundNum} · Upgrade!${synNote}` : `Round ${roundNum}${synNote}`, "neutral");
-      setGrowth(pendingGrowth.current.length > 0 ? pendingGrowth.current : null);
-      pendingGrowth.current = [];
       setPhase(augs.length > 0 ? "augment" : "pick");
     },
     [refreshed, showBanner],
@@ -1827,7 +1854,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     if (unitId) applyTarget(playerAug.current, id, next, PLAYER, unitId);
     const def = getAugment(id);
     const grew = growthSince(before, permanentStats(sideUnits(next, PLAYER), playerAug.current), def?.name ?? id, def?.icon ?? "⬆");
-    if (grew.length > 0) setGrowth(grew);
+    if (grew.length > 0) showGrowth(next, grew);
 
     // Against the CPU, it upgrades now too. Online, the opponent is choosing
     // at the same time on their own device; their pick reaches us with their
@@ -1896,7 +1923,6 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       }
       const grew: Growth[] = [];
       const healed = settleRound(result, PLAYER, playerAug.current, committed, grew);
-      pendingGrowth.current = grew;
       const enemyHealed = settleRound(result, ENEMY, enemyAug.current, committed);
       recordRound(statsRef.current, result, committed, PLAYER, healed);
       const log = roundLog.current;
@@ -1974,7 +2000,16 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           // carrying forward only the HP pools that combat changed.
           const respawned = cloneBoard(committedRef.current ?? result.board);
           respawned.hp = { ...result.board.hp };
-          startRound(respawned, round + 1);
+          if (grew.length === 0) {
+            startRound(respawned, round + 1);
+            return;
+          }
+          // Units upgraded: the row stands back up and its gains show on a
+          // card, then the next round deals by itself.
+          posesRef.current = {};
+          setBoard(respawned);
+          const hold = showGrowth(respawned, grew);
+          timer = window.setTimeout(() => startRound(respawned, round + 1), hold);
         }
       }, scaled(RESULT_MS) + (boom ? scaled(EXPLOSION_DELAY_MS) + EXPLOSION_MS : 0) + (blast ? BAR_BLAST_DELAY_MS + HP_BAR_BLAST_MS : 0));
     };
@@ -2329,16 +2364,6 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       return gains.length > 0 ? [{ unit, gains }] : [];
     });
 
-  /** Close the units-upgraded step, flashing each gain on the board as it goes. */
-  const closeGrowth = () => {
-    for (const g of growth ?? []) {
-      const cell = findUnitCell(board, g.unit);
-      if (!cell) continue;
-      fxAt(board, cell, "merge");
-      fxAt(board, cell, "stat-gain", { text: [g.levels ? `+${g.levels} Lv` : "", statText(g.atk, g.hp)].filter(Boolean).join(" ") });
-    }
-    setGrowth(null);
-  };
 
   const newMatch = () => {
     if (!online && !tutorial) clearMatch();
@@ -2480,6 +2505,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           onContextMenu={(e) => e.preventDefault()}
         />
         <RoundBanner message={banner.message} tone={banner.tone} nonce={banner.nonce} sub={banner.sub} />
+        {growth && <GrowthCard key={growth.nonce} rows={growthRows(growth.list)} hold={growthHold(growth.list)} />}
         {online && phase !== "over" && <EmoteBar session={online} />}
         {barBlast && <HpBarBlast selector=".hpbar--enemy" side="enemy" />}
         {tutorial && phase !== "over" && (
@@ -2493,10 +2519,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
             }}
           />
         )}
-        {growth && (phase === "pick" || phase === "augment") && (
-          <GrowthPanel rows={growthRows(growth)} onClose={closeGrowth} />
-        )}
-        {phase === "augment" && !growth && (
+        {phase === "augment" && (
           <AugmentPanel
             round={round}
             offers={augOffers}
