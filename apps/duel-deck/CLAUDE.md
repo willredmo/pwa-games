@@ -1421,19 +1421,35 @@ builds it from the UTC date alone (FNV-1a + mulberry32; the engine has no
 randomness), so every device gets the same challenge and every answer the
 same fight, for as long as the build's rules and upgrade pool are the same:
 **a balance change can change a day's challenge**. A day has 7 units with
-levels, 4 upgrades (pick 2; `CHALLENGE_UPGRADES`: no choose-a-unit,
+levels, 4 upgrades (take 2; `CHALLENGE_UPGRADES`: no choose-a-unit,
 strategy or match-history ones), 5 slots, and an enemy row with 1–2
 upgrades. Progression doesn't apply: everything is available. Difficulty
-(easy/medium/hard, from the seed) is measured: 120 random answers through
-the real engine, and the enemy's levels nudged until the winning share is in
-the band (30–65%, 10–30%, 2–10%; never a day with no sampled win). ~10–100 ms
-a day on a desktop, cached per page. The screen (from the title's 📅 button)
-shows the enemy, your upgrades and units, your row (↑ ↓ ✕), and past days
-(30); Battle mounts a `Game` with `challenge` set, which plays that one round
-(`useLayoutEffect` straight into `playRound`), then `onDone(won)`; App
-records the try (`duel-deck:challenges`: tries, first win and in how many)
-and reopens the screen with the result. Never saved, logged or awarded XP.
-`pnpm upgrades` checks a dozen days build full and winnable, and stay the same.
+(easy/medium/hard, the seed's first draw, so `difficultyOf` reads it without
+building the day) is measured: 120 random answers through the real engine,
+and the enemy's levels nudged until the winning share is in the band
+(30–65%, 10–30%, 2–10%; never a day with no sampled win). ~10–100 ms a day
+on a desktop, cached per page.
+
+**Played on the normal board** (the user's call, 2026-11-02: the first
+version's own list UI looked too unlike the game). `Game` takes
+`challenge: { ch, onDone }`: the board starts with the enemy row placed
+(`challengeRound` with an empty answer), the phase is "augment" with the
+day's 4 cards, taken one after another (`pickUpgrades` choices, no rerolls;
+the panel is keyed per choice so it resets, and its `hint` replaces the
+rarity line), then "pick" with the 7 units as the offer (cards show their
+level and stats via `chPool`; two rows, `.hand--many`) and `slots` picks.
+A card always places (`grownUnit` at its level): `dropActionFor` never
+merges or replaces for a challenge, and there's no reroll, freeze or
+picks-left confirm. Placed units still reorder and merge as usual. Battle
+fights the placed enemy (no `aiCommit`), and `finish` hands `onDone(won)`
+back to App, which records the try and reopens the screen.
+
+**The screen** (title's 📅 button): a month calendar of the last
+`PAST_DAYS` (90), each day dotted by difficulty, outlined once tried and
+green with a ✓ once beaten (`duel-deck:challenges` on this device: tries,
+first win and in how many), and the chosen day's enemy, status and Play.
+Never saved, logged or awarded XP. `pnpm upgrades` checks a dozen days build
+full and winnable, and stay the same.
 
 ### Sound (game/sound.ts)
 Effects are synthesized, no audio files (`?sounds` on the dev server plays every one). The

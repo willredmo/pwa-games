@@ -20,7 +20,7 @@ import { startAccount, useAccount, useUsername } from "./online/account";
 import { AccountPanel } from "./ui/Account";
 import { ProgressPanel } from "./ui/Progress";
 import { ChallengeScreen } from "./ui/Challenge";
-import { challengeRound, dailyChallenge, dayKey, loadResults, recordTry, type ChallengeAnswer } from "./game/challenge";
+import { dailyChallenge, dayKey, loadResults, recordTry } from "./game/challenge";
 import { useProgress } from "./online/progress";
 import { styleUnlockLevel } from "./game/progression";
 import "./App.css";
@@ -45,8 +45,8 @@ interface Run {
   online?: Session;
   /** The first-match tutorial (vs Easy, never saved). */
   tutorial?: boolean;
-  /** A daily challenge's one round. */
-  challenge?: { day: string; answer: ChallengeAnswer; round: ReturnType<typeof challengeRound> };
+  /** A daily challenge (its UTC day). */
+  challenge?: { day: string };
 }
 
 /** A code from a shared invite link (?join=CODE), taken once at startup. */
@@ -92,7 +92,7 @@ export default function App() {
   const [accountOpen, setAccountOpen] = useState(googleRedirectPending);
   const [progressOpen, setProgressOpen] = useState(false);
   /** The daily challenge screen: which day, the last answer and how it went. */
-  const [challengeView, setChallengeView] = useState<{ day: string; answer?: ChallengeAnswer; last?: boolean } | null>(null);
+  const [challengeView, setChallengeView] = useState<{ day: string; last?: boolean } | null>(null);
 
   // Follow the account only if this device signed in before; a guest loads nothing.
   useEffect(startAccount, []);
@@ -140,12 +140,11 @@ export default function App() {
     setScreen("game");
   };
 
-  /** Play an answer to a daily challenge: one round in a Game, then back to the challenge. */
-  const startChallenge = (day: string, answer: ChallengeAnswer) => {
+  /** Play a day's challenge in a Game (its picks on the normal board), then back to the calendar. */
+  const startChallenge = (day: string) => {
     if (settings.sound) unlockSound();
-    const round = challengeRound(dailyChallenge(day), answer);
-    setChallengeView({ day, answer });
-    setRun({ id: ++runId.n, resume: null, difficulty: "normal", challenge: { day, answer, round } });
+    setChallengeView({ day });
+    setRun({ id: ++runId.n, resume: null, difficulty: "normal", challenge: { day } });
     setScreen("game");
   };
 
@@ -225,11 +224,11 @@ export default function App() {
           tutorial={run.tutorial}
           challenge={
             run.challenge && {
-              ...run.challenge.round,
+              ch: dailyChallenge(run.challenge.day),
               onDone: (won) => {
                 const c = run.challenge!;
                 recordTry(c.day, won);
-                setChallengeView({ day: c.day, answer: c.answer, last: won });
+                setChallengeView({ day: c.day, last: won });
                 setRun(null);
                 setScreen("title");
               },

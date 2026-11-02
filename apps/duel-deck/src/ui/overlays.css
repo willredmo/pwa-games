@@ -437,6 +437,8 @@
 
 /* A repeatable upgrade held more than once. */
 .upgrade-count { color: #ffd36b; font-weight: 800; }
+.aug-card__again { font-size: 0.68rem; font-weight: 800; color: #ffd36b; }
+.tag.tag--stacks { text-transform: none; letter-spacing: 0; }
 .tag.tag--stacks { color: #ffd36b; border-color: rgba(240, 180, 41, 0.55); background: rgba(240, 180, 41, 0.1); }
 
 /* --- Units upgraded (permanent gains between rounds) --- */
@@ -1190,86 +1192,64 @@ button.unit-entry__aug:hover, button.unit-entry__aug:focus-visible { border-colo
 .unit-entry--locked .unit-entry__portrait, .unit-entry--locked .unit-entry__body > :not(.unit-entry__head) { opacity: 0.6; }
 
 /* --- Daily challenge (ui/Challenge.tsx) --- */
-.challenge { width: min(100%, 34rem); max-height: min(100%, 52rem); overflow-y: auto; }
-.challenge__day { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
-.challenge__day select { font: inherit; font-weight: 700; padding: 0.3rem 0.5rem; border-radius: 8px; background: #1f1b2e; color: inherit; border: 1px solid #3a3454; }
-.challenge__level { font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; padding: 0.15rem 0.5rem; border-radius: 999px; border: 1px solid; }
-.challenge__level--easy { color: #7ee2a0; border-color: #3f8f5c; }
-.challenge__level--medium { color: #ffd36b; border-color: #a7842f; }
-.challenge__level--hard { color: #ff8577; border-color: #a5463c; }
-.challenge__status { font-size: 0.8rem; color: var(--muted); }
-.challenge__last { margin: 0.2rem 0 0.4rem; padding: 0.5rem 0.7rem; border-radius: 10px; font-weight: 700; font-size: 0.86rem; }
-.challenge__last--won { background: rgba(126, 226, 160, 0.12); border: 1px solid rgba(126, 226, 160, 0.45); }
-.challenge__last--lost { background: rgba(255, 133, 119, 0.1); border: 1px solid rgba(255, 133, 119, 0.4); }
-.challenge__h { margin: 0.8rem 0 0.35rem; font-size: 0.9rem; }
-.challenge__h small { color: var(--muted); font-weight: 600; margin-left: 0.3rem; }
-.challenge-row { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; }
-.challenge-unit {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.2rem 0.5rem 0.2rem 0.25rem;
-  border-radius: 10px;
-  background: #1a1727;
-  border: 1px solid #2c2742;
-}
-.challenge-row--enemy .challenge-unit { border-color: rgba(255, 133, 119, 0.3); }
-.challenge-row:not(.challenge-row--enemy) .challenge-unit { border-color: rgba(79, 155, 255, 0.35); }
-.challenge-unit__name { font-weight: 700; font-size: 0.86rem; }
-.challenge-unit__name small { color: var(--muted); font-weight: 600; }
-.challenge-unit__stats { font-size: 0.8rem; white-space: nowrap; }
-.challenge-unit__moves { display: flex; gap: 0.2rem; }
-.challenge-unit__moves button {
+.challenge { width: min(100%, 26rem); max-height: min(100%, 48rem); overflow-y: auto; }
+.cal { margin: 0.4rem 0 0.8rem; }
+.cal__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.35rem; }
+.cal__month { font-weight: 800; }
+.cal__nav {
   font: inherit;
-  width: 1.9rem;
-  height: 1.9rem;
+  font-size: 1.2rem;
+  width: 2.2rem;
+  height: 2.2rem;
   border-radius: 8px;
   border: 1px solid #3a3454;
   background: #1f1b2e;
   color: inherit;
   cursor: pointer;
 }
-.challenge-unit__moves button:disabled { opacity: 0.35; cursor: default; }
-.challenge__ups { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.35rem; }
-.challenge__ups .result-upgrade { animation: none; font-size: 0.74rem; }
-.challenge__upgrades { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 0.35rem; }
-.challenge-up {
+.cal__nav:disabled { opacity: 0.3; cursor: default; }
+.cal__grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.25rem; }
+.cal__wd { text-align: center; font-size: 0.66rem; font-weight: 800; color: var(--muted); padding-bottom: 0.1rem; }
+.cal__day {
   font: inherit;
   color: inherit;
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  padding: 0.45rem 0.6rem;
-  border-radius: 10px;
-  background: #1a1727;
-  border: 1px solid #3a3454;
-  cursor: pointer;
-}
-.challenge-up--gold { border-color: rgba(226, 178, 74, 0.6); }
-.challenge-up--prismatic { border-color: rgba(178, 110, 255, 0.6); }
-.challenge-up--on { background: rgba(240, 180, 41, 0.14); border-color: #f0b429; box-shadow: 0 0 0 1px rgba(240, 180, 41, 0.4); }
-.challenge-up__name { font-weight: 800; font-size: 0.84rem; }
-.challenge-up__desc { font-size: 0.74rem; color: #b9b3c9; line-height: 1.3; }
-.challenge__pool { display: grid; grid-template-columns: repeat(auto-fill, minmax(4.6rem, 1fr)); gap: 0.35rem; }
-.challenge-card {
-  font: inherit;
-  color: inherit;
+  aspect-ratio: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.1rem;
-  padding: 0.35rem 0.2rem;
-  border-radius: 10px;
-  background: #1a1727;
+  justify-content: center;
+  gap: 0.05rem;
+  border-radius: 9px;
   border: 1px solid #3a3454;
+  background: #1f1b2e;
   cursor: pointer;
+  padding: 0;
 }
-.challenge-card--on { background: rgba(79, 155, 255, 0.16); border-color: #4f9bff; }
-.challenge-card:disabled { opacity: 0.45; cursor: default; }
-.challenge-card__name { font-weight: 700; font-size: 0.72rem; }
-.challenge-card__lv { font-size: 0.64rem; color: var(--muted); }
-.challenge-card__stats { font-size: 0.68rem; }
-.challenge__go { position: sticky; bottom: 0; padding-top: 0.6rem; background: linear-gradient(rgba(39, 35, 56, 0), #272338 35%); }
-.challenge__go .primary-btn { width: 100%; }
+.cal__day:disabled { opacity: 0.25; cursor: default; border-color: transparent; background: transparent; }
+.cal__num { font-weight: 800; font-size: 0.85rem; line-height: 1; }
+.cal__mark { font-size: 0.85rem; line-height: 1; font-weight: 900; }
+.cal__day--easy .cal__mark, .cal__key--easy { color: #7ee2a0; }
+.cal__day--medium .cal__mark, .cal__key--medium { color: #ffd36b; }
+.cal__day--hard .cal__mark, .cal__key--hard { color: #ff8577; }
+.cal__day--tried { border-color: #5a527a; }
+.cal__day--done { background: rgba(126, 226, 160, 0.16); border-color: rgba(126, 226, 160, 0.6); }
+.cal__day--done .cal__mark, .cal__key--done { color: #7ee2a0; }
+.cal__day--today .cal__num { text-decoration: underline; text-underline-offset: 3px; }
+.cal__day--on { box-shadow: 0 0 0 2px #f0b429; border-color: #f0b429; }
+.cal__legend { display: flex; flex-wrap: wrap; gap: 0.7rem; margin: 0.45rem 0 0; font-size: 0.72rem; font-weight: 700; }
+.challenge__pick { padding: 0.7rem; border-radius: 12px; background: #1f1b2e; border: 1px solid #3a3454; display: grid; gap: 0.5rem; }
+.challenge__day { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.challenge__level { font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; padding: 0.15rem 0.5rem; border-radius: 999px; border: 1px solid; }
+.challenge__level--easy { color: #7ee2a0; border-color: #3f8f5c; }
+.challenge__level--medium { color: #ffd36b; border-color: #a7842f; }
+.challenge__level--hard { color: #ff8577; border-color: #a5463c; }
+.challenge__status { font-size: 0.8rem; color: var(--muted); }
+.challenge__status--done { color: #7ee2a0; font-weight: 800; }
+.challenge__last { margin: 0; padding: 0.5rem 0.7rem; border-radius: 10px; font-weight: 700; font-size: 0.86rem; }
+.challenge__last--won { background: rgba(126, 226, 160, 0.12); border: 1px solid rgba(126, 226, 160, 0.45); }
+.challenge__last--lost { background: rgba(255, 133, 119, 0.1); border: 1px solid rgba(255, 133, 119, 0.4); }
+.challenge__enemy { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+.challenge__foe { display: flex; flex-direction: column; align-items: center; font-size: 0.64rem; color: var(--muted); }
+.challenge__ups { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.challenge__ups .result-upgrade { animation: none; font-size: 0.74rem; }
+.challenge__play { width: 100%; }

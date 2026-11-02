@@ -54,7 +54,7 @@ export const POOL_UPGRADES = 4;
 export const PICK_UPGRADES = 2;
 export const SLOTS = 5;
 /** How many past days can be played (today included). */
-export const PAST_DAYS = 30;
+export const PAST_DAYS = 90;
 
 /** Share of random answers that should win, per difficulty. */
 const BANDS: Record<ChallengeLevel, [number, number]> = {
@@ -154,14 +154,20 @@ function winShareOf(ch: Challenge, seed: string): number {
   return won / SAMPLES;
 }
 
+const LEVELS = ["easy", "medium", "hard"] as const;
+const seedOf = (day: string) => `duel-deck:challenge:${day}`;
+
+/** A day's difficulty without building it (the seed's first draw), for the calendar. */
+export const difficultyOf = (day: string): ChallengeLevel => pick(rng(seedOf(day)), LEVELS);
+
 const cache = new Map<string, Challenge>();
 
 /** The challenge for a day. Deterministic: every device gets the same one. */
 export function dailyChallenge(day: string): Challenge {
   const hit = cache.get(day);
   if (hit) return hit;
-  const r = rng(`duel-deck:challenge:${day}`);
-  const difficulty = pick(r, ["easy", "medium", "hard"] as const);
+  const r = rng(seedOf(day));
+  const difficulty = pick(r, LEVELS);
   const base = 3 + Math.floor(r() * 4); // the pool's levels: 3 to 6
   const units: ChallengeUnit[] = Array.from({ length: POOL_UNITS }, () => ({
     key: pick(r, OFFER_KEYS),

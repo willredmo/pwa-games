@@ -116,6 +116,7 @@ import { UpdatePrompt } from "./UpdatePrompt";
 import { displayName, isKawaii, kawaiiName, uwu, uwuWords } from "../game/kawaii";
 import { MenuPanel } from "./MenuPanel";
 import { awardMatch, unlockedUnits, unlockedUpgrades, type XpAward } from "../online/progress";
+import { challengeRound, grownUnit, type Challenge } from "../game/challenge";
 import { SidePanels } from "./SidePanels";
 
 // Battle playback pacing. Each tick is three beats: wind-up (lunge toward the
@@ -384,10 +385,13 @@ export interface GameProps {
   /** Open the progression track (from the result screen's XP bar). */
   onProgress?: () => void;
   /**
-   * A daily challenge: play this one round (both rows built, upgrades
-   * applied) and report the result. Never saved, logged or awarded XP.
+   * A daily challenge: one round on the normal board. The enemy row starts
+   * placed; you take the day's upgrades (`pickUpgrades` choices from its
+   * cards, no rerolls), then place the day's units (the offer, at their
+   * levels; up to `slots` picks, no merging a card in, no rerolls or freezing)
+   * and Battle. Reports the result. Never saved, logged or awarded XP.
    */
-  challenge?: { board: Board; player: AugmentState; enemy: AugmentState; onDone: (won: boolean) => void };
+  challenge?: { ch: Challenge; onDone: (won: boolean) => void };
 }
 
 export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, sound, onSound, music, onMusic, look, onLook, battleLog, onBattleLog, onExit, online, tutorial, rules: startRules, onRematch, onFeedback, onProgress, challenge }: GameProps) {
@@ -395,17 +399,28 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
 
   /** The match being resumed, if any; resuming always lands in the pick phase. */
   const [saved] = useState(() => resume);
+  // A daily challenge: its enemy row placed (with its upgrades), yours empty.
+  const challengeRef = useRef(challenge);
+  const [chStart] = useState(() => (challenge ? challengeRound(challenge.ch, { row: [], upgrades: [] }) : null));
+  /** The challenge's units as they'll land, for the offer cards' stats. */
+  const chPool = useMemo(() => challenge?.ch.units.map((u) => grownUnit(u, PLAYER)) ?? null, [challenge]);
   // Online, both devices build the board from the room's settings, so they agree.
   const [board, setBoard] = useState<Board>(
-    () => saved?.board ?? (challenge ? cloneBoard(challenge.board) : newBoard(online ? (online.rules ?? {}) : tutorial ? {} : (startRules ?? {}))),
+    () => saved?.board ?? (chStart ? cloneBoard(chStart.board) : newBoard(online ? (online.rules ?? {}) : tutorial ? {} : (startRules ?? {}))),
   );
   /** The match's settings, fixed for its whole length (they ride on the board). */
   const rules = rulesOf(board);
   const [round, setRound] = useState(saved?.round ?? 1);
   const [offer, setOffer] = useState<string[]>(
-    () => saved?.offer ?? (tutorial ? TUTORIAL_OFFERS[1].slice() : rollOffer(OFFER_COUNT, saved?.player, unlockedUnits())),
+    () =>
+      saved?.offer ??
+      (challenge
+        ? challenge.ch.units.map((u) => u.key)
+        : tutorial
+          ? TUTORIAL_OFFERS[1].slice()
+          : rollOffer(OFFER_COUNT, saved?.player, unlockedUnits())),
   );
-  const [picksLeft, setPicksLeft] = useState(PICK_COUNT);
+  const [picksLeft, setPicksLeft] = useState(challenge ? challenge.ch.slots : PICK_COUNT);
   /** Click-selected and awaiting a destination click. Mirrors `drag`. */
   const [selected, setSelected] = useState<Grab | null>(null);
   /** Offer slots already taken this round — each of the 5 is single-use. */
@@ -456,7 +471,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   });
   /** The win's slow-motion HP-bar explosion is playing (and the bar stays gone). */
   const [barBlast, setBarBlast] = useState(false);
-  const [phase, setPhase] = useState<Phase>(saved?.augmentPending ? "augment" : "pick");
+  const [phase, setPhase] = useState<Phase>(saved?.augmentPending || challenge ? "augment" : "pick");
   /**
    * Permanent gains your units just got (Veteran, Fortify, a choose-a-unit
    * upgrade), shown on a card over the board that goes by itself
@@ -502,18 +517,20 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   /** The progression XP the match earned, once it's over (none for the tutorial). */
   const [xpAward, setXpAward] = useState<XpAward | null>(null);
   const [augOffers, setAugOffers] = useState<AugmentDef[]>(() =>
-    saved?.augmentPending
+    challenge
+      ? challenge.ch.upgrades.map(getAugment).filter((a): a is AugmentDef => !!a)
+      : saved?.augmentPending
       ? offerAugments(saved.player, augmentOfferCount(saved.player), rarityFor(saved.round), { board: saved.board, side: PLAYER, allowed: unlockedUpgrades() })
       : [],
   );
   /** The last round's one-line summary, in full and in a phone-width form. */
   const [lastRound, setLastRound] = useState<{ long: string; short: string } | null>(null);
   /** Unit-offer rerolls left this round (Scout adds one). */
-  const [unitRerolls, setUnitRerolls] = useState(() =>
-    unitRerollsFor(saved?.player ?? createAugmentState()),
-  );
+  const [unitRerolls, setUnitRerolls] = useState(() => (challenge ? 0 : unitRerollsFor(saved?.player ?? createAugmentState())));
   /** Rerolls left on each upgrade card, by position. */
-  const [augRerolls, setAugRerolls] = useState<number[]>(() => augOffers.map(() => augmentRerollsFor(saved?.player ?? createAugmentState())));
+  const [augRerolls, setAugRerolls] = useState<number[]>(() =>
+    augOffers.map(() => (challenge ? 0 : augmentRerollsFor(saved?.player ?? createAugmentState()))),
+  );
   /** Every upgrade shown this choice, so a reroll never deals one back. */
   const augSeen = useRef<string[]>(augOffers.map((a) => a.id));
   /** Part of the offer-card key, so a reroll replays the deal-in. */
@@ -770,8 +787,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     onSpeed(next);
   };
 
-  const playerAug = useRef<AugmentState>(saved?.player ?? challenge?.player ?? createAugmentState());
-  const enemyAug = useRef<AugmentState>(saved?.enemy ?? challenge?.enemy ?? createAugmentState());
+  const playerAug = useRef<AugmentState>(saved?.player ?? createAugmentState());
+  const enemyAug = useRef<AugmentState>(saved?.enemy ?? chStart?.enemy ?? createAugmentState());
   /**
    * The board as committed, before any blows land — every unit alive and in
    * queue order. Fallen units respawn at the end of the round, so this snapshot
@@ -800,6 +817,9 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     (cell: Cell | null, key: string | null): DropAction => {
       if (!cell || !key || cell.side !== PLAYER) return "invalid";
       const unit = board.slots.player[cell.lane][cell.spot];
+      // A challenge's cards come at set levels: place them, never fold one in
+      // (a merge adds a level-1 card's share) or throw a unit away for one.
+      if (challengeRef.current && unit) return boardFull ? "invalid" : "place";
       if (!unit) {
         // Queue stays contiguous, so only the append position is a real slot.
         // Reinforcements/capacity can cap the row below the board depth.
@@ -1203,14 +1223,6 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   /** The last round's unit-by-unit breakdown is open. */
   const [showRoundStats, setShowRoundStats] = useState(false);
 
-  // A daily challenge goes straight to its one battle.
-  const challengeRef = useRef(challenge);
-  useLayoutEffect(() => {
-    if (challengeRef.current) playRound(cloneBoard(challengeRef.current.board));
-    // Once, on mount: the challenge is fixed for this Game's life.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   /** Start playback of a fully-assembled round (both rows final, stats applied). */
   const playRound = useCallback((committed: Board) => {
     // resolveRound clones its input, so `committed` keeps the full roster.
@@ -1268,6 +1280,12 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         return;
       }
       const committed = cloneBoard(current);
+      if (challengeRef.current) {
+        // The enemy row is the day's, already placed.
+        refreshForRound(committed, playerAug.current, enemyAug.current);
+        playRound(committed);
+        return;
+      }
       const aiPicked = aiCommit(committed, ENEMY, enemyAug.current, {
         difficulty: difficultyRef.current,
         oppAug: playerAug.current,
@@ -1514,7 +1532,13 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           : action === "replace"
             ? replaceUnit(next, PLAYER, cell.lane, cell.spot, key)
             : action === "place"
-              ? insertUnit(next, PLAYER, cell.lane, cell.spot, makeUnit(key, PLAYER))
+              ? insertUnit(
+                  next,
+                  PLAYER,
+                  cell.lane,
+                  cell.spot,
+                  challengeRef.current ? grownUnit(challengeRef.current.ch.units[offerIndex], PLAYER) : makeUnit(key, PLAYER),
+                )
               : false;
       if (!ok) return;
       pushUndo();
@@ -1859,6 +1883,21 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   /** Take an upgrade; `unitId` is the unit a choose-a-unit upgrade lands on. */
   const onPickAugment = (id: string, unitId?: string) => {
     sfx("upgrade");
+    const ch = challengeRef.current?.ch;
+    if (ch) {
+      // A challenge: take the card, then the next choice from what's left.
+      takeAugment(playerAug.current, id, sideUnits(board, PLAYER));
+      const next = cloneBoard(board);
+      refreshForRound(next, playerAug.current, enemyAug.current);
+      setBoard(next);
+      setPeeking(false);
+      if (playerAug.current.active.length < ch.pickUpgrades) {
+        const left = augOffers.filter((a) => a.id !== id);
+        setAugOffers(left);
+        setAugRerolls(left.map(() => 0));
+      } else setPhase("pick");
+      return;
+    }
     const units = sideUnits(board, PLAYER);
     const before = permanentStats(units, playerAug.current);
     const cost = takeAugment(playerAug.current, id, units, startHpOf(board));
@@ -1896,7 +1935,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
    * pool is exhausted.
    */
   const upgradeIn =
-    !rules.upgrades || AUGMENTS.length - playerAug.current.active.length <= 0
+    challenge || !rules.upgrades || AUGMENTS.length - playerAug.current.active.length <= 0
       ? null
       : phase === "augment"
         ? 0
@@ -2491,7 +2530,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         </button>
         <h1>Duel Deck</h1>
         <p className="app__subtitle">
-          Round {round} · {phaseLabel}
+          {challenge ? "Daily challenge" : `Round ${round}`} · {phaseLabel}
           {playerAug.current.active.length > 0 &&
             ` · ${playerAug.current.active.length} upgrade${playerAug.current.active.length === 1 ? "" : "s"}`}
         </p>
@@ -2543,6 +2582,13 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         )}
         {phase === "augment" && (
           <AugmentPanel
+            // A challenge deals its choices one after another: a fresh panel for each.
+            key={challenge ? `challenge-${playerAug.current.active.length}` : undefined}
+            hint={
+              challenge
+                ? `Daily challenge · upgrade ${playerAug.current.active.length + 1} of ${challenge.ch.pickUpgrades}`
+                : undefined
+            }
             round={round}
             offers={augOffers}
             onPick={onPickAugment}
@@ -2713,7 +2759,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           className="primary-btn"
           // Unspent picks are almost always a misclick, not a plan — ask first.
           // (A maxed row's unspent picks aren't a misclick: they're Drill.)
-          onClick={() => (picksLeft > 0 && !rowMaxed(board, PLAYER) ? setConfirmCommit(true) : finishPicks(board))}
+          onClick={() => (picksLeft > 0 && !rowMaxed(board, PLAYER) && !challenge ? setConfirmCommit(true) : finishPicks(board))}
           disabled={phase !== "pick"}
         >
           ⚔ Battle
@@ -2758,7 +2804,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
             <LongShort long="✓ Picks done — arrange your row, then battle" short="✓ Done · arrange, battle" />
           )}
         </p>
-        {(picksLeft > 0 || unitRerolls > 0) && (
+        {(picksLeft > 0 || unitRerolls > 0) && !challenge && (
           <button
             className="ghost-btn ghost-btn--sm reroll-btn"
             onClick={rerollOffer}
@@ -2773,7 +2819,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           </button>
         )}
       </div>
-      <div className="hand">
+      <div className={`hand${phase === "pick" && offer.length > OFFER_COUNT ? " hand--many" : ""}`}>
         {phase === "pick" ? (
           offer.map((key, i) => {
             const u = UNITS[key];
@@ -2824,18 +2870,20 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
                 >
                   {ARCHETYPES[u.archetype].icon}
                 </span>
-                <UnitPortrait unitKey={key} side="player" size={compact ? 44 : 58} />
+                <UnitPortrait unitKey={key} side="player" size={compact ? 44 : 58} merges={chPool?.[i].merges ?? 0} />
                 <span className="card__name">{kawaiiName(key, u.name)}</span>
                 {taken ? (
                   <span className="card__stats">taken</span>
                 ) : (
                   <span className="card__stats">
-                    <span className="stat stat--atk">⚔{u.atk}</span>
-                    <span className="stat stat--hp">♥{u.maxHp}</span>
+                    <span className="stat stat--atk">⚔{chPool?.[i].baseAtk ?? u.atk}</span>
+                    <span className="stat stat--hp">♥{chPool?.[i].baseMaxHp ?? u.maxHp}</span>
                   </span>
                 )}
+                {/* A challenge card comes at its level. */}
+                {chPool && !taken && <span className="card__merge">Lv{levelOf(chPool[i].merges)}</span>}
                 {/* Which of your units this card would level up. */}
-                {!taken &&
+                {!taken && !chPool &&
                   (() => {
                     const target = mergeTargetFor(key);
                     if (!target) return null;
@@ -2853,7 +2901,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
                   </span>
                 )}
               </button>
-              {!taken && (
+              {!taken && !challenge && (
                 <button
                   className={`freeze-btn${isFrozen ? " freeze-btn--on" : ""}`}
                   onClick={() => toggleFreeze(i)}

@@ -22,6 +22,8 @@ import type { Growth } from "../game/roundEnd";
 
 interface AugmentPanelProps {
   round: number;
+  /** Replaces the round/rarity line and the rarity title (a daily challenge's choices mix rarities). */
+  hint?: string;
   offers: AugmentDef[];
   /** Take an upgrade; a choose-a-unit one comes with the unit it lands on. */
   onPick: (id: string, unitId?: string) => void;
@@ -78,6 +80,7 @@ export function AugmentPanel({
   onReroll,
   units,
   canTarget,
+  hint,
 }: AugmentPanelProps) {
   // Two steps, so one stray tap can't lock in an upgrade for the whole match:
   // tapping a card only selects it, and "Take" commits the selection.
@@ -122,7 +125,13 @@ export function AugmentPanel({
       <div className={`panel panel--wide aug-panel aug-panel--${rarity}${peeking ? " panel--peek" : ""}`}>
         <div className="panel__head">
           <h2 className="aug-panel__title">
-            <span className={`aug-panel__rarity aug-panel__rarity--${rarity}`}>{RARITY_LABEL[rarity]}</span> upgrade
+            {hint ? (
+              "Choose an upgrade"
+            ) : (
+              <>
+                <span className={`aug-panel__rarity aug-panel__rarity--${rarity}`}>{RARITY_LABEL[rarity]}</span> upgrade
+              </>
+            )}
           </h2>
           {/* Several upgrades scale off your board, so let the player check it. */}
           <button className="ghost-btn ghost-btn--sm peek-toggle" onClick={onPeek}>
@@ -130,7 +139,7 @@ export function AugmentPanel({
           </button>
         </div>
         <div className="panel__hint">
-          Round {round} · lasts this match only · both players draw {RARITY_LABEL[rarity].toLowerCase()}
+          {hint ?? `Round ${round} · lasts this match only · both players draw ${RARITY_LABEL[rarity].toLowerCase()}`}
         </div>
         {targeting ? (
           <div className="aug-target">
@@ -196,10 +205,8 @@ export function AugmentPanel({
                         {a.icon}
                       </span>
                       <span className="aug-card__name">{a.name}</span>
-                      <span className="aug-card__tag">
-                        {a.target ? "Choose a unit" : CATEGORY_LABEL[a.category]}
-                        {a.repeatable && " · Stacks"}
-                      </span>
+                      <span className="aug-card__tag">{a.target ? "Choose a unit" : CATEGORY_LABEL[a.category]}</span>
+                      {a.repeatable && <span className="aug-card__again">🔁 Can pick again</span>}
                       <span className="aug-card__desc">{a.description}</span>
                     </span>
                     {selected === a.id && !picked && (
@@ -293,7 +300,7 @@ function AllAugments({ player, enemy }: { player: AugmentState; enemy: AugmentSt
   return (
     <>
       <p className="panel__hint">
-        Every upgrade that can be offered. Each can be taken once per match, except those marked ×N Stacks, which can be taken again.
+        Every upgrade that can be offered. Each can be taken once per match, except those marked 🔁 Can pick again.
       </p>
       <div className="unit-filter" role="group" aria-label="Filter by unit">
         {chips.map((c) => (
@@ -332,8 +339,8 @@ function AllAugments({ player, enemy }: { player: AugmentState; enemy: AugmentSt
                       <span className="owned-tags">
                         <RarityTag rarity={rarityOf(a)} />
                         {a.repeatable && (
-                          <span className="tag tag--stacks" title="Can be taken more than once; each copy adds again">
-                            ×N Stacks
+                          <span className="tag tag--stacks" title="Can be selected more than once in a match; each copy adds again">
+                            🔁 Can pick again
                           </span>
                         )}
                         {mine && <span className="owned owned--you">You{mineN > 1 ? ` ×${mineN}` : ""}</span>}
@@ -985,7 +992,7 @@ function CodexUpgrades({ onUnit }: { onUnit: (key: string) => void }) {
     <>
       <p className="panel__hint">
         Every upgrade that can be offered. You pick one every {AUGMENT_EVERY} rounds and each can be taken once per
-        match, except those marked ×N Stacks: plain stat upgrades that can be taken again, each copy adding more. Each choice deals three cards of one rarity, the same for both players: silver, gold or prismatic,
+        match, except those marked 🔁 Can pick again: plain stat upgrades you can select again, each copy adding more. Each choice deals three cards of one rarity, the same for both players: silver, gold or prismatic,
         at 50%, 35% and 15% every time. Each card can be rerolled once. Upgrades marked 🔒 unlock as you level up, and
         are claimed on the progression track (⭐ on the title screen); the CPU can draw any of them.
       </p>
@@ -1025,8 +1032,8 @@ function CodexUpgrades({ onUnit }: { onUnit: (key: string) => void }) {
                         )}
                         <span className={`tag tag--${a.category}`}>{a.target ? "Choose a unit" : CATEGORY_LABEL[a.category]}</span>
                         {a.repeatable && (
-                          <span className="tag tag--stacks" title="Can be taken more than once; each copy adds again">
-                            ×N Stacks
+                          <span className="tag tag--stacks" title="Can be selected more than once in a match; each copy adds again">
+                            🔁 Can pick again
                           </span>
                         )}
                       </span>

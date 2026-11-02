@@ -2268,3 +2268,10 @@ button.menu-item:hover { border-color: #5a5180; }
 .account__username-input > span { font-weight: 800; color: var(--muted); }
 .account__username-hint--bad { color: #ffb4a8; }
 .account__username-hint--ok { color: #7fdc9a; }
+
+/* More cards than a round deals (a daily challenge's 7): two rows of four,
+   so each card keeps the width of a normal hand's. */
+.hand.hand--many,
+.app__controls .hand.hand--many { flex-wrap: wrap; }
+.hand.hand--many .card-wrap,
+.app__controls .hand.hand--many .card-wrap { flex: 0 0 calc(25% - 0.3rem); }

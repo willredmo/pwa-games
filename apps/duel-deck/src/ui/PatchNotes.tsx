@@ -13,8 +13,8 @@ export const PATCH_NOTES: Release[] = [
     version: "1.11.0",
     date: "Nov 2, 2026",
     notes: [
-      "📅 Daily challenge: one round, the same for everyone each day. Pick your row and two upgrades from the day's cards and beat the enemy row. Every unit and upgrade is available, and the last 30 days can be played too.",
-      "Plain stat upgrades now stack: take Battle fury, Golden age, Whetstone, Field promotion and friends again for more. Cards that stack say so.",
+      "📅 Daily challenge: one round, the same for everyone each day. Take two of the day's upgrades, place its units on the board and beat the enemy row. Every unit and upgrade is available. A calendar lets you play the last 90 days, and marks the ones you've beaten.",
+      "Plain stat upgrades now stack: take Battle fury, Golden age, Whetstone, Field promotion and friends again for more. They're marked 🔁 Can pick again on the cards and in the Codex.",
       "🔥 Hard is harder: it takes 3 units a round to your 2.",
       "Upgrades few people took got better: Adrenaline, Precision strikes, Sharpened edge, Duelist, Thick barrier, Knight's oath, Early knighthood (Knights +1/+2 too), Twin fangs, Berserker's rally, United front, Overwhelm, Tactician (a second reroll per card), Sabotage (6), Bloodpact (costs 25%), War chest (10/10), Field medic (20) and Golden fleece (15/35). Desperate measures now gives +1 attack for every quarter of your health lost.",
       "Bloodbond heals a third of the damage dealt (was half).",
