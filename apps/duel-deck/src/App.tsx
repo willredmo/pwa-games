@@ -19,6 +19,8 @@ import { googleRedirectPending } from "@pwa-games/backend-client";
 import { startAccount, useAccount, useUsername } from "./online/account";
 import { AccountPanel } from "./ui/Account";
 import { ProgressPanel } from "./ui/Progress";
+import { ChallengeScreen } from "./ui/Challenge";
+import { challengeRound, dailyChallenge, dayKey, loadResults, recordTry, type ChallengeAnswer } from "./game/challenge";
 import { useProgress } from "./online/progress";
 import { styleUnlockLevel } from "./game/progression";
 import "./App.css";
@@ -43,6 +45,8 @@ interface Run {
   online?: Session;
   /** The first-match tutorial (vs Easy, never saved). */
   tutorial?: boolean;
+  /** A daily challenge's one round. */
+  challenge?: { day: string; answer: ChallengeAnswer; round: ReturnType<typeof challengeRound> };
 }
 
 /** A code from a shared invite link (?join=CODE), taken once at startup. */
@@ -87,6 +91,8 @@ export default function App() {
   /** The account screen. Opens by itself on the way back from a Google redirect, to show how it went. */
   const [accountOpen, setAccountOpen] = useState(googleRedirectPending);
   const [progressOpen, setProgressOpen] = useState(false);
+  /** The daily challenge screen: which day, the last answer and how it went. */
+  const [challengeView, setChallengeView] = useState<{ day: string; answer?: ChallengeAnswer; last?: boolean } | null>(null);
 
   // Follow the account only if this device signed in before; a guest loads nothing.
   useEffect(startAccount, []);
@@ -131,6 +137,15 @@ export default function App() {
     if (settings.sound) unlockSound();
     setSettings((s) => ({ ...s, difficulty }));
     setRun({ id: ++runId.n, resume, difficulty, rules: rulesFrom(settings) });
+    setScreen("game");
+  };
+
+  /** Play an answer to a daily challenge: one round in a Game, then back to the challenge. */
+  const startChallenge = (day: string, answer: ChallengeAnswer) => {
+    if (settings.sound) unlockSound();
+    const round = challengeRound(dailyChallenge(day), answer);
+    setChallengeView({ day, answer });
+    setRun({ id: ++runId.n, resume: null, difficulty: "normal", challenge: { day, answer, round } });
     setScreen("game");
   };
 
@@ -208,6 +223,18 @@ export default function App() {
           rules={run.rules}
           online={run.online}
           tutorial={run.tutorial}
+          challenge={
+            run.challenge && {
+              ...run.challenge.round,
+              onDone: (won) => {
+                const c = run.challenge!;
+                recordTry(c.day, won);
+                setChallengeView({ day: c.day, answer: c.answer, last: won });
+                setRun(null);
+                setScreen("title");
+              },
+            }
+          }
           speed={settings.speed}
           onSpeed={(speed) => setSettings((s) => ({ ...s, speed }))}
           sound={settings.sound}
@@ -250,6 +277,8 @@ export default function App() {
           onResume={() => saved && start(saved.difficulty ?? settings.difficulty, saved)}
           onHelp={() => setHelp(true)}
           onCodex={() => setUnits(true)}
+          onChallenge={() => setChallengeView({ day: dayKey() })}
+          challengeDone={!!loadResults()[dayKey()]?.wonAt}
           onNotes={() => {
             setNotes(true);
             setNewNotes(false);
@@ -294,6 +323,15 @@ export default function App() {
             setLobby(null);
             setSavedOnline(loadSession());
           }}
+        />
+      )}
+      {challengeView && screen === "title" && (
+        <ChallengeScreen
+          key={`${challengeView.day}:${challengeView.last}`}
+          {...challengeView}
+          onDay={(day) => setChallengeView({ day })}
+          onPlay={startChallenge}
+          onClose={() => setChallengeView(null)}
         />
       )}
       {help && <HelpPanel onClose={() => setHelp(false)} />}

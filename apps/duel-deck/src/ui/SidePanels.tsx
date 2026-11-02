@@ -1,4 +1,4 @@
-import { getAugment, rarityOf, type AugmentState } from "../game/augments";
+import { getAugment, rarityOf, stacked, type AugmentState } from "../game/augments";
 import type { MatchStats } from "../game/stats";
 
 // Wide desktop screens only (CSS hides these below 1100px): the space either
@@ -9,13 +9,14 @@ function UpgradeList({ state, empty }: { state: AugmentState; empty: string }) {
   if (state.active.length === 0) return <p className="side-panel__empty">{empty}</p>;
   return (
     <ul className="side-panel__upgrades">
-      {state.active.map((id) => {
+      {stacked(state.active).map(([id, n]) => {
         const def = getAugment(id);
         if (!def) return null;
         return (
           <li key={id} className={`side-upgrade side-upgrade--${rarityOf(def)}`}>
             <span className="side-upgrade__head">
               <span aria-hidden="true">{def.icon}</span> {def.name}
+              {n > 1 && <b className="upgrade-count"> ×{n}</b>}
             </span>
             <span className="side-upgrade__desc">{def.description}</span>
           </li>

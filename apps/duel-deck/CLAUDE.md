@@ -1323,7 +1323,8 @@ earns XP, levels unlock upgrades, units and battle styles.
   (telemetry 2026-11-01, win rate of rows holding the unit and take rate:
   Skirmisher 3, Lancer 8, Medic 13, Bulwark 18, Berserker 23, Herald 29,
   Beacon 35, Squire 41 (Knights come with it), Acolyte 48, Sentinel 56, last
-  at the user's call); and the Kawaii (6) and Bloody (16) styles. Level n to
+  at the user's call); and the Kawaii (33) and Bloody (52) styles (moved
+  later at the user's call, 2026-11-02; they were 6 and 16). Level n to
   n+1 costs `xpToNext` = 150 + 15(n−1), so the top is 38,745 XP (was 10,440
   at 30 levels).
 - **Units** gate the player's own unit offers (`rollOffer`'s `keys`, from
@@ -1390,6 +1391,49 @@ earns XP, levels unlock upgrades, units and battle styles.
   unit, the database rules' claim cap equals `MAX_LEVEL`, and the XP rules.
   **A new upgrade or unit must be added to the starters or `TRACK`** (and a
   unit's upgrades to `NEEDS`), or the check fails.
+
+### Repeatable upgrades, retunes, Hard's third pick (1.11.0, 2026-11-02)
+- **Repeatable** (`AugmentDef.repeatable`, a player's request): plain stat
+  upgrades (class stats, Battle fury, Golden age, Legion, Choir, the slot
+  buffs, and every choose-a-unit stat/level upgrade) stay in the offer once
+  held and stack. `offerPool`/`takeAugment` allow repeats; `applyAugments`
+  badges an upgrade once and folds a repeat's numbers into one detail line;
+  lists fold repeats with `stacked()` and show "×N"; cards say "Stacks".
+  `pnpm upgrades` checks that a repeatable only changes stats.
+- **Healing:** Blood moon left at a quarter: after reflected damage stopped
+  feeding lifesteal it reads 48.5% (sim) and mid-pack in one-round power.
+  Bloodbond half → a third (taken 81%, won 88% in telemetry).
+- **Rarely taken** (telemetry take rate under ~15%): buffed, each with its old
+  numbers in a comment. Sim (16000, `--aug=random`) after: United front and
+  Berserker's rally 58% (their first buffs read 72% and 61%), the rest
+  45–57%; Golden fleece still ~36% (pool healing barely registers in the sim,
+  like Field medic), buffed anyway for players. Sabotage 4 → 6 (39% → 46%).
+  Tactician also gives each card a second reroll (`augmentRerollsFor`).
+- **Hard** takes a third unit each round (`HARD_TUNING_EXTRA.picks`, chosen
+  after its pair by the same score from the cards left). Real players beat
+  the old Hard 85% of 130 matches. Sim: Normal vs the new Hard 6.4% (vs the
+  old Hard ~14%); median match 12 rounds; ~25 ms a round on a desktop.
+- `PROTOCOL` 18.
+
+### Daily challenge (game/challenge.ts, ui/Challenge.tsx; 1.11.0)
+A player's idea: one round a day, the same for everyone. `dailyChallenge(day)`
+builds it from the UTC date alone (FNV-1a + mulberry32; the engine has no
+randomness), so every device gets the same challenge and every answer the
+same fight, for as long as the build's rules and upgrade pool are the same:
+**a balance change can change a day's challenge**. A day has 7 units with
+levels, 4 upgrades (pick 2; `CHALLENGE_UPGRADES`: no choose-a-unit,
+strategy or match-history ones), 5 slots, and an enemy row with 1–2
+upgrades. Progression doesn't apply: everything is available. Difficulty
+(easy/medium/hard, from the seed) is measured: 120 random answers through
+the real engine, and the enemy's levels nudged until the winning share is in
+the band (30–65%, 10–30%, 2–10%; never a day with no sampled win). ~10–100 ms
+a day on a desktop, cached per page. The screen (from the title's 📅 button)
+shows the enemy, your upgrades and units, your row (↑ ↓ ✕), and past days
+(30); Battle mounts a `Game` with `challenge` set, which plays that one round
+(`useLayoutEffect` straight into `playRound`), then `onDone(won)`; App
+records the try (`duel-deck:challenges`: tries, first win and in how many)
+and reopens the screen with the result. Never saved, logged or awarded XP.
+`pnpm upgrades` checks a dozen days build full and winnable, and stay the same.
 
 ### Sound (game/sound.ts)
 Effects are synthesized, no audio files (`?sounds` on the dev server plays every one). The

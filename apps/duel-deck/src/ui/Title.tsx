@@ -37,6 +37,10 @@ export interface TitleProps {
   onResume: () => void;
   onHelp: () => void;
   onCodex: () => void;
+  /** Open the daily challenge. */
+  onChallenge: () => void;
+  /** Today's challenge is won on this device. */
+  challengeDone: boolean;
   onNotes: () => void;
   /** Patch notes for this version haven't been opened yet: show a dot. */
   newNotes: boolean;
@@ -117,6 +121,15 @@ export function Title(props: TitleProps) {
             <span className="title-nudge__go" aria-hidden="true">›</span>
           </button>
         )}
+
+        <button className="title-nudge title-nudge--daily" onClick={props.onChallenge}>
+          <span aria-hidden="true">📅</span>
+          <span className="title-nudge__text">
+            <strong>Daily challenge</strong>
+            <small>{props.challengeDone ? "✓ Done today · try past days" : "One round, the same for everyone today"}</small>
+          </span>
+          <span className="title-nudge__go" aria-hidden="true">›</span>
+        </button>
 
         <section className="title-card" aria-labelledby="title-cpu">
           <h2 id="title-cpu" className="title-card__label">

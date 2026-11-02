@@ -114,6 +114,12 @@ export interface AugmentDef {
   /** Absent = silver. Each upgrade choice deals one rarity. */
   rarity?: Rarity;
   /**
+   * Plain stat upgrades (attack, health, levels) can be taken again: each
+   * copy stacks, so they stay in the offer after being taken
+   * (2026-11-02, a player's request). Anything with a unique effect can't.
+   */
+  repeatable?: boolean;
+  /**
    * Choose-a-unit upgrades: taking one asks for one of your units, which it
    * changes once, at pick time (`applyTarget`). `can` says which units it
    * may land on; it's only offered while at least one can.
@@ -221,7 +227,7 @@ export function createAugmentState(): AugmentState {
 
 const has = (u: Unit, cls: string) => u.classes.includes(cls);
 /** Most attack Berserker's rally can grant: with full rows Berserkers die every round. */
-export const RALLY_CAP = 2;
+export const RALLY_CAP = 3;
 /** Shield every unit in an Iron Line row starts each round with. */
 export const IRON_LINE_SHIELD = 5;
 const countClass = (units: Unit[], cls: string) =>
@@ -235,15 +241,18 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Reinforced plating",
     description: "+3 health to all Guards and Bulwarks.",
     category: "class",
+    repeatable: true,
     effect: (u) => (has(u, "tank") ? { hp: 3 } : {}),
   },
   {
     id: "sharpened-edge",
     icon: "🗡️",
     name: "Sharpened edge",
-    description: "+2 attack to all Strikers and Berserkers.",
+    description: "+2 attack and +1 health to all Strikers and Berserkers.",
     category: "class",
-    effect: (u) => (has(u, "aggro") ? { atk: 2 } : {}),
+    repeatable: true,
+    // Retuned 2026-11-02 (telemetry take rate, one-round power, sim): taken 13%, was +2 attack.
+    effect: (u) => (has(u, "aggro") ? { atk: 2, hp: 1 } : {}),
   },
   {
     id: "steady-footing",
@@ -259,9 +268,11 @@ export const AUGMENTS: AugmentDef[] = [
     id: "adrenaline",
     icon: "⚡",
     name: "Adrenaline",
-    description: "+3 attack to all Berserkers.",
+    description: "+3 attack and +2 health to all Berserkers.",
     category: "class",
-    effect: (u) => (has(u, "berserker") ? { atk: 3 } : {}),
+    repeatable: true,
+    // Retuned 2026-11-02 (telemetry take rate, one-round power, sim): taken 6%, was +3 attack.
+    effect: (u) => (has(u, "berserker") ? { atk: 3, hp: 2 } : {}),
   },
   {
     id: "iron-will",
@@ -269,15 +280,18 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Iron will",
     description: "+4 health and +1 attack to all Bulwarks.",
     category: "class",
+    repeatable: true,
     effect: (u) => (has(u, "bulwark") ? { hp: 4, atk: 1 } : {}),
   },
   {
     id: "precision-strikes",
     icon: "🔪",
     name: "Precision strikes",
-    description: "+2 attack and +1 health to all Strikers.",
+    description: "+2 attack and +3 health to all Strikers.",
     category: "class",
-    effect: (u) => (has(u, "striker") ? { atk: 2, hp: 1 } : {}),
+    repeatable: true,
+    // Retuned 2026-11-02 (telemetry take rate, one-round power, sim): taken 11%, was +2/+1.
+    effect: (u) => (has(u, "striker") ? { atk: 2, hp: 3 } : {}),
   },
 
   // --- Global ---
@@ -287,6 +301,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Battle fury",
     description: "+1 attack to every unit on your board.",
     category: "global",
+    repeatable: true,
     rarity: "gold",
     effect: () => ({ atk: 1 }),
   },
@@ -296,6 +311,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Last stand",
     description: "Your front-most unit right now gains +5 health, permanently.",
     category: "global",
+    repeatable: true,
     onPick: (state, units) => {
       const frontUnit = units[0];
       if (!frontUnit) return;
@@ -320,38 +336,44 @@ export const AUGMENTS: AugmentDef[] = [
     id: "desperate-measures",
     icon: "💢",
     name: "Desperate measures",
-    description: "While your HP is below half of what you started with (100 of 200), all units gain +2 attack.",
+    description: "All units gain +1 attack for every quarter of your starting HP you've lost (50 of 200), up to +3.",
     category: "global",
     rarity: "gold",
-    effect: (_u, _i, ctx) => (ctx.ownHp < ctx.startHp * 0.5 ? { atk: 2 } : {}),
+    // Retuned 2026-11-02 (telemetry take rate, one-round power, sim): taken 4% as "+2 below half", which
+    // did nothing for most of a match; now it starts paying from the first quarter.
+    effect: (_u, _i, ctx) => ({ atk: Math.min(3, Math.floor(((ctx.startHp - ctx.ownHp) / ctx.startHp) * 4)) }),
   },
   {
     id: "united-front",
     icon: "🤝",
     name: "United front",
-    description: "+1 health to all units for every 2 units on your board (rounded down).",
+    description: "+1 health to all units for every 2 units on your board, and +1 attack for every 4 (rounded down).",
     category: "global",
     rarity: "prismatic",
-    effect: (_u, _i, ctx) => ({ hp: Math.floor(ctx.units.length / 2) }),
+    // Retuned 2026-11-02 (telemetry take rate, one-round power, sim): taken 10% as health only;
+    // +1/+1 per 2 units measured 72% (sim, --aug=random).
+    effect: (_u, _i, ctx) => ({ atk: Math.floor(ctx.units.length / 4), hp: Math.floor(ctx.units.length / 2) }),
   },
   {
     id: "overwhelm",
     icon: "🌊",
     name: "Overwhelm",
-    description: "+1 attack to all units for every 3 enemy units you killed last round.",
+    description: "+1 attack to all units for every 2 enemy units you killed last round.",
     category: "global",
     rarity: "prismatic",
-    effect: (_u, _i, ctx) => ({ atk: Math.floor(ctx.kills / 3) }),
+    // Retuned 2026-11-02 (telemetry take rate, one-round power, sim): taken 16% at every 3.
+    effect: (_u, _i, ctx) => ({ atk: Math.floor(ctx.kills / 2) }),
   },
   {
     id: "bloodpact",
     icon: "🩸",
     name: "Bloodpact",
-    description: "All units gain +2 attack, but you lose 40% of your starting HP (80 of 200).",
+    description: "All units gain +2 attack, but you lose 25% of your starting HP (50 of 200).",
     category: "global",
     rarity: "prismatic",
+    // Retuned 2026-11-02 (telemetry take rate, one-round power, sim): taken 3% at a 40% cost.
     effect: () => ({ atk: 2 }),
-    hpCostShare: 0.4,
+    hpCostShare: 0.25,
   },
 
   // --- Synergy-based ---
@@ -382,6 +404,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Vanguard's edge",
     description: "The unit leading your row when each round starts gets +2 attack and +2 health.",
     category: "synergy",
+    repeatable: true,
     effect: (_u, index) => (index === 0 ? { atk: 2, hp: 2 } : {}),
   },
   {
@@ -402,11 +425,13 @@ export const AUGMENTS: AugmentDef[] = [
     icon: "💀",
     name: "Berserker's rally",
     units: ["berserker"],
-    description: "For every 4 of your Berserkers that die, all units gain +1 attack for the match (up to +2).",
+    description: "For every 3 of your Berserkers that die, all units gain +1 attack for the match (up to +3).",
     category: "synergy",
+    // Retuned 2026-11-02 (telemetry take rate, one-round power, sim): taken 5%, was every 4 up to +2;
+    // every 2 up to +3 measured 61%.
     // A point per 4 deaths, capped: Berserkers fall nearly every round and respawn, so
     // a full point per death stacked without limit.
-    effect: (_u, _i, ctx) => ({ atk: Math.min(RALLY_CAP, Math.floor(ctx.rally / 4)) }),
+    effect: (_u, _i, ctx) => ({ atk: Math.min(RALLY_CAP, Math.floor(ctx.rally / 3)) }),
   },
 
   // --- Combat keywords ---
@@ -492,19 +517,22 @@ export const AUGMENTS: AugmentDef[] = [
     id: "early-knighthood",
     icon: "⚜️",
     name: "Early knighthood",
-    description: `Squires are knighted at level ${KNIGHT_LEVEL - 1} instead of ${KNIGHT_LEVEL}.`,
+    description: `Squires are knighted at level ${KNIGHT_LEVEL - 1} instead of ${KNIGHT_LEVEL}, and Knights gain +1 attack and +2 health.`,
     category: "class",
     units: ["squire", "knight"],
+    // Retuned 2026-11-02 (telemetry take rate, one-round power, sim): taken 15%, was the earlier knighting alone.
+    effect: (u) => (has(u, "knight") ? { atk: 1, hp: 2 } : {}),
   },
   {
     id: "knights-oath",
     icon: "🐴",
     name: "Knight's oath",
-    description: "While you have a Knight, all your other units gain +1 attack.",
+    description: "While you have a Knight, all your other units gain +1 attack and +2 health.",
     category: "synergy",
     units: ["knight", "squire"],
+    // Retuned 2026-11-02 (telemetry take rate, one-round power, sim): taken 14%, was +1 attack.
     effect: (u, _i, ctx) =>
-      !has(u, "knight") && countClass(ctx.units, "knight") > 0 ? { atk: 1 } : {},
+      !has(u, "knight") && countClass(ctx.units, "knight") > 0 ? { atk: 1, hp: 2 } : {},
   },
 
   // --- Rare: offered from the second upgrade round ---
@@ -540,11 +568,12 @@ export const AUGMENTS: AugmentDef[] = [
     id: "war-chest",
     icon: "🪙",
     name: "War chest",
-    description: "Winning a round deals 8 extra damage and heals you 6 HP.",
+    description: "Winning a round deals 10 extra damage and heals you 10 HP.",
     category: "strategy",
     rarity: "gold",
-    mods: { bounty: 8 },
-    healOnWin: 6,
+    // Retuned 2026-11-02 (telemetry take rate, one-round power, sim): taken 15% at 8 / 6.
+    mods: { bounty: 10 },
+    healOnWin: 10,
   },
 
   // --- Epic: offered from the third upgrade round ---
@@ -554,6 +583,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Legion",
     description: "+2 attack and +1 health to every unit.",
     category: "global",
+    repeatable: true,
     rarity: "prismatic",
     // +2/+1 since 2026-11-01 (the user asked for a buff: +1/+1 sat beside
     // Golden age's +1/+4). Sim 12000 --aug=random: +1/+1 48.7%, +1/+2 52.3%,
@@ -621,9 +651,10 @@ export const AUGMENTS: AugmentDef[] = [
     id: "field-medic",
     icon: "🩹",
     name: "Field medic",
-    description: "Each round you win, recover 14 HP (up to your starting HP).",
+    description: "Each round you win, recover 20 HP (up to your starting HP).",
     category: "strategy",
-    healOnWin: 14,
+    // Retuned 2026-11-02 (telemetry take rate, one-round power, sim): taken 21% at 14.
+    healOnWin: 20,
   },
   {
     id: "bounty",
@@ -658,9 +689,10 @@ export const AUGMENTS: AugmentDef[] = [
     id: "tactician",
     icon: "🧭",
     name: "Tactician",
-    description: "Upgrade choices show 4 options instead of 3.",
+    description: "Upgrade choices show 4 options instead of 3, and each card can be rerolled twice.",
     category: "strategy",
     rarity: "gold",
+    // Retuned 2026-11-02 (telemetry take rate, one-round power, sim): taken 11%, was the 4th card alone.
   },
   {
     id: "last-light",
@@ -675,7 +707,7 @@ export const AUGMENTS: AugmentDef[] = [
     id: "sabotage",
     icon: "🪤",
     name: "Sabotage",
-    description: "The enemy's front unit loses 4 attack at the start of each round.",
+    description: "The enemy's front unit loses 6 attack at the start of each round.",
     category: "strategy",
     rarity: "prismatic",
   },
@@ -769,9 +801,10 @@ export const AUGMENTS: AugmentDef[] = [
     id: "thick-barrier",
     icon: "🧊",
     name: "Thick barrier",
-    description: "Wardens' Barrier shields 4 more.",
+    description: "Wardens' Barrier shields 6 more.",
     category: "class",
-    traits: (u) => (has(u, "warden") ? { barrier: 4 } : {}),
+    // Retuned 2026-11-02 (telemetry take rate, one-round power, sim): taken 15%, was 4 more.
+    traits: (u) => (has(u, "warden") ? { barrier: 6 } : {}),
   },
   {
     id: "aegis",
@@ -788,6 +821,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Devotion",
     description: "+6 health to all Acolytes, so Lifebond gives more.",
     category: "class",
+    repeatable: true,
     effect: (u) => (has(u, "acolyte") ? { hp: 6 } : {}),
   },
   {
@@ -815,6 +849,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Choir",
     description: "+1 attack and +3 health to all Support units (Herald, Medic, Warden, Acolyte, Beacon).",
     category: "class",
+    repeatable: true,
     rarity: "gold",
     effect: (u) => (has(u, "support") ? { atk: 1, hp: 3 } : {}),
   },
@@ -824,9 +859,10 @@ export const AUGMENTS: AugmentDef[] = [
     id: "duelist",
     icon: "🥋",
     name: "Duelist",
-    description: "Skirmishers gain +1 attack and +2 health, and their Riposte deals +2 damage.",
+    description: "Skirmishers gain +2 attack and +3 health, and their Riposte deals +2 damage.",
     category: "class",
-    effect: (u) => (has(u, "skirmisher") ? { atk: 1, hp: 2 } : {}),
+    // Retuned 2026-11-02 (telemetry take rate, one-round power, sim): taken 8%, was +1/+2.
+    effect: (u) => (has(u, "skirmisher") ? { atk: 2, hp: 3 } : {}),
     traits: (u) => (has(u, "skirmisher") ? { riposte: 2 } : {}),
   },
   {
@@ -871,13 +907,14 @@ export const AUGMENTS: AugmentDef[] = [
     id: "twin-fangs",
     icon: "🐺",
     name: "Twin fangs",
-    description: "Strikers and Berserkers gain +1 attack and +1 health for each other Striker or Berserker in your row (up to +3).",
+    description: "Strikers and Berserkers gain +1 attack and +2 health for each other Striker or Berserker in your row (up to +3).",
     category: "synergy",
     rarity: "gold",
     effect: (u, _i, ctx) => {
       if (!has(u, "aggro")) return {};
+      // Retuned 2026-11-02: taken 14% at +1/+1 each.
       const n = Math.min(3, countClass(ctx.units, "aggro") - 1);
-      return { atk: n, hp: n };
+      return { atk: n, hp: 2 * n };
     },
   },
   {
@@ -906,6 +943,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Colossus",
     description: "Your highest-level unit (the front-most on a tie) gains +3 attack and +6 health.",
     category: "global",
+    repeatable: true,
     rarity: "prismatic",
     // +4/+8 measured 58%.
     effect: (u, _i, ctx) => (u === colossusOf(ctx.units) ? { atk: 3, hp: 6 } : {}),
@@ -926,6 +964,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Golden age",
     description: "+1 attack and +4 health to all your units.",
     category: "global",
+    repeatable: true,
     rarity: "prismatic",
     // +2/+4 measured 65% among prismatics.
     effect: () => ({ atk: 1, hp: 4 }),
@@ -936,10 +975,11 @@ export const AUGMENTS: AugmentDef[] = [
     id: "bloodbond",
     icon: "🧛",
     name: "Bloodbond",
-    description: "The unit leading your row when the round starts heals for half the damage it deals.",
+    description: "The unit leading your row when the round starts heals for a third of the damage it deals.",
     category: "combat",
     rarity: "gold",
-    traits: (_u, i) => (i === 0 ? { lifesteal: 0.5 } : {}),
+    // Retuned 2026-11-02 (telemetry take rate, one-round power, sim): taken 81% and won 88% at half.
+    traits: (_u, i) => (i === 0 ? { lifesteal: 1 / 3 } : {}),
   },
   {
     id: "spiked-line",
@@ -965,6 +1005,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Rear guard",
     description: "The unit at the back of your row gains +4 attack and +8 health.",
     category: "global",
+    repeatable: true,
     rarity: "gold",
     effect: (_u, i, ctx) => (i === ctx.units.length - 1 ? { atk: 4, hp: 8 } : {}),
   },
@@ -974,6 +1015,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Second line",
     description: "The second unit in your row gains +3 attack and +6 health.",
     category: "global",
+    repeatable: true,
     rarity: "gold",
     effect: (_u, i) => (i === 1 ? { atk: 3, hp: 6 } : {}),
   },
@@ -994,6 +1036,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Drill sergeant",
     description: "Choose one of your units: it gains 2 levels (up to the cap) and +2 attack, permanently.",
     category: "strategy",
+    repeatable: true,
     rarity: "gold",
     target: {
       verb: "gains 2 levels and +2 attack",
@@ -1011,6 +1054,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Juggernaut",
     description: "Choose one of your units: +5 attack and +10 health, permanently.",
     category: "combat",
+    repeatable: true,
     rarity: "prismatic",
     target: {
       verb: "gains +5 attack and +10 health for good",
@@ -1107,12 +1151,12 @@ export const AUGMENTS: AugmentDef[] = [
     id: "golden-fleece",
     icon: "🐑",
     name: "Golden fleece",
-    description: "Each round you win deals 10 extra damage and heals you 25 HP (up to your starting HP).",
+    description: "Each round you win deals 15 extra damage and heals you 35 HP (up to your starting HP).",
     category: "strategy",
     rarity: "prismatic",
-    // 6 and 15 measured 40.5%.
-    mods: { bounty: 10 },
-    healOnWin: 25,
+    // 6 and 15 measured 40.5%; 10 and 25 36.6% (2026-11-02, taken 0 of 3).
+    mods: { bounty: 15 },
+    healOnWin: 35,
   },
 
   // --- Choose a unit: taking one asks which of your units it lands on ---
@@ -1122,6 +1166,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Whetstone",
     description: "Choose one of your units: +2 attack, permanently.",
     category: "combat",
+    repeatable: true,
     target: {
       verb: "gains +2 attack for good",
       can: () => true,
@@ -1135,6 +1180,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Iron skin",
     description: "Choose one of your units: +5 health, permanently.",
     category: "combat",
+    repeatable: true,
     target: {
       verb: "gains +5 health for good",
       can: () => true,
@@ -1148,6 +1194,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Field promotion",
     description: "Choose one of your units below the level cap: it gains 2 levels.",
     category: "strategy",
+    repeatable: true,
     target: {
       verb: "gains 2 levels",
       can: belowCap,
@@ -1162,6 +1209,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Battlefield commission",
     description: "Choose one of your units below the level cap: it gains 3 levels.",
     category: "strategy",
+    repeatable: true,
     rarity: "gold",
     target: {
       verb: "gains 3 levels",
@@ -1176,6 +1224,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Hero's mark",
     description: "Choose one of your units: +3 attack and +6 health, permanently.",
     category: "combat",
+    repeatable: true,
     rarity: "gold",
     target: {
       verb: "gains +3 attack and +6 health for good",
@@ -1190,6 +1239,7 @@ export const AUGMENTS: AugmentDef[] = [
     name: "Apotheosis",
     description: "Choose one of your units below the level cap: it gains 5 levels.",
     category: "strategy",
+    repeatable: true,
     rarity: "prismatic",
     target: {
       verb: "gains 5 levels",
@@ -1229,7 +1279,8 @@ function colossusOf(units: Unit[]): Unit | undefined {
 }
 
 /** Attack the enemy front loses to Sabotage. */
-export const SABOTAGE_ATK = 4;
+// 6 since 2026-11-02: 4 measured 39% once stackable stat upgrades joined the prismatics.
+export const SABOTAGE_ATK = 6;
 
 const BY_ID = new Map(AUGMENTS.map((a) => [a.id, a]));
 /** The upgrades in play: everything but the retired ones. Offers and lists use this. */
@@ -1257,7 +1308,7 @@ function offerPool(state: AugmentState, rarity: Rarity, ctx?: OfferContext, skip
   return OFFERED_AUGMENTS.filter(
     (a) =>
       rarityOf(a) === rarity &&
-      !state.active.includes(a.id) &&
+      (a.repeatable || !state.active.includes(a.id)) &&
       !excluded.has(a.id) &&
       !skip.includes(a.id) &&
       (!ctx?.allowed || ctx.allowed.has(a.id)) &&
@@ -1324,7 +1375,7 @@ export function takeAugment(
   startHp = 200,
 ): number {
   const def = getAugment(id);
-  if (!def || state.active.includes(id)) return 0;
+  if (!def || (!def.repeatable && state.active.includes(id))) return 0;
   state.active.push(id);
   def.onPick?.(state, units);
   return hpCostOf(def, startHp);
@@ -1380,8 +1431,9 @@ export function applyAugments(
       const d = def.effect?.(unit, index, ctx) ?? {};
       atk += d.atk ?? 0;
       hp += d.hp ?? 0;
-      // Only badge an augment that's actually moving a number right now.
-      if ((d.atk ?? 0) !== 0 || (d.hp ?? 0) !== 0) auras.push(def.id);
+      // Only badge an augment that's actually moving a number right now
+      // (once, however many copies of a repeatable one are held).
+      if (((d.atk ?? 0) !== 0 || (d.hp ?? 0) !== 0) && !auras.includes(def.id)) auras.push(def.id);
       const t = def.traits?.(unit, index, ctx);
       const hasT = !!t && Object.keys(t).length > 0;
       if (t) {
@@ -1390,7 +1442,12 @@ export function applyAugments(
         if (hasT && !auras.includes(def.id)) auras.push(def.id);
       }
       if ((d.atk ?? 0) !== 0 || (d.hp ?? 0) !== 0 || hasT) {
-        details.push({ id: def.id, atk: d.atk ?? 0, hp: d.hp ?? 0, ...(hasT ? { traits: t } : {}) });
+        // A repeated copy adds to its first line rather than listing again.
+        const same = !hasT && details.find((x) => x.id === def.id && !x.traits);
+        if (same) {
+          same.atk += d.atk ?? 0;
+          same.hp += d.hp ?? 0;
+        } else details.push({ id: def.id, atk: d.atk ?? 0, hp: d.hp ?? 0, ...(hasT ? { traits: t } : {}) });
       }
     }
     const grant = state.grants[unit.id];
@@ -1557,6 +1614,13 @@ export function transferGrant(state: AugmentState, fromId: string, toId: string)
 }
 
 // --- Helpers other layers call (contract; implementations may grow) ---
+
+/** Held upgrades with repeats folded together, in first-pick order: [id, copies]. */
+export function stacked(ids: readonly string[]): [string, number][] {
+  const counts = new Map<string, number>();
+  for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
+  return [...counts];
+}
 
 export function hasAugment(state: AugmentState, id: string): boolean {
   return state.active.includes(id);

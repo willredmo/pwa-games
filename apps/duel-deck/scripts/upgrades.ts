@@ -10,6 +10,7 @@
 import { cloneBoard, insertUnit, levelCapOf, makeUnit, mergeGain, occupants, upgradeUnit } from "../src/engine/board";
 import { resolveRound } from "../src/engine/combat";
 import { readFileSync } from "node:fs";
+import { CHALLENGE_UPGRADES, answerWins, dailyChallenge, pastDays } from "../src/game/challenge";
 import { KNIGHT_AT, OFFER_KEYS, UNITS, isMastered } from "../src/engine/units";
 import type { AttackEvent, BattleEvent, Board, BuffEvent, HealEvent, RoundResult, Side, Unit } from "../src/engine/types";
 import {
@@ -31,6 +32,7 @@ import {
   PLAYER,
   UNIT_REROLLS,
   augmentOfferCount,
+  augmentRerollsFor,
   chargeNewUpgrades,
   knightAt,
   newBoard,
@@ -150,11 +152,15 @@ for (const cap of [8, 10, 12, 15]) {
   const row = ["striker", "berserker", "guard"];
   const d = [0, 1, 2].map((i) => delta(row, ["guard"], ["sharpened-edge"], i).atk);
   check("sharpened-edge", "+2 attack to Strikers and Berserkers only", d.join() === "2,2,0", d);
+  const h = [0, 1, 2].map((i) => delta(row, ["guard"], ["sharpened-edge"], i).hp);
+  check("sharpened-edge", "and +1 health", h.join() === "1,1,0", h);
 }
 {
   const row = ["berserker", "striker"];
   const d = [0, 1].map((i) => delta(row, ["guard"], ["adrenaline"], i).atk);
   check("adrenaline", "+3 attack to Berserkers only", d.join() === "3,0", d);
+  const h = [0, 1].map((i) => delta(row, ["guard"], ["adrenaline"], i).hp);
+  check("adrenaline", "and +2 health", h.join() === "2,0", h);
 }
 {
   const b = delta(["bulwark", "guard"], ["guard"], ["iron-will"], 0);
@@ -164,7 +170,7 @@ for (const cap of [8, 10, 12, 15]) {
 {
   const s = delta(["striker", "berserker"], ["guard"], ["precision-strikes"], 0);
   const b = delta(["striker", "berserker"], ["guard"], ["precision-strikes"], 1);
-  check("precision-strikes", "+2/+1 to Strikers only", s.atk === 2 && s.hp === 1 && b.atk === 0, [s.atk, s.hp, b.atk]);
+  check("precision-strikes", "+2/+3 to Strikers only", s.atk === 2 && s.hp === 3 && b.atk === 0, [s.atk, s.hp, b.atk]);
 }
 
 // --- Global ------------------------------------------------------------------
@@ -193,20 +199,20 @@ for (const cap of [8, 10, 12, 15]) {
   check("momentum", "a round won counts", r.roundWinner === PLAYER && s.pAug.momentum === 1, s.pAug.momentum);
 }
 {
-  const low = delta(["guard"], ["guard"], ["desperate-measures"], 0, { hp: 99 });
-  const half = delta(["guard"], ["guard"], ["desperate-measures"], 0, { hp: 100 });
-  check("desperate-measures", "+2 attack below half the starting HP, not at half", low.atk === 2 && half.atk === 0, [low.atk, half.atk]);
+  const at = (hp: number) => delta(["guard"], ["guard"], ["desperate-measures"], 0, { hp }).atk;
+  const got = [200, 151, 150, 100, 51, 50, 1].map(at);
+  check("desperate-measures", "+1 attack per quarter of the starting HP lost, up to +3", got.join() === "0,0,1,2,2,3,3", got);
   const big = delta(["guard"], ["guard"], ["desperate-measures"], 0, { hp: 149, rules: { startHp: 300 } });
-  check("desperate-measures", "half of a custom starting HP (149 of 300)", big.atk === 2, big.atk);
+  check("desperate-measures", "quarters of a custom starting HP (149 of 300: +2)", big.atk === 2, big.atk);
 }
 {
   const d4 = delta(["guard", "guard", "guard", "guard"], ["guard"], ["united-front"], 3);
   const d5 = delta(["guard", "guard", "guard", "guard", "guard"], ["guard"], ["united-front"], 0);
-  check("united-front", "+1 health per 2 units (4: +2, 5: +2)", d4.hp === 2 && d5.hp === 2, [d4.hp, d5.hp]);
+  check("united-front", "+1 health per 2 units, +1 attack per 4 (4: +1/+2, 5: +1/+2)", d4.hp === 2 && d5.hp === 2 && d4.atk === 1 && d5.atk === 1, [d4.atk, d4.hp, d5.atk, d5.hp]);
 }
 {
   const d = delta(["guard"], ["guard"], ["overwhelm"], 0, { aug: { kills: 6 } });
-  check("overwhelm", "+1 attack per 3 kills last round (6: +2)", d.atk === 2, d.atk);
+  check("overwhelm", "+1 attack per 2 kills last round (6: +3)", d.atk === 3, d.atk);
   const s = setup([{ key: "berserker", atk: 99, hp: 999 }], ["guard", "guard", "guard"], ["overwhelm"]);
   const r = resolveRound(s.board);
   settleRound(r, PLAYER, s.pAug, s.board);
@@ -216,14 +222,14 @@ for (const cap of [8, 10, 12, 15]) {
   const st = createAugmentState();
   const cost = takeAugment(st, "bloodpact", [], 200);
   const cost300 = takeAugment(createAugmentState(), "bloodpact", [], 300);
-  check("bloodpact", "costs 40% of the starting HP", cost === 80 && cost300 === 120, [cost, cost300]);
+  check("bloodpact", "costs 25% of the starting HP", cost === 50 && cost300 === 75, [cost, cost300]);
   const d = [0, 1].map((i) => delta(["guard", "medic"], ["guard"], ["bloodpact"], i).atk);
   check("bloodpact", "+2 attack to every unit", d.join() === "2,2", d);
   // Online: the opponent's device charges it too when their commit shows it.
   const b = newBoard();
   chargeNewUpgrades(b, ENEMY, [], ["bloodpact"]);
   chargeNewUpgrades(b, ENEMY, ["bloodpact"], ["bloodpact"]);
-  check("bloodpact", "online: charged once on the other device", b.hp.enemy === 120, b.hp.enemy);
+  check("bloodpact", "online: charged once on the other device", b.hp.enemy === 150, b.hp.enemy);
 }
 
 // --- Synergy -----------------------------------------------------------------
@@ -239,9 +245,9 @@ for (const cap of [8, 10, 12, 15]) {
   check("mixed-formation", "+2/+2 with 5 unit types, nothing with 4", five.atk === 2 && five.hp === 2 && four.atk === 0, [five.atk, five.hp, four.atk]);
 }
 {
-  const d4 = delta(["guard"], ["guard"], ["berserkers-rally"], 0, { aug: { rally: 4 } });
+  const d3 = delta(["guard"], ["guard"], ["berserkers-rally"], 0, { aug: { rally: 3 } });
   const d99 = delta(["guard"], ["guard"], ["berserkers-rally"], 0, { aug: { rally: 99 } });
-  check("berserkers-rally", "+1 attack per 4 Berserker deaths, up to +2", d4.atk === 1 && d99.atk === 2, [d4.atk, d99.atk]);
+  check("berserkers-rally", "+1 attack per 3 Berserker deaths, up to +3", d3.atk === 1 && d99.atk === 3, [d3.atk, d99.atk]);
   const s = setup(["berserker", "berserker"], [{ key: "bulwark", atk: 99, hp: 99 }], ["berserkers-rally"]);
   const r = resolveRound(s.board);
   settleRound(r, PLAYER, s.pAug, s.board);
@@ -252,7 +258,7 @@ for (const cap of [8, 10, 12, 15]) {
   const d = s.p.map((u, i) => u.atk - setup(["striker", "striker", "berserker", "guard"], ["guard"]).p[i].atk);
   check("twin-fangs", "+1 attack per other Striker/Berserker (3 of them: +2 each, Guard 0)", d.join() === "2,2,2,0", d);
   const h = s.p.map((u, i) => u.maxHp - setup(["striker", "striker", "berserker", "guard"], ["guard"]).p[i].maxHp);
-  check("twin-fangs", "and +1 health per other", h.join() === "2,2,2,0", h);
+  check("twin-fangs", "and +2 health per other", h.join() === "4,4,4,0", h);
   const five = delta(["striker", "striker", "berserker", "berserker", "striker"], ["guard"], ["twin-fangs"], 0);
   check("twin-fangs", "up to +3", five.atk === 3, five.atk);
   const one = delta(["striker", "guard"], ["guard"], ["twin-fangs"], 0);
@@ -377,12 +383,17 @@ for (const cap of [8, 10, 12, 15]) {
   const s = setup([{ key: "squire", merges: KNIGHT_AT - 1 }], ["guard"], ["early-knighthood"]);
   const plain = setup([{ key: "squire", merges: KNIGHT_AT - 1 }], ["guard"]);
   check("early-knighthood", "a Squire at the new level becomes a Knight", s.p[0].key === "knight" && plain.p[0].key === "squire");
+  const k = delta([{ key: "knight", merges: KNIGHT_AT }, "guard"], ["guard"], ["early-knighthood"], 0);
+  const g = delta([{ key: "knight", merges: KNIGHT_AT }, "guard"], ["guard"], ["early-knighthood"], 1);
+  check("early-knighthood", "Knights +1/+2, others nothing", k.atk === 1 && k.hp === 2 && g.atk === 0 && g.hp === 0, [k.atk, k.hp, g.atk]);
 }
 {
   const s = setup([{ key: "knight", merges: KNIGHT_AT }, "guard", "medic"], ["guard"], ["knights-oath"]);
   const d = s.p.map((u, i) => u.atk - setup([{ key: "knight", merges: KNIGHT_AT }, "guard", "medic"], ["guard"]).p[i].atk);
   const none = delta(["guard", "medic"], ["guard"], ["knights-oath"], 0);
   check("knights-oath", "with a Knight, every other unit +1 attack; without, nothing", d.join() === "0,1,1" && none.atk === 0, [d, none.atk]);
+  const h = s.p.map((u, i) => u.maxHp - setup([{ key: "knight", merges: KNIGHT_AT }, "guard", "medic"], ["guard"]).p[i].maxHp);
+  check("knights-oath", "and +2 health", h.join() === "0,2,2", h);
 }
 
 // --- Epics -------------------------------------------------------------------
@@ -410,7 +421,7 @@ for (const cap of [8, 10, 12, 15]) {
 {
   const s = setup(["guard"], [{ key: "striker", atk: 9 }], ["sabotage"]);
   const plain = setup(["guard"], [{ key: "striker", atk: 9 }]);
-  check("sabotage", "the enemy front loses 4 attack", plain.e[0].atk - s.e[0].atk === 4, [plain.e[0].atk, s.e[0].atk]);
+  check("sabotage", "the enemy front loses 6 attack", plain.e[0].atk - s.e[0].atk === 6, [plain.e[0].atk, s.e[0].atk]);
   const weak = setup(["guard"], [{ key: "medic", atk: 1 }], ["sabotage"]);
   check("sabotage", "never below 0", weak.e[0].atk === 0, weak.e[0].atk);
 }
@@ -464,7 +475,7 @@ for (const cap of [8, 10, 12, 15]) {
   const s = setup([{ key: "berserker", atk: 99, hp: 999 }], ["guard"], ["field-medic"], { hp: 150 });
   const r = resolveRound(s.board);
   const healed = settleRound(r, PLAYER, s.pAug, s.board);
-  check("field-medic", "recover 14 HP for a round won", healed === 14 && r.board.hp.player === 164, [healed, r.board.hp.player]);
+  check("field-medic", "recover 20 HP for a round won", healed === 20 && r.board.hp.player === 170, [healed, r.board.hp.player]);
   const t = setup([{ key: "berserker", atk: 99, hp: 999 }], ["guard"], ["field-medic"], { hp: 195 });
   const r2 = resolveRound(t.board);
   check("field-medic", "not past the starting HP", settleRound(r2, PLAYER, t.pAug, t.board) === 5 && r2.board.hp.player === 200);
@@ -472,8 +483,8 @@ for (const cap of [8, 10, 12, 15]) {
 {
   const s = setup([{ key: "berserker", atk: 10 }], [{ key: "guard", atk: 0, hp: 5 }], ["war-chest"], { hp: 150 });
   const r = resolveRound(s.board);
-  check("war-chest", "a round won deals 8 extra", r.bounty === 8 && r.hpLoss === 18, [r.bounty, r.hpLoss]);
-  check("war-chest", "and heals 6", settleRound(r, PLAYER, s.pAug, s.board) === 6);
+  check("war-chest", "a round won deals 10 extra", r.bounty === 10 && r.hpLoss === 20, [r.bounty, r.hpLoss]);
+  check("war-chest", "and heals 10", settleRound(r, PLAYER, s.pAug, s.board) === 10);
 }
 {
   const full = delta(["guard", "guard", "guard", "guard", "guard"], ["guard"], ["full-ranks"], 0);
@@ -530,7 +541,7 @@ for (const cap of [8, 10, 12, 15]) {
 {
   const s = setup(["guard", "warden"], ["guard"], ["thick-barrier"]);
   const b = buffs(resolveRound(s.board)).find((e) => e.label === "Barrier");
-  check("thick-barrier", "Barrier shields 4 more (4 + 4)", b?.shield === 8, b);
+  check("thick-barrier", "Barrier shields 6 more (4 + 6)", b?.shield === 10, b);
 }
 {
   const s = setup(["warden", "guard"], ["guard"], ["aegis"]);
@@ -571,7 +582,7 @@ for (const cap of [8, 10, 12, 15]) {
 }
 {
   const d = delta(["skirmisher"], ["guard"], ["duelist"], 0);
-  check("duelist", "Skirmishers +1/+2 and Riposte +2", d.atk === 1 && d.hp === 2 && d.unit.traits?.riposte === 2, [d.atk, d.hp, d.unit.traits?.riposte]);
+  check("duelist", "Skirmishers +2/+3 and Riposte +2", d.atk === 2 && d.hp === 3 && d.unit.traits?.riposte === 2, [d.atk, d.hp, d.unit.traits?.riposte]);
 }
 {
   const s = setup(["guard", "beacon", "herald"], ["guard"], ["signal-fire"]);
@@ -701,7 +712,7 @@ const gain = (r: ReturnType<typeof landOn>, i: number) => ({
 }
 {
   const s = setup(["guard", "striker"], ["guard"], ["bloodbond"]);
-  check("bloodbond", "the lead unit heals half, the next doesn't", s.p[0].traits?.lifesteal === 0.5 && !s.p[1].traits?.lifesteal);
+  check("bloodbond", "the lead unit heals a third, the next doesn't", s.p[0].traits?.lifesteal === 1 / 3 && !s.p[1].traits?.lifesteal);
 }
 {
   const s = setup(["striker", "medic"], ["guard"], ["spiked-line"]);
@@ -785,8 +796,8 @@ const gain = (r: ReturnType<typeof landOn>, i: number) => ({
 {
   const s = setup([{ key: "berserker", atk: 10 }], [{ key: "guard", atk: 0, hp: 5 }], ["golden-fleece"], { hp: 150 });
   const r = resolveRound(s.board);
-  check("golden-fleece", "a round won deals 10 extra", r.bounty === 10 && r.hpLoss === 20, [r.bounty, r.hpLoss]);
-  check("golden-fleece", "and heals 25", settleRound(r, PLAYER, s.pAug, s.board) === 25);
+  check("golden-fleece", "a round won deals 15 extra", r.bounty === 15 && r.hpLoss === 25, [r.bounty, r.hpLoss]);
+  check("golden-fleece", "and heals 35", settleRound(r, PLAYER, s.pAug, s.board) === 35);
 }
 
 {
@@ -896,6 +907,55 @@ const gain = (r: ReturnType<typeof landOn>, i: number) => ({
   check("progression", "levels: the XP to the top lands on the top level", levelOf(top).level === PROGRESSION_MAX && levelOf(top - 1).level === PROGRESSION_MAX - 1);
 }
 
+// --- Repeatable upgrades -------------------------------------------------------
+
+{
+  // A repeatable stat upgrade stacks and stays on offer; a unique one doesn't.
+  const once = delta(["guard", "striker"], ["guard"], ["battle-fury"], 1).atk;
+  const twice = delta(["guard", "striker"], ["guard"], ["battle-fury", "battle-fury"], 1).atk;
+  check("repeatable", "Battle fury taken twice gives +2", once === 1 && twice === 2, [once, twice]);
+  const st = createAugmentState();
+  takeAugment(st, "battle-fury", []);
+  takeAugment(st, "thorns", []);
+  takeAugment(st, "thorns", []);
+  check("repeatable", "a unique upgrade can't be taken twice", st.active.filter((id) => id === "thorns").length === 1, st.active);
+  const b = newBoard();
+  insertUnit(b, PLAYER, 0, 0, mk("guard", PLAYER));
+  const gold = new Set<string>();
+  for (let i = 0; i < 400; i++) for (const a of offerAugments(st, 3, "gold", { board: b, side: PLAYER })) gold.add(a.id);
+  check("repeatable", "a held repeatable is still dealt; a held unique isn't", gold.has("battle-fury") && !gold.has("thorns"));
+  const s = setup(["guard"], ["guard"], ["battle-fury", "battle-fury"]);
+  const badges = s.p[0].auras.filter((id) => id === "battle-fury").length;
+  const line = s.p[0].auraDetails?.filter((d) => d.id === "battle-fury") ?? [];
+  check("repeatable", "one badge and one +2 line for two copies", badges === 1 && line.length === 1 && line[0].atk === 2, [badges, line]);
+  check("repeatable", "every repeatable upgrade only changes stats", OFFERED_AUGMENTS.filter((a) => a.repeatable).every((a) => !a.traits && !a.mods && !a.hpCostShare && !a.healOnWin));
+}
+{
+  const st = createAugmentState();
+  takeAugment(st, "tactician", []);
+  check("tactician", "4 cards, each rerolled twice", augmentOfferCount(st) === 4 && augmentRerollsFor(st) === 2, [augmentOfferCount(st), augmentRerollsFor(st)]);
+}
+
+// --- Daily challenge -----------------------------------------------------------
+
+{
+  // The same day always builds the same challenge (every player gets it), and
+  // every day is winnable by at least some sampled answer.
+  const days = pastDays("2026-11-02", 12);
+  const a = days.map((d) => JSON.stringify(dailyChallenge(d)));
+  const sizes = days.every((d) => {
+    const c = dailyChallenge(d);
+    return c.units.length === 7 && c.upgrades.length === 4 && c.enemy.row.length === 5 && c.winShare > 0;
+  });
+  check("challenge", "12 days: full pools, a full enemy row, some answers win", sizes);
+  const again = days.map((d) => {
+    const c = dailyChallenge(d);
+    return answerWins(c, { row: [0, 1, 2], upgrades: c.upgrades.slice(0, 2) });
+  });
+  check("challenge", "an answer's result never changes (deterministic)", again.join() === days.map((d) => { const c = dailyChallenge(d); return answerWins(c, { row: [0, 1, 2], upgrades: c.upgrades.slice(0, 2) }); }).join() && a.join() === days.map((d) => JSON.stringify(dailyChallenge(d))).join());
+  check("challenge", "challenge upgrades are all offered, none choose-a-unit", CHALLENGE_UPGRADES.every((id) => !!getAugment(id) && !getAugment(id)!.target));
+}
+
 // --- Coverage ----------------------------------------------------------------
 
 for (const a of OFFERED_AUGMENTS) if (!covered.has(a.id)) failures.push(`${a.id}: no check in scripts/upgrades.ts`);
@@ -906,3 +966,4 @@ if (failures.length) {
   process.exit(1);
 }
 console.log(`All ${OFFERED_AUGMENTS.length} offered upgrades and the level cap check out (${checks} checks).`);
+

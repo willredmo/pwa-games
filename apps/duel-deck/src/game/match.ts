@@ -70,6 +70,11 @@ export function augmentOfferCount(state: AugmentState): number {
   return AUGMENT_OFFER_COUNT + (hasAugment(state, "tactician") ? 1 : 0);
 }
 
+/** Rerolls each upgrade card gets (Tactician gives one more). */
+export function augmentRerollsFor(state: AugmentState): number {
+  return AUGMENT_REROLLS + (hasAugment(state, "tactician") ? 1 : 0);
+}
+
 /** Which upgrade choice this is (1 for round 3, 2 for round 6, ...): sets the rarity odds. */
 export function upgradeTier(round: number): number {
   return Math.max(1, Math.floor(round / AUGMENT_EVERY));
@@ -381,6 +386,12 @@ function scoreRow(
 export const HARD_TUNING = { level: 24, conc: 1 };
 /** Rows Hard tries in every formation, after scoring all of them in one. */
 const HARD_SHORTLIST = 6;
+/**
+ * Picks Hard makes beyond the usual two, each round (2026-11-02: players
+ * beat Hard 85% of 130 matches, mostly by outgrowing its row). Chosen after
+ * the pair, from the cards left, by the same score. 0 = the old Hard.
+ */
+export const HARD_TUNING_EXTRA = { picks: 1 };
 
 /** A row's identity for de-duplicating Hard's candidates: its units as a multiset. */
 const rowKey = (board: Board, side: Side) =>
@@ -499,12 +510,35 @@ function hardCommit(
     }
     return best;
   };
-  let best = search(rollOffer(OFFER_COUNT, state));
+  let lastOffer = rollOffer(OFFER_COUNT, state);
+  let best = search(lastOffer);
   for (let left = unitRerollsFor(state); left > 0 && best && best.fight < 0; left--) {
-    const next = search(rollOffer(OFFER_COUNT, state));
-    if (next && next.score > best.score) best = next;
+    const offer = rollOffer(OFFER_COUNT, state);
+    const next = search(offer);
+    if (next && next.score > best.score) [best, lastOffer] = [next, offer];
   }
   if (!best) return [];
+  // Hard's extra picks: each the best single addition of a card still unused
+  // (the offer is sampled with replacement, so drop one copy per pick).
+  const left = [...lastOffer];
+  for (const k of best.picked) left.splice(left.indexOf(k), 1);
+  for (let n = 0; n < HARD_TUNING_EXTRA.picks; n++) {
+    let more: { score: number; board: Board; key: string } | null = null;
+    for (const key of new Set(left)) {
+      for (const cand of addOptions(best.board, side, key, state)) {
+        if (cand === best.board) continue;
+        for (const formation of FORMATIONS) {
+          const arranged = cloneBoard(cand);
+          arrange(arranged, side, formation);
+          const score = fightOf(arranged) + growthValue(arranged, side);
+          if (!more || score > more.score) more = { score, board: arranged, key };
+        }
+      }
+    }
+    if (!more) break;
+    best = { ...best, board: more.board, picked: [...best.picked, more.key] };
+    left.splice(left.indexOf(more.key), 1);
+  }
   board.slots[side] = best.board.slots[side];
   ensureDepth(board, best.board.depth);
   return best.picked;

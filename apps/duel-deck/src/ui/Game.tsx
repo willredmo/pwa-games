@@ -38,7 +38,7 @@ import {
   knightAt,
   unitRerollsFor,
   upgradeTier,
-  AUGMENT_REROLLS,
+  augmentRerollsFor,
   newBoard,
   rulesOf,
   rulesSummary,
@@ -383,16 +383,21 @@ export interface GameProps {
   onFeedback: (context: string) => void;
   /** Open the progression track (from the result screen's XP bar). */
   onProgress?: () => void;
+  /**
+   * A daily challenge: play this one round (both rows built, upgrades
+   * applied) and report the result. Never saved, logged or awarded XP.
+   */
+  challenge?: { board: Board; player: AugmentState; enemy: AugmentState; onDone: (won: boolean) => void };
 }
 
-export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, sound, onSound, music, onMusic, look, onLook, battleLog, onBattleLog, onExit, online, tutorial, rules: startRules, onRematch, onFeedback, onProgress }: GameProps) {
+export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, sound, onSound, music, onMusic, look, onLook, battleLog, onBattleLog, onExit, online, tutorial, rules: startRules, onRematch, onFeedback, onProgress, challenge }: GameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   /** The match being resumed, if any; resuming always lands in the pick phase. */
   const [saved] = useState(() => resume);
   // Online, both devices build the board from the room's settings, so they agree.
   const [board, setBoard] = useState<Board>(
-    () => saved?.board ?? newBoard(online ? (online.rules ?? {}) : tutorial ? {} : (startRules ?? {})),
+    () => saved?.board ?? (challenge ? cloneBoard(challenge.board) : newBoard(online ? (online.rules ?? {}) : tutorial ? {} : (startRules ?? {}))),
   );
   /** The match's settings, fixed for its whole length (they ride on the board). */
   const rules = rulesOf(board);
@@ -433,11 +438,11 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     // the opponent's, so a local restore would put the two devices out of
     // step. Reloading rejoins through the room instead.
     // The tutorial isn't saved either: it mustn't replace a real match in progress.
-    if (!online && !tutorial) saveMatch(s);
+    if (!online && !tutorial && !challenge) saveMatch(s);
   };
   /** Balance telemetry for this match (game/telemetry.ts). */
   const [matchLog] = useState(() =>
-    tutorial ? MatchLog.none() : online ? MatchLog.online(online.code, online.me, matchOf(online)) : MatchLog.cpu(!!saved, saved?.difficulty ?? startDifficulty),
+    tutorial || challenge ? MatchLog.none() : online ? MatchLog.online(online.code, online.me, matchOf(online)) : MatchLog.cpu(!!saved, saved?.difficulty ?? startDifficulty),
   );
   /**
    * This round's log so far: the cards as dealt, each pick, and rerolls spent.
@@ -508,7 +513,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     unitRerollsFor(saved?.player ?? createAugmentState()),
   );
   /** Rerolls left on each upgrade card, by position. */
-  const [augRerolls, setAugRerolls] = useState<number[]>(() => augOffers.map(() => AUGMENT_REROLLS));
+  const [augRerolls, setAugRerolls] = useState<number[]>(() => augOffers.map(() => augmentRerollsFor(saved?.player ?? createAugmentState())));
   /** Every upgrade shown this choice, so a reroll never deals one back. */
   const augSeen = useRef<string[]>(augOffers.map((a) => a.id));
   /** Part of the offer-card key, so a reroll replays the deal-in. */
@@ -765,8 +770,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     onSpeed(next);
   };
 
-  const playerAug = useRef<AugmentState>(saved?.player ?? createAugmentState());
-  const enemyAug = useRef<AugmentState>(saved?.enemy ?? createAugmentState());
+  const playerAug = useRef<AugmentState>(saved?.player ?? challenge?.player ?? createAugmentState());
+  const enemyAug = useRef<AugmentState>(saved?.enemy ?? challenge?.enemy ?? createAugmentState());
   /**
    * The board as committed, before any blows land — every unit alive and in
    * queue order. Fallen units respawn at the end of the round, so this snapshot
@@ -1150,7 +1155,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       });
       roundLog.current = { offer: nextOffer.slice(), picks: [], rr: 0, augRr: 0 };
       setAugOffers(augs);
-      setAugRerolls(augs.map(() => AUGMENT_REROLLS));
+      setAugRerolls(augs.map(() => augmentRerollsFor(playerAug.current)));
       augSeen.current = augs.map((a) => a.id);
       setUnitRerolls(unitRerollsFor(playerAug.current));
       setBoard(next);
@@ -1197,6 +1202,14 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   const [replaying, setReplaying] = useState(false);
   /** The last round's unit-by-unit breakdown is open. */
   const [showRoundStats, setShowRoundStats] = useState(false);
+
+  // A daily challenge goes straight to its one battle.
+  const challengeRef = useRef(challenge);
+  useLayoutEffect(() => {
+    if (challengeRef.current) playRound(cloneBoard(challengeRef.current.board));
+    // Once, on mount: the challenge is fixed for this Game's life.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** Start playback of a fully-assembled round (both rows final, stats applied). */
   const playRound = useCallback((committed: Board) => {
@@ -1908,6 +1921,15 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         timer = window.setTimeout(() => endReplayRef.current(), scaled(RESULT_MS));
         return;
       }
+      // A daily challenge is one round: say how it went, then hand back.
+      if (challengeRef.current) {
+        const won = result.roundWinner === PLAYER;
+        showBanner(won ? "Challenge complete!" : result.roundWinner ? "Defeated" : "Both rows fall", won ? "win" : "lose");
+        sfx(won ? "victory" : "defeat");
+        const done = challengeRef.current.onDone;
+        timer = window.setTimeout(() => done(won), scaled(RESULT_MS) + 400);
+        return;
+      }
       // Momentum, rally, Veteran etc. — before the respawn snapshot is used.
       const committed = committedRef.current ?? result.board;
       // Fortify: surviving Bulwarks visibly harden before the next round.
@@ -2344,7 +2366,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   /** Where the player is, for a feedback report: mode, round, phase. */
   const feedbackContext = () =>
     [
-      online ? `online ${online.me} match ${matchOf(online)} room ${online.code}` : tutorial ? "tutorial" : `cpu ${difficulty}`,
+      online ? `online ${online.me} match ${matchOf(online)} room ${online.code}` : tutorial ? "tutorial" : challenge ? "daily challenge" : `cpu ${difficulty}`,
       `round ${round}`,
       phase,
       `hp ${board.hp.player}/${board.hp.enemy} of ${startHpOf(board)}`,
@@ -2366,7 +2388,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
 
 
   const newMatch = () => {
-    if (!online && !tutorial) clearMatch();
+    if (!online && !tutorial && !challenge) clearMatch();
     onExit();
   };
 

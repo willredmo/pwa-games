@@ -5,7 +5,7 @@ import type { AugmentDef, AugmentState } from "../game/augments";
 import { unitUnlockLevel, unlockLevel } from "../game/progression";
 import { useProgress, type XpAward } from "../online/progress";
 import { XpResult } from "./Progress";
-import { OFFERED_AUGMENTS as AUGMENTS, RALLY_CAP, RARITIES, RARITY_ODDS, getAugment, rarityOf, unitsAffectedBy, type Rarity } from "../game/augments";
+import { OFFERED_AUGMENTS as AUGMENTS, RALLY_CAP, RARITIES, RARITY_ODDS, getAugment, rarityOf, stacked, unitsAffectedBy, type Rarity } from "../game/augments";
 import { ARCHETYPES, KNIGHT_LEVEL, MAX_LEVEL, SYNERGIES, UNITS, UNIT_KEYS, levelOf } from "../engine/units";
 import { levelLabel, levelTier } from "../board/render";
 import type { Unit } from "../engine/types";
@@ -196,7 +196,10 @@ export function AugmentPanel({
                         {a.icon}
                       </span>
                       <span className="aug-card__name">{a.name}</span>
-                      <span className="aug-card__tag">{a.target ? "Choose a unit" : CATEGORY_LABEL[a.category]}</span>
+                      <span className="aug-card__tag">
+                        {a.target ? "Choose a unit" : CATEGORY_LABEL[a.category]}
+                        {a.repeatable && " · Stacks"}
+                      </span>
                       <span className="aug-card__desc">{a.description}</span>
                     </span>
                     {selected === a.id && !picked && (
@@ -239,15 +242,19 @@ export function AugmentPanel({
 }
 
 function AugmentList({ ids, empty }: { ids: string[]; empty: string }) {
-  const defs = ids.map(getAugment).filter((a): a is AugmentDef => !!a);
+  const defs = stacked(ids).flatMap(([id, n]) => {
+    const a = getAugment(id);
+    return a ? [{ a, n }] : [];
+  });
   if (defs.length === 0) return <p className="panel__hint">{empty}</p>;
   return (
     <div className="cards">
-      {defs.map((a, i) => (
+      {defs.map(({ a, n }, i) => (
         <div key={a.id} className="card-row card-row--static" style={{ "--i": i } as React.CSSProperties}>
           <span className="card-row__head">
             <span className="card-row__name">
               <span className="aura-icon">{a.icon}</span> {a.name}
+              {n > 1 && <b className="upgrade-count"> ×{n}</b>}
             </span>
             <span className="tags">
               <RarityTag rarity={rarityOf(a)} />
@@ -532,7 +539,7 @@ function Stat({ label, value, i, suffix = "", sub }: { label: string; value: num
 export const DIFFICULTY_INFO: Record<string, { icon: string; blurb: string }> = {
   easy: { icon: "🌱", blurb: "Picks cards at random and never arranges its row. Good for learning the units." },
   normal: { icon: "⚔️", blurb: "Builds sensibly: fills its row, merges, and takes upgrades that suit it." },
-  hard: { icon: "🔥", blurb: "Simulates every pick against your row, predicts what you'll add, and builds toward maxed units." },
+  hard: { icon: "🔥", blurb: "Takes 3 units a round to your 2, simulates every pick against your row, and builds toward maxed units." },
 };
 
 /**
@@ -751,12 +758,13 @@ export function ResultPanel({ winner, round, stats, hp, startHp, upgrades, oppon
 
         {upgrades.length > 0 && (
           <div className="result-upgrades">
-            {upgrades.map((id, i) => {
+            {stacked(upgrades).map(([id, n], i) => {
               const def = getAugment(id);
               if (!def) return null;
               return (
                 <span key={id} className={`result-upgrade result-upgrade--${rarityOf(def)}`} style={{ "--i": i } as React.CSSProperties} title={`${def.name}: ${def.description}`}>
                   {def.icon} {def.name}
+                  {n > 1 && ` ×${n}`}
                 </span>
               );
             })}

@@ -10,6 +10,18 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.11.0",
+    date: "Nov 2, 2026",
+    notes: [
+      "📅 Daily challenge: one round, the same for everyone each day. Pick your row and two upgrades from the day's cards and beat the enemy row. Every unit and upgrade is available, and the last 30 days can be played too.",
+      "Plain stat upgrades now stack: take Battle fury, Golden age, Whetstone, Field promotion and friends again for more. Cards that stack say so.",
+      "🔥 Hard is harder: it takes 3 units a round to your 2.",
+      "Upgrades few people took got better: Adrenaline, Precision strikes, Sharpened edge, Duelist, Thick barrier, Knight's oath, Early knighthood (Knights +1/+2 too), Twin fangs, Berserker's rally, United front, Overwhelm, Tactician (a second reroll per card), Sabotage (6), Bloodpact (costs 25%), War chest (10/10), Field medic (20) and Golden fleece (15/35). Desperate measures now gives +1 attack for every quarter of your health lost.",
+      "Bloodbond heals a third of the damage dealt (was half).",
+      "Kawaii and Bloody styles unlock later on the progression track (levels 33 and 52).",
+    ],
+  },
+  {
     version: "1.10.1",
     date: "Nov 1, 2026",
     notes: [
