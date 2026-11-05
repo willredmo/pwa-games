@@ -1553,6 +1553,19 @@ pnpm run release   # the next build plays with it
   the sim can't settle the prediction: judge it by real win rates and
   `pnpm learn`'s prediction line. If those don't show a gain, set `learn` 0.
 
+### iOS animation audit (1.11.6, 2026-11-05)
+A player: not all animations work on an iPhone 15, iOS 18.7. An audit of every
+keyframe against the root rules found 1.11.3's claim rays and sparks using the
+very pattern ResultBackdrop's comment warns about (a masked conic gradient,
+keyframes reading custom properties), now a canvas (`ClaimBurst`). Moved to
+transform/opacity: `hp-flash`, `hp-pulse`, `syn-glow` (filter), `ice-glint`
+(left). `banner-shine` (background-position on clipped text) is gone, as the
+title's was. Left as they are: `box-shadow` pulses (breathe, upgrade-soon,
+frost-shimmer, rematch-glow, defeat-pulse, btn-pulse, mvp-glow, codex-flash),
+which paint rather than fail, and `gold-shine` on the victory title. Not run
+in WebKit: Playwright isn't installed here. That phone's earlier screenshot
+drew the reduced-motion title, so iOS Reduce Motion may explain the rest.
+
 ### Sound (game/sound.ts)
 Effects are synthesized, no audio files (`?sounds` on the dev server plays every one). The
 master chain is a compressor plus a short generated room reverb, and combat

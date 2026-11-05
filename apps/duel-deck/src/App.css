@@ -573,7 +573,7 @@
   color: transparent;
   background-clip: text;
   -webkit-background-clip: text;
-  background-size: 250% 100%;
+  background-size: 100% 100%;
   opacity: 0;
   --b1: #fff6d6;
   --b2: #f0b429;
@@ -678,11 +678,19 @@ html[data-look="kawaii"] .app-root::after {
 
 @media (prefers-reduced-motion: no-preference) {
   .hpbar__track--hit { animation: hp-shake 0.35s linear; }
-  .hpbar__track--hit .hpbar__fill { animation: hp-flash 0.4s ease-out; }
+  .hpbar__track--hit::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: #fff;
+    opacity: 0;
+    pointer-events: none;
+    animation: hp-flash 0.4s ease-out;
+  }
   .hpbar--low .hpbar__fill { animation: hp-pulse 0.8s ease-in-out infinite; }
   .hpbar--low .hpbar__hp { color: #ff7a6b; animation: hp-pulse 0.8s ease-in-out infinite; }
 
-  .banner__text { animation: banner-in 1.7s cubic-bezier(0.2, 0.9, 0.3, 1) both, banner-shine 1.7s linear both; }
+  .banner__text { animation: banner-in 1.7s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
   /* A banner with a second line to read (a synergy) stays up about 3 s. */
   .banner__text--long { animation-duration: 4.2s, 4.2s; }
 
@@ -725,8 +733,8 @@ html[data-look="kawaii"] .app-root::after {
   60% { transform: translateX(-2px); }
   80% { transform: translateX(1px); }
 }
-@keyframes hp-flash { 0% { filter: brightness(2.2) saturate(0.4); } 100% { filter: none; } }
-@keyframes hp-pulse { 0%, 100% { opacity: 1; filter: none; } 50% { opacity: 0.65; filter: brightness(1.3); } }
+@keyframes hp-flash { from { opacity: 0.6; } }
+@keyframes hp-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
 @keyframes banner-in {
   0% { transform: scale(2.6) rotate(-8deg); opacity: 0; }
   14% { transform: scale(0.92) rotate(2deg); opacity: 1; }
@@ -734,7 +742,6 @@ html[data-look="kawaii"] .app-root::after {
   75% { transform: scale(1.03) rotate(0deg); opacity: 1; }
   100% { transform: scale(1.1); opacity: 0; }
 }
-@keyframes banner-shine { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
 @keyframes banner-fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes breathe {
   0%, 100% { box-shadow: 0 0 0 0 rgba(58, 134, 214, 0.5); }
@@ -1182,7 +1189,7 @@ button.menu-item:hover { border-color: #5a5180; }
   left: -60%;
   width: 40%;
   height: 160%;
-  transform: rotate(25deg);
+  transform: translateX(0) rotate(25deg);
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
   opacity: 0.6;
 }
@@ -1195,8 +1202,8 @@ button.menu-item:hover { border-color: #5a5180; }
   to { opacity: 1; transform: none; }
 }
 @keyframes ice-glint {
-  0%, 55% { left: -60%; }
-  85%, 100% { left: 130%; }
+  0%, 55% { transform: translateX(0) rotate(25deg); }
+  85%, 100% { transform: translateX(475%) rotate(25deg); }
 }
 @keyframes frost-shimmer {
   0%, 100% { box-shadow: 0 0 0 1px rgba(143, 211, 255, 0.45), 0 0 10px rgba(124, 200, 255, 0.25); }
@@ -1779,7 +1786,7 @@ button.menu-item:hover { border-color: #5a5180; }
 @media (prefers-reduced-motion: no-preference) {
   .syn-meter--done .syn-meter__pips { animation: syn-glow 1.6s ease-in-out infinite alternate; }
 }
-@keyframes syn-glow { to { filter: brightness(1.5); } }
+@keyframes syn-glow { from { opacity: 0.72; } to { opacity: 1; } }
 /* An offer card whose class counts toward the row's synergy. */
 .card__class--goal {
   opacity: 1;

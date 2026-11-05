@@ -213,7 +213,75 @@ export function XpResult({ award, onOpen }: { award: XpAward; onOpen?: () => voi
 const CLAIM_CARD_MS = 1500;
 const CLAIM_CARD_MIN_MS = 550;
 const CLAIM_TOTAL_MS = 5000;
-const SPARKS = Array.from({ length: 12 }, (_, i) => i);
+const CLAIM_RAYS = 12;
+const CLAIM_SPARKS = 14;
+const SPARK_MS = 900;
+const TONE: Record<string, string> = {
+  gold: "#e2b24a",
+  prismatic: "#c99bff",
+  unit: "#8fbfff",
+  style: "#ff9cc7",
+  silver: "#d6dbe6",
+};
+
+/**
+ * Rays turning behind a claimed reward, and sparks flying off as it lands, by
+ * frame time. A canvas like ResultBackdrop's: iOS dropped the CSS version
+ * (masked conic gradient, keyframes reading custom properties). Reduced
+ * motion: the rays, still, and no sparks.
+ */
+function ClaimBurst({ tone }: { tone: string }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    const color = TONE[tone] ?? "#ffd36b";
+    const size = canvas.clientWidth;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = canvas.height = size * dpr;
+    ctx.scale(dpr, dpr);
+    const c = size / 2;
+    const glow = ctx.createRadialGradient(c, c, 0, c, c, c);
+    glow.addColorStop(0.1, `${color}66`);
+    glow.addColorStop(1, `${color}00`);
+    const calm = prefersReducedMotion();
+    let start = 0;
+    let frame = 0;
+    const draw = (now: number) => {
+      start ||= now;
+      const t = now - start;
+      ctx.clearRect(0, 0, size, size);
+      ctx.fillStyle = glow;
+      for (let i = 0; i < CLAIM_RAYS; i++) {
+        const a = (i / CLAIM_RAYS) * Math.PI * 2 + (t / 7000) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(c, c);
+        ctx.arc(c, c, c, a, a + Math.PI / CLAIM_RAYS / 1.6);
+        ctx.closePath();
+        ctx.fill();
+      }
+      if (!calm && t < SPARK_MS) {
+        const p = t / SPARK_MS;
+        const out = 1 - (1 - p) ** 3;
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 1 - p;
+        for (let i = 0; i < CLAIM_SPARKS; i++) {
+          const a = (i / CLAIM_SPARKS) * Math.PI * 2 + 0.2;
+          const r = 16 + out * (64 + (i % 3) * 26);
+          ctx.beginPath();
+          ctx.arc(c + Math.cos(a) * r, c + Math.sin(a) * r, 3.5 * (1 - p * 0.7), 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+      if (!calm) frame = requestAnimationFrame(draw);
+    };
+    frame = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(frame);
+  }, [tone]);
+  return <canvas ref={ref} className="claim-card__burst" aria-hidden="true" />;
+}
 
 /**
  * Claiming: each reward takes the stage on its own card, rays turning behind
@@ -235,12 +303,7 @@ export function ClaimReveal({ rewards, onDone }: { rewards: Reward[]; onDone: ()
   return (
     <div className="claim-reveal" role="status" aria-live="polite" onClick={next}>
       <div key={i} className={`claim-card claim-card--${r.tone}`}>
-        <span className="claim-card__rays" aria-hidden="true" />
-        <span className="claim-card__sparks" aria-hidden="true">
-          {SPARKS.map((n) => (
-            <i key={n} style={{ "--a": `${n * 30 + 8}deg`, "--r": `${6 + (n % 3) * 1.6}rem` } as React.CSSProperties} />
-          ))}
-        </span>
+        <ClaimBurst tone={r.tone} />
         <span className="claim-card__label">Unlocked!</span>
         <span className="claim-card__icon" aria-hidden="true">
           {reward.kind === "unit" ? <UnitPortrait unitKey={reward.id} side="player" size={84} pose="dance" /> : r.icon}

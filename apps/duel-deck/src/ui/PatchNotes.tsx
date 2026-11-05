@@ -10,6 +10,13 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.11.6",
+    date: "Nov 5, 2026",
+    notes: [
+      "iPhone: the rays and sparks when claiming an unlock now play, and the HP bars, frozen cards and class bonus meter animate more smoothly. The round banner no longer runs its light sweep.",
+    ],
+  },
+  {
     version: "1.11.5",
     date: "Nov 5, 2026",
     notes: [
