@@ -10,6 +10,16 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.11.1",
+    date: "Nov 2, 2026",
+    notes: [
+      "🧠 Hard plays smarter instead of taking extra units: it's back to 2 picks a round, like you.",
+      "Hard now tries every way of ordering its row, so it puts supports, Beacons, Sentinels and Lancers where they actually help.",
+      "Hard tests each upgrade card in a practice fight before taking it, and picks the best unit to land a choose-a-unit upgrade on.",
+      "Hard thinks a little further ahead about which units will grow strongest.",
+    ],
+  },
+  {
     version: "1.11.0",
     date: "Nov 2, 2026",
     notes: [

@@ -1900,6 +1900,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     }
     const units = sideUnits(board, PLAYER);
     const before = permanentStats(units, playerAug.current);
+    // Hard chooses against your upgrades as they were: the two choices are simultaneous.
+    const playerHad = structuredClone(playerAug.current);
     const cost = takeAugment(playerAug.current, id, units, startHpOf(board));
     const next = cloneBoard(board);
     if (cost) next.hp.player = Math.max(1, next.hp.player - cost);
@@ -1912,7 +1914,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     // at the same time on their own device; their pick reaches us with their
     // commit, so there's nothing to do here but take ours.
     const enemyHad = enemyAug.current.active.length;
-    if (!online) aiTakeAugment(next, ENEMY, enemyAug.current, rarityFor(round), difficultyRef.current);
+    if (!online) aiTakeAugment(next, ENEMY, enemyAug.current, rarityFor(round), difficultyRef.current, playerHad);
     matchLog.augment(round, {
       o: augOffers.map((a) => a.id),
       t: id,

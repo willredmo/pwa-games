@@ -36,7 +36,8 @@ export interface Report {
 }
 
 function firebase(...args: string[]): string {
-  return execFileSync("firebase", [...args, "--project", PROJECT], { encoding: "utf8", maxBuffer: 1 << 30 });
+  // On Windows the CLI is a .cmd shim, which only runs through a shell.
+  return execFileSync("firebase", [...args, "--project", PROJECT], { encoding: "utf8", maxBuffer: 1 << 30, shell: process.platform === "win32" });
 }
 
 /** A report id, or throws: ids end up in database paths. */

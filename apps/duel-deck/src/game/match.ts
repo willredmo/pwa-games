@@ -376,22 +376,87 @@ function scoreRow(
   return score;
 }
 
-/** Hard's growth weights (tuning; the sim sets them). */
 /**
- * Hard's growth weights: `level` per level on the row, plus `conc` × `level` ×
- * level² / cap per unit, so stacking levels on one unit pays. Tuned with
- * `pnpm sim --tune-enemy=level,conc` against the previous Hard (fight score
- * alone): 0,0 lost 32%, 4,0.5 ~50%, 12,1 60%, 20-30,1 64%.
+ * Hard's tuning (the sim sets it per side: `--tune-enemy=level,conc`,
+ * `--hard-enemy=field:value,…`). Growth: `level` per level on the row, plus
+ * `conc` × `level` × level² / cap per unit, so stacking levels on one unit
+ * pays (first tuned 2026-10-23 at 24,1; 36 measured a little better once the
+ * rest below arrived). The rest is 1.11.1's "Hard that knows its units",
+ * tuned against the 1.10 Hard (600 matches a setting, 2026-11-02):
+ * swap-climbing the order alone won 67%, simulated upgrades alone 56%; the
+ * projected fight alone *lost* (38% at weight 1: a level on everything flatters
+ * whatever scales, and the row still has to win now) but helps a little at
+ * 0.25 beside the rest. Climbing every shortlisted row (climb 2) added
+ * nothing for 6× the work. Shipped: 74% against the 1.10 Hard.
  */
-export const HARD_TUNING = { level: 24, conc: 1 };
+export const HARD_TUNING = {
+  level: 36,
+  conc: 1,
+  /** Weight of the projected fight (`project`): both rows a few levels on. */
+  future: 0.25,
+  /** Levels each unit gains in that projection. */
+  ahead: 1,
+  /** 1: improve the chosen row's order by trying every swap (`climb`); 2: every shortlisted row's. */
+  climb: 1,
+  /** 1: choose upgrades (and where to land them) by fighting with each one (`hardUpgrade`). */
+  augSim: 1,
+  /** How much the static win-rate table still counts beside the simulated fight, per point. */
+  augStatic: 1,
+};
 /** Rows Hard tries in every formation, after scoring all of them in one. */
 const HARD_SHORTLIST = 6;
+
 /**
- * Picks Hard makes beyond the usual two, each round (2026-11-02: players
- * beat Hard 85% of 130 matches, mostly by outgrowing its row). Chosen after
- * the pair, from the cards left, by the same score. 0 = the old Hard.
+ * A row as it might stand a few rounds on: every unit `levels` levels higher,
+ * merged with its own kind (a Knight with Squires). Fighting two projected
+ * rows is how Hard tells a unit that grows (a Squire nearing knighthood, a
+ * Berserker's Overflow, a Beacon's relay) from one that only fights well now:
+ * the engine knows each unit's scaling and Mastery, so Hard needn't be told.
  */
-export const HARD_TUNING_EXTRA = { picks: 1 };
+function project(board: Board, side: Side, state: AugmentState, levels: number): Board {
+  const b = cloneBoard(board);
+  const ratio = mergeRatioFor(state);
+  for (let n = 0; n < levels; n++) {
+    for (let lane = 0; lane < b.lanes; lane++) {
+      b.slots[side][lane].forEach((u, s) => {
+        if (u) upgradeUnit(b, side, lane, s, u.key === "knight" ? "squire" : u.key, ratio);
+      });
+    }
+  }
+  return b;
+}
+
+/**
+ * Hill-climb a row's order: try every swap of two units, keep any that scores
+ * better, until a pass finds none (at most `passes`). The fixed formations
+ * can't place a Beacon chain, a Sentinel in front of a big hitter, or a
+ * Lancer behind a wall; the fight itself can.
+ */
+function climb(board: Board, side: Side, score: (b: Board) => number, passes = 2): { board: Board; score: number } {
+  let best = board;
+  let bestScore = score(board);
+  for (let p = 0; p < passes; p++) {
+    let improved = false;
+    for (let lane = 0; lane < best.lanes; lane++) {
+      const n = best.slots[side][lane].length;
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const row = best.slots[side][lane];
+          if (!row[i] || !row[j]) continue;
+          const b = cloneBoard(best);
+          const r = b.slots[side][lane];
+          [r[i], r[j]] = [r[j], r[i]];
+          const s = score(b);
+          if (s > bestScore + 1e-9) {
+            [best, bestScore, improved] = [b, s, true];
+          }
+        }
+      }
+    }
+    if (!improved) break;
+  }
+  return { board: best, score: bestScore };
+}
 
 /** A row's identity for de-duplicating Hard's candidates: its units as a multiset. */
 const rowKey = (board: Board, side: Side) =>
@@ -455,6 +520,80 @@ function growthValue(board: Board, side: Side): number {
 }
 
 /**
+ * Hard's fight score for a candidate row: the mean of fighting the scouted
+ * row and the predicted one, plus `future` × the same fight projected
+ * `ahead` levels on for both sides (`project`).
+ */
+function hardFight(
+  side: Side,
+  state: AugmentState,
+  oppAug: AugmentState,
+  scout: Board,
+  predicted: Board,
+): (row: Board) => number {
+  const opp: Side = side === PLAYER ? ENEMY : PLAYER;
+  const { future, ahead } = HARD_TUNING;
+  const later = future ? project(predicted, opp, oppAug, ahead) : null;
+  return (row) => {
+    const now = (scoreRow(row, side, state, oppAug, scout) + scoreRow(row, side, state, oppAug, predicted)) / 2;
+    return later ? now + future * scoreRow(project(row, side, state, ahead), side, state, oppAug, later) : now;
+  };
+}
+
+/** The units a choose-a-unit upgrade could land on (none for any other upgrade). */
+function targetsFor(id: string, board: Board, side: Side): (Unit | null)[] {
+  const t = getAugment(id)?.target;
+  if (!t) return [null];
+  const units = sideUnits(board, side).filter((u) => t.can(u, board, side));
+  return units.length ? units : [null];
+}
+
+/**
+ * Hard's upgrade choice: take each card on a copy of the match (landing a
+ * choose-a-unit upgrade on each unit it could), rearrange the row for it, and
+ * fight it now and projected (`hardFight`), the opponent's upgrades as they
+ * stood before this choice. The static table (`aiAugmentScore`) still counts,
+ * `augStatic` per point: it carries what a fight can't show, such as pool
+ * health, rerolls, and upgrades for units Hard has yet to field.
+ */
+function hardUpgrade(
+  board: Board,
+  side: Side,
+  state: AugmentState,
+  offer: AugmentDef[],
+  oppAug: AugmentState,
+): { def: AugmentDef; target: Unit | null } | null {
+  const opp: Side = side === PLAYER ? ENEMY : PLAYER;
+  const units = sideUnits(board, side);
+  const startHp = startHpOf(board);
+  const scout = cloneBoard(board);
+  const predicted = cloneBoard(board);
+  aiCommit(predicted, opp, structuredClone(oppAug), { difficulty: "normal" });
+  let best: { def: AugmentDef; target: Unit | null; score: number } | null = null;
+  for (const def of offer) {
+    const prior = HARD_TUNING.augStatic * aiAugmentScore(def, units, board.hp[side], startHp);
+    for (const target of targetsFor(def.id, board, side)) {
+      const s = structuredClone(state);
+      const b = cloneBoard(board);
+      takeAugment(s, def.id, sideUnits(b, side), startHp);
+      if (target) applyTarget(s, def.id, b, side, target.id);
+      // Ascendant and the like reshape the row at the round's refresh.
+      refreshForRound(b, side === PLAYER ? s : oppAug, side === PLAYER ? oppAug : s);
+      const fightOf = hardFight(side, s, oppAug, scout, predicted);
+      let fight = -Infinity;
+      for (const formation of FORMATIONS) {
+        const arranged = cloneBoard(b);
+        arrange(arranged, side, formation);
+        fight = Math.max(fight, fightOf(arranged));
+      }
+      const score = fight + prior;
+      if (!best || score > best.score) best = { def, target, score };
+    }
+  }
+  return best;
+}
+
+/**
  * Hard: every pair of offer cards, each added every way it can be (any merge
  * target, an empty slot, a replacement), in several formations; each row is
  * fought against the opponent's scouted row and a prediction of its picks,
@@ -471,8 +610,7 @@ function hardCommit(
   const opp: Side = side === PLAYER ? ENEMY : PLAYER;
   const predicted = cloneBoard(scout);
   aiCommit(predicted, opp, oppAug, { difficulty: "normal" });
-  const fightOf = (row: Board) =>
-    (scoreRow(row, side, state, oppAug, scout) + scoreRow(row, side, state, oppAug, predicted)) / 2;
+  const fightOf = hardFight(side, state, oppAug, scout, predicted);
   const search = (offer: string[]) => {
     // Every distinct row the picks can make, scored in the default formation;
     // the best few are then tried in every formation.
@@ -498,47 +636,32 @@ function hardCommit(
       }
     }
     rows.sort((a, b) => b.score - a.score);
-    let best: { score: number; fight: number; board: Board; picked: string[] } | null = null;
+    let best: { score: number; fight: number; board: Board; picked: string[]; growth: number } | null = null;
     for (const r of rows.slice(0, HARD_SHORTLIST)) {
+      let mine: { fight: number; board: Board } | null = null;
       for (const formation of FORMATIONS) {
         const arranged = cloneBoard(r.cand);
         arrange(arranged, side, formation);
         const fight = fightOf(arranged);
-        const score = fight + r.growth;
-        if (!best || score > best.score) best = { score, fight, board: arranged, picked: r.picked };
+        if (!mine || fight > mine.fight) mine = { fight, board: arranged };
       }
+      // climb 2: every shortlisted row gets its best order before they're compared.
+      if (HARD_TUNING.climb >= 2) {
+        const c = climb(mine!.board, side, fightOf);
+        mine = { fight: c.score, board: c.board };
+      }
+      const score = mine!.fight + r.growth;
+      if (!best || score > best.score) best = { score, fight: mine!.fight, board: mine!.board, picked: r.picked, growth: r.growth };
     }
     return best;
   };
-  let lastOffer = rollOffer(OFFER_COUNT, state);
-  let best = search(lastOffer);
+  let best = search(rollOffer(OFFER_COUNT, state));
   for (let left = unitRerollsFor(state); left > 0 && best && best.fight < 0; left--) {
-    const offer = rollOffer(OFFER_COUNT, state);
-    const next = search(offer);
-    if (next && next.score > best.score) [best, lastOffer] = [next, offer];
+    const next = search(rollOffer(OFFER_COUNT, state));
+    if (next && next.score > best.score) best = next;
   }
   if (!best) return [];
-  // Hard's extra picks: each the best single addition of a card still unused
-  // (the offer is sampled with replacement, so drop one copy per pick).
-  const left = [...lastOffer];
-  for (const k of best.picked) left.splice(left.indexOf(k), 1);
-  for (let n = 0; n < HARD_TUNING_EXTRA.picks; n++) {
-    let more: { score: number; board: Board; key: string } | null = null;
-    for (const key of new Set(left)) {
-      for (const cand of addOptions(best.board, side, key, state)) {
-        if (cand === best.board) continue;
-        for (const formation of FORMATIONS) {
-          const arranged = cloneBoard(cand);
-          arrange(arranged, side, formation);
-          const score = fightOf(arranged) + growthValue(arranged, side);
-          if (!more || score > more.score) more = { score, board: arranged, key };
-        }
-      }
-    }
-    if (!more) break;
-    best = { ...best, board: more.board, picked: [...best.picked, more.key] };
-    left.splice(left.indexOf(more.key), 1);
-  }
+  if (HARD_TUNING.climb === 1) best = { ...best, board: climb(best.board, side, fightOf).board };
   board.slots[side] = best.board.slots[side];
   ensureDepth(board, best.board.depth);
   return best.picked;
@@ -787,6 +910,8 @@ export function aiPickAugment<T extends { id: string } | string>(
  * choice's cards (`rarity`, the same as the player's), reroll each poor fit
  * once (Hard holds out for a little more), take the best, apply its pool cost
  * and, for a choose-a-unit upgrade, land it (`aiTarget`). Returns the id taken.
+ * Hard, given `oppAug` (the opponent's upgrades before this choice), chooses
+ * the card and its target by fighting with each (`hardUpgrade`).
  */
 export function aiTakeAugment(
   board: Board,
@@ -794,6 +919,7 @@ export function aiTakeAugment(
   state: AugmentState,
   rarity: Rarity,
   difficulty: Difficulty = "normal",
+  oppAug?: AugmentState,
 ): string | null {
   const units = sideUnits(board, side);
   const startHp = startHpOf(board);
@@ -810,15 +936,17 @@ export function aiTakeAugment(
       seen.push(next.id);
     });
   }
+  const simmed = difficulty === "hard" && oppAug && HARD_TUNING.augSim ? hardUpgrade(board, side, state, offer, oppAug) : null;
   // Easy takes a card at random.
-  const choice =
-    difficulty === "easy"
+  const choice = simmed
+    ? simmed.def
+    : difficulty === "easy"
       ? offer[Math.floor(Math.random() * offer.length)]
       : aiPickAugment(offer, units, board.hp[side], startHp);
   if (!choice) return null;
   const cost = takeAugment(state, choice.id, units, startHp);
   if (cost) board.hp[side] = Math.max(1, board.hp[side] - cost);
-  const target = aiTarget(choice.id, board, side);
+  const target = simmed ? simmed.target : aiTarget(choice.id, board, side);
   if (target) applyTarget(state, choice.id, board, side, target.id);
   return choice.id;
 }

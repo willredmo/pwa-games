@@ -31,9 +31,17 @@ const diff: Record<Side, Difficulty> = {
   enemy: (flag("enemy") ?? "normal") as Difficulty,
 };
 // --tune-player=level,conc / --tune-enemy=…: Hard's growth weights per side.
+// --hard-player=future:0,climb:0,augSim:0 / --hard-enemy=…: any HARD_TUNING
+// field per side (all three 0 is the Hard of 1.10).
+const defaults = { ...HARD_TUNING };
 const tune = (s: Side) => {
   const t = flag(`tune-${s}`)?.split(",").map(Number);
-  return { level: t?.[0] ?? HARD_TUNING.level, conc: t?.[1] ?? HARD_TUNING.conc };
+  const named = Object.fromEntries(
+    (args.find((a) => a.startsWith(`--hard-${s}=`))?.slice(`--hard-${s}=`.length).split(",") ?? [])
+      .filter(Boolean)
+      .map((kv) => [kv.split(":")[0], Number(kv.split(":")[1])]),
+  );
+  return { ...defaults, level: t?.[0] ?? defaults.level, conc: t?.[1] ?? defaults.conc, ...named };
 };
 const tunings = { player: tune("player"), enemy: tune("enemy") };
 const commit = (b: Parameters<typeof aiCommit>[0], s: Side, opts: Parameters<typeof aiCommit>[3]) => {
@@ -80,8 +88,14 @@ for (let i = 0; i < N; i++) {
     // mode picks blind, for unbiased per-augment win rates.
     // Both sides are dealt the same rarity, as in the app.
     const rarity = rollRarity(seed, upgradeTier(r));
+    // Both choose against the other's upgrades as they were (simultaneous).
+    const had = { player: structuredClone(aug.player), enemy: structuredClone(aug.enemy) };
     if (isAugmentRound(r)) for (const s of SIDES) {
-      if (augMode === "ai") { aiTakeAugment(c, s, aug[s], rarity, diff[s]); continue; }
+      if (augMode === "ai") {
+        Object.assign(HARD_TUNING, tunings[s]);
+        aiTakeAugment(c, s, aug[s], rarity, diff[s], had[other(s)]);
+        continue;
+      }
       const ch = pickAug(offerAugments(aug[s], augmentOfferCount(aug[s]), rarity, { board: c, side: s }));
       if (ch) {
         const k = takeAugment(aug[s], ch.id, sideUnits(c, s));

@@ -553,7 +553,7 @@ function Stat({ label, value, i, suffix = "", sub }: { label: string; value: num
 export const DIFFICULTY_INFO: Record<string, { icon: string; blurb: string }> = {
   easy: { icon: "🌱", blurb: "Picks cards at random and never arranges its row. Good for learning the units." },
   normal: { icon: "⚔️", blurb: "Builds sensibly: fills its row, merges, and takes upgrades that suit it." },
-  hard: { icon: "🔥", blurb: "Takes 3 units a round to your 2, simulates every pick against your row, and builds toward maxed units." },
+  hard: { icon: "🔥", blurb: "Fights out every pick, row order and upgrade against your row before choosing, and builds toward maxed units." },
 };
 
 /**

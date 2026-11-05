@@ -990,7 +990,9 @@ screen); the ☰ menu just shows it. The last choice is remembered
   per level on the row and `conc` × that × level²/cap per unit, so a
   replaced or unspent pick costs a level and stacking one unit toward its
   Mastery pays. It rerolls when even the best line loses the fight, and gets
-  one extra upgrade reroll with a higher reroll bar.
+  one extra upgrade reroll with a higher reroll bar. Since 1.11.1 it also
+  swap-climbs the chosen row's order, scores a projected fight, and picks
+  upgrades by simulating each (see "Hard that knows its units").
 Hard also predicts the opponent's two picks this round (Normal's logic run on
 the scouted row, with cards it rolls itself: no hidden information) and scores
 each candidate against both the scouted and the predicted row. Without that it
@@ -1409,11 +1411,43 @@ earns XP, levels unlock upgrades, units and battle styles.
   45–57%; Golden fleece still ~36% (pool healing barely registers in the sim,
   like Field medic), buffed anyway for players. Sabotage 4 → 6 (39% → 46%).
   Tactician also gives each card a second reroll (`augmentRerollsFor`).
-- **Hard** takes a third unit each round (`HARD_TUNING_EXTRA.picks`, chosen
-  after its pair by the same score from the cards left). Real players beat
-  the old Hard 85% of 130 matches. Sim: Normal vs the new Hard 6.4% (vs the
-  old Hard ~14%); median match 12 rounds; ~25 ms a round on a desktop.
+- **Hard** took a third unit each round. Real players beat the old Hard
+  85% of 130 matches. Sim: Normal vs that Hard 6.4%. **Reverted in 1.11.1**:
+  players read the extra unit as a bug (two reports), so Hard plays smarter
+  instead (below).
 - `PROTOCOL` 18.
+
+### Hard that knows its units (1.11.1, 2026-11-02)
+The user's call: back to 2 picks, and a Hard that understands each unit and
+upgrade better. Rather than more hand-written values, Hard asks the engine:
+every unit's ability, scaling and Mastery is in `resolveRound`, so fighting a
+row tells it what the row is worth. Three additions (`HARD_TUNING`; the sim
+switches each per side with `--hard-enemy=future:0,climb:0,augSim:0`, which
+together are the 1.10 Hard):
+- **Order by swap-climbing** (`climb`): after the search, try every swap of
+  two units in the chosen row and keep any that fights better, until a pass
+  finds none. The five fixed formations couldn't place a Beacon chain, a
+  Sentinel ahead of a big hitter or a Lancer behind a wall. Alone: 67% vs
+  the 1.10 Hard. Climbing every shortlisted row (`climb: 2`) added nothing
+  for ~6× the work.
+- **Upgrades by simulation** (`hardUpgrade`, from `aiTakeAugment` when given
+  the opponent's upgrades): each card is taken on a copy of the match, a
+  choose-a-unit card on every unit it could land on, and the row fought in
+  each formation. The static table still counts (`augStatic` 1 per point)
+  for what a fight can't show: pool health, rerolls, upgrades for units not
+  fielded yet. The opponent's upgrades are as they stood *before* this
+  choice (the app snapshots the player's before taking theirs: the choices
+  are simultaneous). Alone: 56%.
+- **Projected fight** (`project`, `future` 0.25, `ahead` 1): both rows one
+  level up on every unit (a Knight merges Squires) and fought, so units that
+  scale count. Alone at weight 1 it *lost* (38%): a level on everything
+  flatters whatever scales and the row still has to win now. At 0.25 beside
+  the rest it helps a little. Growth weight `level` 24 → 36.
+Tuned against the 1.10 Hard at 300-600 matches per setting (most settings
+with all three on landed 70-74%, within noise). Shipped: beats the 1.10
+Hard 71% (1000 matches), Normal 96% (was 85%; the 3-pick Hard 94%). Median
+match vs Normal 15 rounds. ~21 ms a commit on a desktop (p90 37), ~4 ms an
+upgrade choice. Online play is untouched (no `PROTOCOL` bump).
 
 ### Daily challenge (game/challenge.ts, ui/Challenge.tsx; 1.11.0)
 A player's idea: one round a day, the same for everyone. `dailyChallenge(day)`
