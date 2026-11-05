@@ -1535,17 +1535,23 @@ pnpm run release   # the next build plays with it
   patch stops counting. It prints how many units `pred` got right, the number
   to watch. First run: 188 finished matches over 21 days.
 - **What Hard does with it** (`HARD_TUNING.learn`): it predicts you with
-  `humanCommit`, not Normal's logic. Real players merged 83% of picks; Normal
-  fills the row first, so Hard had been planning against a row people rarely
-  build. And `learnedEdge` nudges each upgrade's prior by how it did in real
-  matches, for players and the CPU, up to ±8 points, shrunk until an upgrade
-  has ~20 matches behind it. Holder rates flatter whatever strong players
-  prefer, which is why it's capped and only a nudge.
-- **Not proven to help yet.** Against `pnpm sim --player=human` (a bot playing
-  `humanCommit`) Hard won 93.9% with it, 93.8% without (800 each), and head to
-  head 50.5% (800). The bot picks like people but doesn't play like them
-  (real players beat Hard, this bot loses 94%), so the sim can't settle it:
-  judge by real win rates on 1.11.4 onward and `pnpm learn`'s prediction line.
+  `humanCommit`, not Normal's logic. Real players fill the row first, then
+  merge: 99% of round-1 picks place, 91% of round 2's, and from round 6 ~90%
+  merge. With a slot free they merge 31% of picks (`roomMerges`/`roomPicks`).
+  **Fixed in 1.11.5:** 1.11.4 read the overall 83% merge share as "players
+  merge even with slots free" and merged too early; an aggregate hid the
+  phase. Check a rate by round before building on it. `learnedEdge` nudges
+  each upgrade's prior by how it did in real matches, up to ±8 points, shrunk
+  until an upgrade has ~20 matches behind it. **Off since 1.11.5**
+  (`HARD_TUNING.edge` 0; the sim's `--hard-enemy=edge:1` turns it on): holder
+  rates flatter whatever strong players prefer, and it tested worse.
+- **Not proven to help.** 1.11.5's model, against `pnpm sim --player=human`
+  (a bot playing `humanCommit`) and head to head with `learn` off:
+  no learned data 98.1%; prediction alone 97.1%, 49.1% head to head (1000
+  each); with the nudge 96.0%, 47.8% (1800). The bot merges within a few
+  points of real players by round but loses 97% (real players beat Hard), so
+  the sim can't settle the prediction: judge it by real win rates and
+  `pnpm learn`'s prediction line. If those don't show a gain, set `learn` 0.
 
 ### Sound (game/sound.ts)
 Effects are synthesized, no audio files (`?sounds` on the dev server plays every one). The

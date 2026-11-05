@@ -10,6 +10,14 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.11.5",
+    date: "Nov 5, 2026",
+    notes: [
+      "Hard reads your early rounds better: it now expects you to fill your row first, then start stacking levels.",
+      "Hard no longer leans on real match results when choosing upgrades: it tested worse that way, so it's back to working them out in practice fights.",
+    ],
+  },
+  {
     version: "1.11.4",
     date: "Nov 4, 2026",
     notes: [

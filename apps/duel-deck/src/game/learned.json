@@ -3,6 +3,8 @@
   "matches": 141.26,
   "picks": 6924.42,
   "merges": 5713.19,
+  "roomPicks": 1138.26,
+  "roomMerges": 354.27,
   "cards": {
     "guard": {
       "offered": 1408.51,

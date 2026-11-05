@@ -351,6 +351,9 @@ export interface Learned {
   picks: number;
   /** Picks that merged into a unit rather than adding one. */
   merges: number;
+  /** Picks made with a slot free, and how many of those merged anyway. */
+  roomPicks: number;
+  roomMerges: number;
   /** Per unit: how often players were dealt it, and took it. */
   cards: Record<string, { offered: number; taken: number }>;
   /** Per upgrade: matches players held it, and won. */
@@ -363,21 +366,20 @@ export interface Learned {
 
 export const LEARNED: Learned = learned as Learned;
 
-/** Picks a player merges with no data to say otherwise. */
-const HUMAN_MERGE_SHARE = 0.8;
+/** Picks a player merges with a slot free, with no data to say otherwise. */
+const HUMAN_ROOM_MERGE_SHARE = 0.15;
 
 /**
  * A pick the way real players make it, from what `pnpm learn` measured: they
- * merge most picks, even with slots free (82% in the first 9,000), so they
- * stack levels on their strongest unit; the rest place the kind of card
- * players take most. Hard predicts the player with this, and `pnpm sim
- * --player=human` plays it. Normal's logic fills the row first, which is not
- * what a person does.
+ * fill the row first, mostly with the kinds of card players take most, then
+ * stack levels on their strongest unit (`roomMerges`: how often they merge
+ * with a slot free). Hard predicts the player with this, and `pnpm sim
+ * --player=human` plays it.
  */
 export function humanCommit(board: Board, side: Side, state: AugmentState): string[] {
   const offer = rollOffer(OFFER_COUNT, state);
   const ratio = mergeRatioFor(state);
-  const share = LEARNED.picks > 0 ? LEARNED.merges / LEARNED.picks : HUMAN_MERGE_SHARE;
+  const share = LEARNED.roomPicks > 0 ? LEARNED.roomMerges / LEARNED.roomPicks : HUMAN_ROOM_MERGE_SHARE;
   const appeal = (key: string) => {
     const c = LEARNED.cards[key];
     return c?.offered ? c.taken / c.offered : 0;
@@ -530,6 +532,12 @@ export const HARD_TUNING = {
   augStatic: 1,
   /** 1: predict the player from real players' habits, and let real results nudge upgrades (`LEARNED`). */
   learn: 1,
+  /**
+   * 1: real results nudge upgrades too (`learnedEdge`), with `learn` on. Off
+   * since 1.11.5: head to head it won 47.8% (1800 matches) to the prediction
+   * alone's 49.1% (1000), and holder rates flatter what strong players take.
+   */
+  edge: 0,
 };
 /** Rows Hard tries in every formation, after scoring all of them in one. */
 const HARD_SHORTLIST = 6;
@@ -700,7 +708,7 @@ function hardUpgrade(
   let best: { def: AugmentDef; target: Unit | null; score: number } | null = null;
   for (const def of offer) {
     const prior =
-      HARD_TUNING.augStatic * (aiAugmentScore(def, units, board.hp[side], startHp) + (HARD_TUNING.learn ? learnedEdge(def.id) : 0));
+      HARD_TUNING.augStatic * (aiAugmentScore(def, units, board.hp[side], startHp) + (HARD_TUNING.learn && HARD_TUNING.edge ? learnedEdge(def.id) : 0));
     for (const target of targetsFor(def.id, board, side)) {
       const s = structuredClone(state);
       const b = cloneBoard(board);

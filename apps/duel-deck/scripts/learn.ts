@@ -16,6 +16,8 @@ import { join } from "node:path";
 import type { Learned, Tally } from "../src/game/match";
 
 const OUT = "src/game/learned.json";
+/** A row's slots, ignoring the rare earned ones: picks below this had room to add a unit. */
+const ROW_SLOTS = 5;
 const HALF_LIFE_DAYS = 30;
 
 const args = Object.fromEntries(
@@ -26,7 +28,7 @@ const args = Object.fromEntries(
 );
 
 interface Pick { k: string; a: "p" | "m" | "r"; l: number }
-interface RoundLog { offer?: string[]; picks?: Pick[]; won: number }
+interface RoundLog { offer?: string[]; picks?: Pick[]; row?: string[]; won: number }
 interface CpuLog { pred?: string[]; est?: number }
 interface MatchLog {
   meta?: { mode: string; diff: string };
@@ -65,6 +67,8 @@ const out: Learned = {
   matches: old.matches * keep,
   picks: old.picks * keep,
   merges: old.merges * keep,
+  roomPicks: (old.roomPicks ?? 0) * keep,
+  roomMerges: (old.roomMerges ?? 0) * keep,
   cards: Object.fromEntries(Object.entries(old.cards).map(([k, c]) => [k, scale(c)])),
   human: scaleAll(old.human),
   cpu: scaleAll(old.cpu),
@@ -89,12 +93,21 @@ for (const day of fresh) {
   const w = fade(daysBetween(day, today));
   for (const m of Object.values(data[day])) {
     if (!m.meta) continue;
-    for (const r of values(m.rounds)) {
+    // The database turns dense numeric keys into arrays, sparse ones into objects.
+    const byRound = m.rounds as Record<string, RoundLog> | undefined;
+    for (const [n, r] of Object.entries(byRound ?? {})) {
+      if (!r) continue;
       for (const k of r.offer ?? []) (out.cards[k] ??= { offered: 0, taken: 0 }).offered += w;
+      let size = byRound?.[Number(n) - 1]?.row?.length ?? 0;
       for (const p of r.picks ?? []) {
         (out.cards[p.k] ??= { offered: 0, taken: 0 }).taken += w;
         out.picks += w;
         if (p.a === "m") out.merges += w;
+        if (size < ROW_SLOTS) {
+          out.roomPicks += w;
+          if (p.a === "m") out.roomMerges += w;
+        }
+        if (p.a === "p") size++;
       }
     }
     // How well the CPU read the player: its predicted row against the row played.
@@ -137,7 +150,10 @@ if (!args.dry) writeFileSync(OUT, rounded + "\n");
 
 console.log(`read ${fresh.length} day(s), ${read} finished match(es); through ${out.through || "nothing"}`);
 console.log(`weight now: ${out.matches.toFixed(1)} matches, ${out.picks.toFixed(0)} picks`);
-console.log(`players merge ${((100 * out.merges) / (out.picks || 1)).toFixed(0)}% of picks`);
+console.log(
+  `players merge ${((100 * out.merges) / (out.picks || 1)).toFixed(0)}% of picks, ` +
+    `${((100 * out.roomMerges) / (out.roomPicks || 1)).toFixed(0)}% of those made with a slot free`,
+);
 const rate = (t: Tally) => (t.n ? `${((100 * t.won) / t.n).toFixed(0)}%` : "n/a");
 console.log(`upgrade holders win: players ${rate(out.humanBase)}, CPU ${rate(out.cpuBase)}`);
 if (guessed) console.log(`CPU's predicted rows matched ${((100 * guessedRight) / guessed).toFixed(0)}% of the units played`);
