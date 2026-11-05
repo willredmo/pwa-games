@@ -893,13 +893,13 @@ gets First strike in the opening exchange and +3 on that blow (+4 measured
   `permanentStats` (base + grant + level) around the pick (`growthSince`).
   Enemy gains aren't shown. **No tap needed** (2026-11-01, feedback: the
   first version was a dialog with "Got it" every round, which players found
-  too much): after the round-result banner the row stands back up, each gain
-  flashes on its unit and `GrowthCard` lists them over the board
-  (`showGrowth`; `pointer-events: none`), then the next round deals by
-  itself after `GROWTH_MS` (2.4 s, +0.5 s per further unit, at most 4 s; not
-  scaled by battle speed, it's reading time). A pick-time gain shows the
-  same card for the same time while picking carries on. Rounds with no gain
-  skip the beat.
+  too much), and **no wait** (1.11.2, the user wanted them faster than the
+  card's 2.4–4 s between rounds): the next round deals straight after the
+  result, each gain flashes on its unit (`flashGrowth`), and a gold ⬆ Gains
+  button beside Stats opens `GrowthPanel`, the gains since the last fight
+  began (`gains`: the round's, then any pick-time ones). A pick-time gain
+  also shows `GrowthCard` over the board (`showGrowth`; `pointer-events:
+  none`) for `GROWTH_MS` while picking carries on.
 - **Supports leading the row** use their ability on themselves, as the
   Medic's Mend always did: Rally and Barrier land on the leader, and Lifebond
   becomes a shield the size of the gift (it keeps its health). An Aegis

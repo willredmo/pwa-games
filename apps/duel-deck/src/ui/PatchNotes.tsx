@@ -10,6 +10,13 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.11.2",
+    date: "Nov 4, 2026",
+    notes: [
+      "⬆ Permanent upgrades no longer hold up the next round: they flash on your units as it starts, and the new ⬆ Gains button beside Stats lists them whenever you want.",
+    ],
+  },
+  {
     version: "1.11.1",
     date: "Nov 2, 2026",
     notes: [

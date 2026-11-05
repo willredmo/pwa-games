@@ -668,6 +668,12 @@ html[data-look="kawaii"] .app-root::after {
 .app__log-row { display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-width: 0; max-width: 100%; }
 .app__log-row .app__log { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .replay-btn { flex: none; font-size: 0.8rem; padding: 0 0.2rem; }
+/* Gold, and it pops in as the picks open, so a round's gains catch the eye. */
+.link-btn.gains-btn { color: #f0c93a; font-weight: 700; }
+@media (prefers-reduced-motion: no-preference) {
+  .gains-btn { animation: gains-pop 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.4) backwards; }
+}
+@keyframes gains-pop { from { opacity: 0; transform: scale(0.6); } }
 .result-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem; }
 
 @media (prefers-reduced-motion: no-preference) {

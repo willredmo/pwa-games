@@ -85,6 +85,7 @@ import {
   AugmentsView,
   ConfirmPanel,
   GrowthCard,
+  GrowthPanel,
   HelpPanel,
   RoundStatsPanel,
   ResultPanel,
@@ -473,12 +474,18 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   const [barBlast, setBarBlast] = useState(false);
   const [phase, setPhase] = useState<Phase>(saved?.augmentPending || challenge ? "augment" : "pick");
   /**
-   * Permanent gains your units just got (Veteran, Fortify, a choose-a-unit
-   * upgrade), shown on a card over the board that goes by itself
-   * (`showGrowth`). A round's gains get their own beat between its end and
-   * the next round's picks.
+   * Permanent gains your units just got at pick time (a choose-a-unit
+   * upgrade, Last stand), shown on a card over the board that goes by itself
+   * (`showGrowth`).
    */
   const [growth, setGrowth] = useState<{ list: Growth[]; nonce: number } | null>(null);
+  /**
+   * Everything gained since the last fight began (Veteran and Fortify from it,
+   * pick-time gains after it), behind the ⬆ Gains button. A round's gains
+   * flash on their units as the next round deals: nothing holds it up.
+   */
+  const [gains, setGains] = useState<Growth[]>([]);
+  const [showGains, setShowGains] = useState(false);
   // Calm music while planning, the driving loop in battle (a replay too), none on the result screen.
   useEffect(() => setMusic(phase === "battle" ? "battle" : phase === "over" ? null : "plan"), [phase]);
   const [result, setResult] = useState<RoundResult | null>(null);
@@ -674,22 +681,24 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
 
   const growthTimer = useRef(0);
   useEffect(() => () => window.clearTimeout(growthTimer.current), []);
-  /**
-   * Show permanent gains: each one flashes on its unit and the card lists
-   * them, then the card goes by itself (nothing to tap). Returns how long it stays.
-   */
-  const showGrowth = (b: Board, list: Growth[]) => {
+  /** Each permanent gain flashes on its unit. */
+  const flashGrowth = (b: Board, list: Growth[]) => {
     for (const g of list) {
       const cell = findUnitCell(b, g.unit);
       if (!cell) continue;
       fxAt(b, cell, "merge");
       fxAt(b, cell, "stat-gain", { text: [g.levels ? `+${g.levels} Lv` : "", statText(g.atk, g.hp)].filter(Boolean).join(" ") });
     }
+  };
+
+  /** Pick-time gains: they flash, and the card lists them, then goes by itself (nothing to tap). */
+  const showGrowth = (b: Board, list: Growth[]) => {
+    flashGrowth(b, list);
     const hold = growthHold(list);
     setGrowth((cur) => ({ list, nonce: (cur?.nonce ?? 0) + 1 }));
+    setGains((cur) => [...cur, ...list]);
     window.clearTimeout(growthTimer.current);
     growthTimer.current = window.setTimeout(() => setGrowth(null), hold);
-    return hold;
   };
 
   /**
@@ -2063,16 +2072,10 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           // carrying forward only the HP pools that combat changed.
           const respawned = cloneBoard(committedRef.current ?? result.board);
           respawned.hp = { ...result.board.hp };
-          if (grew.length === 0) {
-            startRound(respawned, round + 1);
-            return;
-          }
-          // Units upgraded: the row stands back up and its gains show on a
-          // card, then the next round deals by itself.
-          posesRef.current = {};
-          setBoard(respawned);
-          const hold = showGrowth(respawned, grew);
-          timer = window.setTimeout(() => startRound(respawned, round + 1), hold);
+          startRound(respawned, round + 1);
+          // The next round doesn't wait on them: they flash, and ⬆ Gains lists them.
+          setGains(grew);
+          flashGrowth(respawned, grew);
         }
       }, scaled(RESULT_MS) + (boom ? scaled(EXPLOSION_DELAY_MS) + EXPLOSION_MS : 0) + (blast ? BAR_BLAST_DELAY_MS + HP_BAR_BLAST_MS : 0));
     };
@@ -2672,6 +2675,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
             online={!!online}
           />
         )}
+        {showGains && phase === "pick" && <GrowthPanel rows={growthRows(gains)} onClose={() => setShowGains(false)} />}
         {showRoundStats && lastFight.current && phase === "pick" && (
           <RoundStatsPanel
             round={lastFight.current.round}
@@ -2741,6 +2745,11 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           lastFight.current &&
           phase === "pick" && (
             <>
+              {growthRows(gains).length > 0 && (
+                <button className="link-btn replay-btn gains-btn" onClick={() => setShowGains(true)} title="What your units gained for good">
+                  ⬆ Gains
+                </button>
+              )}
               <button className="link-btn replay-btn" onClick={() => setShowRoundStats(true)} title="Last round, unit by unit">
                 📊 Stats
               </button>

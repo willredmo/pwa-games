@@ -455,6 +455,7 @@
   animation-delay: calc(var(--hold, 2400ms) - 300ms);
 }
 @keyframes growth-out { to { opacity: 0; } }
+.panel--gains { width: min(100%, 22rem); }
 .panel.panel--growth { width: min(100%, 22rem); max-height: 100%; overflow: hidden; padding: 0.8rem 0.9rem; }
 @media (prefers-reduced-motion: no-preference) {
   .growth-card .panel--growth { animation: growth-in 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.2) backwards; }

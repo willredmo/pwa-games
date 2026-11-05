@@ -1159,11 +1159,40 @@ export function RoundStatsPanel({ round, stats, winner, cap, onClose }: {
   );
 }
 
+/** Your units' permanent gains, one row a unit, each with where it came from. */
+function GrowthList({ rows }: { rows: { unit: Unit; gains: Growth[] }[] }) {
+  return (
+    <ul className="growth-list">
+      {rows.map(({ unit, gains }, i) => (
+        <li key={unit.id} className="growth-row" style={{ "--i": i } as React.CSSProperties}>
+          <UnitPortrait unitKey={unit.key} side="player" size={36} merges={unit.merges} pose="dance" bleed={8} />
+          <span className="growth-row__name">
+            {kawaiiName(unit.key, unit.name)} <LevelChip merges={unit.merges} />
+          </span>
+          <span className="growth-row__gains">
+            {gains.map((g, j) => (
+              <span key={j} className="growth-gain">
+                <span className="growth-gain__stats">
+                  {g.levels ? <b className="growth-gain__lv">+{g.levels} Lv</b> : null}
+                  {g.atk > 0 ? <b className="stat stat--atk">+{g.atk}⚔</b> : null}
+                  {g.hp > 0 ? <b className="stat stat--hp">+{g.hp}♥</b> : null}
+                </span>
+                <small>
+                  <span aria-hidden="true">{g.icon}</span> {g.source}
+                </small>
+              </span>
+            ))}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /**
- * "Units upgraded": which of your units just gained permanent stats (Veteran,
- * Fortify, a choose-a-unit upgrade…) and from what. Gains are easy to miss as
- * a number on the board. A card over the board, not a dialog: it lets taps
- * through and Game takes it down after `hold` ms, so there's nothing to close.
+ * "Units upgraded" after a pick-time gain (a choose-a-unit upgrade, Last
+ * stand). A card over the board, not a dialog: it lets taps through and Game
+ * takes it down after `hold` ms, so there's nothing to close.
  */
 export function GrowthCard({ rows, hold }: { rows: { unit: Unit; gains: Growth[] }[]; hold: number }) {
   return (
@@ -1171,30 +1200,28 @@ export function GrowthCard({ rows, hold }: { rows: { unit: Unit; gains: Growth[]
       <div className="panel panel--growth">
         <h2>⬆ Units upgraded</h2>
         <p className="panel__hint">Permanent, for the rest of the match.</p>
-        <ul className="growth-list">
-          {rows.map(({ unit, gains }, i) => (
-            <li key={unit.id} className="growth-row" style={{ "--i": i } as React.CSSProperties}>
-              <UnitPortrait unitKey={unit.key} side="player" size={36} merges={unit.merges} pose="dance" bleed={8} />
-              <span className="growth-row__name">
-                {kawaiiName(unit.key, unit.name)} <LevelChip merges={unit.merges} />
-              </span>
-              <span className="growth-row__gains">
-                {gains.map((g, j) => (
-                  <span key={j} className="growth-gain">
-                    <span className="growth-gain__stats">
-                      {g.levels ? <b className="growth-gain__lv">+{g.levels} Lv</b> : null}
-                      {g.atk > 0 ? <b className="stat stat--atk">+{g.atk}⚔</b> : null}
-                      {g.hp > 0 ? <b className="stat stat--hp">+{g.hp}♥</b> : null}
-                    </span>
-                    <small>
-                      <span aria-hidden="true">{g.icon}</span> {g.source}
-                    </small>
-                  </span>
-                ))}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <GrowthList rows={rows} />
+      </div>
+    </div>
+  );
+}
+
+/** The ⬆ Gains button's list: everything your units gained since the last fight began. */
+export function GrowthPanel({ rows, onClose }: { rows: { unit: Unit; gains: Growth[] }[]; onClose: () => void }) {
+  return (
+    <div className="overlay" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()}>
+      <div
+        className="panel panel--center panel--gains"
+        role="dialog"
+        aria-labelledby="gains-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="panel__head">
+          <h2 id="gains-title">⬆ Units upgraded</h2>
+          <button className="close-btn" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+        <p className="panel__hint">Permanent, for the rest of the match.</p>
+        <GrowthList rows={rows} />
       </div>
     </div>
   );
