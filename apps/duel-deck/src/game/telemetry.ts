@@ -13,6 +13,8 @@ import type { Unit } from "../engine/types";
 //   meta          { v, mode, diff, at, c, u? }   (u: the account, if signed in)
 //   rounds/<n>    { offer, picks, rr, row, foe, won, hp }
 //   augs/<n>      { o, t, rr, e? }
+//   cpu/<n>       { o?, p, rr?, pred?, est?, ao? }   (CPU matches: AiTrace, p its picks)
+//   cfg           { hp, cap, syn, up, easy }         (the match's rules)
 //   end           { won, rounds, hp, aug, foeAug, mvp? }
 // Grouping by day makes the prune one delete per day. Every write is a new
 // path, and the rules only allow creating a path, never changing one.
@@ -105,6 +107,16 @@ export class MatchLog {
 
   round(n: number, entry: { offer: string[]; picks: PickLog[]; rr: number; row: string[]; foe: string[]; won: number; hp: [number, number] }) {
     send(`${this.base}/rounds/${n}`, entry);
+  }
+
+  /** The match's settings: the CPU learns from them, and 300-health games aren't 100-health ones. */
+  config(entry: { hp: number; cap: number; syn: boolean; up: boolean; easy: boolean }) {
+    send(`${this.base}/cfg`, entry);
+  }
+
+  /** What the CPU did and thought this round (`AiTrace`). */
+  cpu(n: number, entry: { p: string[]; o?: string[]; rr?: number; pred?: string[]; est?: number; ao?: string[] }) {
+    send(`${this.base}/cpu/${n}`, entry);
   }
 
   /** An upgrade choice: offered (as last shown), taken, rerolls spent, and the CPU's pick that round. */

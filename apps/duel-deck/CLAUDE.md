@@ -1213,7 +1213,8 @@ upgrade's holders, for players and for the CPU. Compare it with `pnpm sim`.
 Retention is three weeks. Grouping by day makes a prune one delete per day:
 `pnpm telemetry` prunes on every run (`--prune` only prunes), and
 `.github/workflows/telemetry-prune.yml` does it daily once the repo secret
-`FIREBASE_SERVICE_ACCOUNT` (a service-account key) is set.
+`FIREBASE_SERVICE_ACCOUNT` (a service-account key) is set. `pnpm learn` keeps
+what Hard needs past that (see "Hard learns from real matches").
 ### Accounts (online/account.ts, ui/Account.tsx, backend-client auth.ts)
 Optional, added 2026-10-24. **Guest is the default and nothing asks you to
 sign in**: the title screen has a small 👤 chip top-right ("Guest · Sign in",
@@ -1502,6 +1503,49 @@ green with a ✓ once beaten (`duel-deck:challenges` on this device: tries,
 first win and in how many), and the chosen day's enemy, status and Play.
 Never saved, logged or awarded XP. `pnpm upgrades` checks a dozen days build
 full and winnable, and stay the same.
+
+### Evasion is for attacks aimed at it (1.11.4, 2026-11-04)
+A player: Skirmishers weren't blocking the first attack. Any `strike` spent
+the dodge, so an Impale or Overflow for 1 on a Skirmisher waiting behind the
+front used it, and the first real blow then landed in full: in ~16% of
+Skirmisher rounds (Normal vs Normal) a side hit far smaller than a blow that
+landed later had taken it. Now only main blows (`isMain`: no tag, first
+strike, charge, executioner) are dodged and count; side hits land and don't
+spend it. Reflected blows work the same, bar the separate first-Retaliate
+dodge. Sim (16000, `--aug=random`): Skirmisher holders 57.9% → 59.4%, within
+noise. `PROTOCOL` 19. A balance change like this can change a day's challenge.
+
+### Hard learns from real matches (1.11.4, 2026-11-04)
+The user asked for logging so the CPU can learn and adapt over time. The free
+Firebase plan runs no server code, so **learning is a step in the release**:
+```
+pnpm learn         # telemetry → src/game/learned.json
+pnpm run release   # the next build plays with it
+```
+- **Logging** (`MatchLog.cpu`, `.config`): `cpu/<n>`, the CPU's side of a
+  round (`AiTrace`, filled in by `aiCommit`/`aiTakeAugment` through their
+  `trace` option): cards dealt, picks, rerolls, upgrade cards, and for Hard
+  the row it expected (`pred`) and how it scored its own (`est`). `cfg`, the
+  match's rules, which telemetry never had. New paths rather than new fields,
+  so a build ahead of the rules loses only those writes. CPU matches only.
+- **`pnpm learn`** (scripts/learn.ts) reads telemetry, never writes to the
+  database and never prunes it. It keeps counts in `learned.json`, so they
+  outlive the three-week retention; a day is read once (`through`), only once
+  finished, and everything fades with a 30-day half-life so an old balance
+  patch stops counting. It prints how many units `pred` got right, the number
+  to watch. First run: 188 finished matches over 21 days.
+- **What Hard does with it** (`HARD_TUNING.learn`): it predicts you with
+  `humanCommit`, not Normal's logic. Real players merged 83% of picks; Normal
+  fills the row first, so Hard had been planning against a row people rarely
+  build. And `learnedEdge` nudges each upgrade's prior by how it did in real
+  matches, for players and the CPU, up to ±8 points, shrunk until an upgrade
+  has ~20 matches behind it. Holder rates flatter whatever strong players
+  prefer, which is why it's capped and only a nudge.
+- **Not proven to help yet.** Against `pnpm sim --player=human` (a bot playing
+  `humanCommit`) Hard won 93.9% with it, 93.8% without (800 each), and head to
+  head 50.5% (800). The bot picks like people but doesn't play like them
+  (real players beat Hard, this bot loses 94%), so the sim can't settle it:
+  judge by real win rates on 1.11.4 onward and `pnpm learn`'s prediction line.
 
 ### Sound (game/sound.ts)
 Effects are synthesized, no audio files (`?sounds` on the dev server plays every one). The

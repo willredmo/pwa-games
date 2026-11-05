@@ -19,7 +19,7 @@ function describeTraits(t: UnitTraits): string[] {
         : `half its overkill (max ${t.cleaveCap ?? 3}) hits the next enemy`,
     );
   if (t.cleave && t.cleaveChain) out.push("an enemy its overkill kills passes the rest on");
-  if (t.dodges) out.push(`${t.dodges === 1 ? "dodges the first hit each round" : `dodges the first ${t.dodges} hits each round`}, and the first Retaliate`);
+  if (t.dodges) out.push(`${t.dodges === 1 ? "dodges the first attack each round" : `dodges the first ${t.dodges} attacks each round`}, and the first Retaliate`);
   if (t.riposte) out.push(`strikes back for ${t.riposte} when it dodges`);
   if (t.openingBonus)
     out.push(`+${t.openingBonus} damage on its first attack ${t.chargeEach ? "against each new enemy" : "each round"}`);

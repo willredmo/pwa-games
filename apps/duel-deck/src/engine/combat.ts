@@ -141,15 +141,19 @@ function strike(
 ): void {
   const { round, events, dealt } = ctx;
   ctx.attempted += raw;
-  // Evasion: the first hit a dodger takes each round misses outright. Thorns
-  // and overflow don't follow a miss.
+  // A blow aimed at the target, not a side hit (Overflow, Impale, Thorns).
+  const isMain = !tag || tag === "first-strike" || tag === "executioner" || tag === "charge";
+  // Evasion: the first blow aimed at a dodger each round misses outright.
+  // Thorns and overflow don't follow a miss. Side hits land without spending
+  // it: a 1-damage Impale used to take the dodge from a unit waiting behind
+  // the front, and the real attack then landed in full (a player's report).
   const used = round.dodged.get(target.id) ?? 0;
-  if ((target.traits?.dodges ?? 0) > used && raw > 0 && !attacker.traits?.trueStrike) {
+  if (isMain && (target.traits?.dodges ?? 0) > used && raw > 0 && !attacker.traits?.trueStrike) {
     round.dodged.set(target.id, used + 1);
     events.push({ type: "attack", lane, attacker: attacker.id, target: target.id, damage: 0, tag: "dodge", blocked: raw });
     // Riposte: a merged dodger answers the miss. Played back like thorns.
     const riposte = target.traits?.riposte ?? 0;
-    if (riposte > 0 && tag !== "thorns") {
+    if (riposte > 0) {
       ctx.after.push(() => strike(ctx, lane, target, attacker, riposte, "thorns"));
     }
     return;
@@ -194,7 +198,6 @@ function strike(
 
   // Cleave: only a main blow carries overkill on (not thorns / last breath),
   // and an Overflow blow only when it chains (a mastered Berserker).
-  const isMain = !tag || tag === "first-strike" || tag === "executioner" || tag === "charge";
   const chains = tag === "cleave" && !!attacker.traits?.cleaveChain;
   if ((isMain || chains) && attacker.traits?.cleave && hpBefore > 0 && target.hp < 0) {
     // Overflow: half the overkill carries on, at most CLEAVE_MAX — the whole of

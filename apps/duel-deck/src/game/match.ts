@@ -16,7 +16,7 @@ import {
   cloneBoard,
 } from "../engine/board";
 import { resolveRound } from "../engine/combat";
-import { KNIGHT_AT, MAX_LEVEL, OFFER_KEYS, UNITS, canAbsorb, innateTraits, isMastered, synergyOf } from "../engine/units";
+import { KNIGHT_AT, MAX_LEVEL, OFFER_KEYS, UNITS, canAbsorb, innateTraits, isMastered, levelOf, synergyOf } from "../engine/units";
 import type { Archetype, Board, Side, Unit } from "../engine/types";
 import {
   SABOTAGE_ATK,
@@ -37,6 +37,7 @@ import {
   type Rarity,
   hpCostOf,
 } from "./augments";
+import learned from "./learned.json";
 
 // Match configuration and round flow, per the tracker doc's v1 scope.
 
@@ -316,11 +317,136 @@ export interface AiOptions {
    * be peeking at a simultaneous commit.
    */
   scout?: Board;
+  /** Filled in with what the CPU saw and thought, for telemetry. */
+  trace?: AiTrace;
+}
+
+/** The CPU's side of a round, logged beside the player's (`MatchLog.cpu`). */
+export interface AiTrace {
+  /** The cards it was dealt, as last rerolled. */
+  o?: string[];
+  /** Unit rerolls spent. */
+  rr?: number;
+  /** Hard: the row it expected the player to field, "key:level". */
+  pred?: string[];
+  /** Hard: how its chosen row scored in that fight, above 0 if it expected to win. */
+  est?: number;
+  /** The upgrade cards it was dealt this round, if any. */
+  ao?: string[];
+}
+
+const rowTrace = (board: Board, side: Side) => sideUnits(board, side).map((u) => `${u.key}:${levelOf(u.merges)}`);
+
+/** A win count: `n` weighted matches, `won` of them won. Weighted, so fractions: see scripts/learn.ts. */
+export interface Tally {
+  n: number;
+  won: number;
+}
+
+/** What `pnpm learn` distilled from real players' telemetry (learned.json). */
+export interface Learned {
+  /** The last UTC day read. */
+  through: string;
+  matches: number;
+  picks: number;
+  /** Picks that merged into a unit rather than adding one. */
+  merges: number;
+  /** Per unit: how often players were dealt it, and took it. */
+  cards: Record<string, { offered: number; taken: number }>;
+  /** Per upgrade: matches players held it, and won. */
+  human: Record<string, Tally>;
+  /** Per upgrade: matches the CPU held it against players, and won. */
+  cpu: Record<string, Tally>;
+  humanBase: Tally;
+  cpuBase: Tally;
+}
+
+export const LEARNED: Learned = learned as Learned;
+
+/** Picks a player merges with no data to say otherwise. */
+const HUMAN_MERGE_SHARE = 0.8;
+
+/**
+ * A pick the way real players make it, from what `pnpm learn` measured: they
+ * merge most picks, even with slots free (82% in the first 9,000), so they
+ * stack levels on their strongest unit; the rest place the kind of card
+ * players take most. Hard predicts the player with this, and `pnpm sim
+ * --player=human` plays it. Normal's logic fills the row first, which is not
+ * what a person does.
+ */
+export function humanCommit(board: Board, side: Side, state: AugmentState): string[] {
+  const offer = rollOffer(OFFER_COUNT, state);
+  const ratio = mergeRatioFor(state);
+  const share = LEARNED.picks > 0 ? LEARNED.merges / LEARNED.picks : HUMAN_MERGE_SHARE;
+  const appeal = (key: string) => {
+    const c = LEARNED.cards[key];
+    return c?.offered ? c.taken / c.offered : 0;
+  };
+  const picked: string[] = [];
+  for (let n = 0; n < PICK_COUNT; n++) {
+    const merge = () => {
+      const cap = mergeCapFor(board, side);
+      const targets = sideUnits(board, side).sort((a, b) => b.merges - a.merges);
+      for (const u of targets) {
+        const i = offer.findIndex((k) => canAbsorb(u.key, u.merges, k, 1, cap));
+        if (i < 0) continue;
+        const at = occupantAt(board, side, u.id);
+        if (at && upgradeUnit(board, side, at.lane, at.spot, offer[i], ratio)) {
+          picked.push(...offer.splice(i, 1));
+          return true;
+        }
+      }
+      return false;
+    };
+    const add = () => {
+      const spot = firstEmptySpot(board, side);
+      if (!spot || offer.length === 0) return false;
+      const key = [...offer].sort((a, b) => appeal(b) - appeal(a))[0];
+      place(board, side, spot.lane, spot.spot, makeUnit(key, side));
+      offer.splice(offer.indexOf(key), 1);
+      picked.push(key);
+      return true;
+    };
+    if (Math.random() < share) merge() || add();
+    else add() || merge();
+  }
+  sortByAttack(board, side);
+  return picked;
+}
+
+function occupantAt(board: Board, side: Side, id: string): { lane: number; spot: number } | null {
+  for (let lane = 0; lane < board.lanes; lane++) {
+    const spot = board.slots[side][lane].findIndex((u) => u?.id === id);
+    if (spot >= 0) return { lane, spot };
+  }
+  return null;
+}
+
+/** Evidence an upgrade needs before it moves Hard much: this many matches is half weight. */
+const LEARN_SHRINK = 20;
+/** Most points real results can move an upgrade, on `AUGMENT_SCORE`'s win-rate scale. */
+const LEARN_CAP = 8;
+
+/**
+ * How much better than usual an upgrade has done in real matches, in win-rate
+ * points, for players and the CPU alike: its wins above what holders of any
+ * upgrade win, shrunk toward 0 until there's enough of them. Small and capped:
+ * good players take good upgrades, so this flatters some, and it's a nudge on
+ * top of what the fight shows.
+ */
+export function learnedEdge(id: string): number {
+  const above = (t: Tally | undefined, base: Tally) => (t && base.n ? t.won - (t.n * base.won) / base.n : 0);
+  const human = LEARNED.human[id];
+  const cpu = LEARNED.cpu[id];
+  const n = (human?.n ?? 0) + (cpu?.n ?? 0);
+  const edge = (100 * (above(human, LEARNED.humanBase) + above(cpu, LEARNED.cpuBase))) / (n + LEARN_SHRINK);
+  return Math.max(-LEARN_CAP, Math.min(LEARN_CAP, edge));
 }
 
 /** Easy: two random cards, placed where they land, no rerolls, no arranging. */
-function easyCommit(board: Board, side: Side, state?: AugmentState): string[] {
+function easyCommit(board: Board, side: Side, state?: AugmentState, trace?: AiTrace): string[] {
   const offer = rollOffer(OFFER_COUNT, state);
+  if (trace) Object.assign(trace, { o: offer, rr: 0 });
   const picked: string[] = [];
   const order = offer.map((_, i) => i).sort(() => Math.random() - 0.5);
   for (const i of order) {
@@ -402,6 +528,8 @@ export const HARD_TUNING = {
   augSim: 1,
   /** How much the static win-rate table still counts beside the simulated fight, per point. */
   augStatic: 1,
+  /** 1: predict the player from real players' habits, and let real results nudge upgrades (`LEARNED`). */
+  learn: 1,
 };
 /** Rows Hard tries in every formation, after scoring all of them in one. */
 const HARD_SHORTLIST = 6;
@@ -568,10 +696,11 @@ function hardUpgrade(
   const startHp = startHpOf(board);
   const scout = cloneBoard(board);
   const predicted = cloneBoard(board);
-  aiCommit(predicted, opp, structuredClone(oppAug), { difficulty: "normal" });
+  predictPicks(predicted, opp, oppAug);
   let best: { def: AugmentDef; target: Unit | null; score: number } | null = null;
   for (const def of offer) {
-    const prior = HARD_TUNING.augStatic * aiAugmentScore(def, units, board.hp[side], startHp);
+    const prior =
+      HARD_TUNING.augStatic * (aiAugmentScore(def, units, board.hp[side], startHp) + (HARD_TUNING.learn ? learnedEdge(def.id) : 0));
     for (const target of targetsFor(def.id, board, side)) {
       const s = structuredClone(state);
       const b = cloneBoard(board);
@@ -600,16 +729,23 @@ function hardUpgrade(
  * and valued for growth as well as the fight. Rerolls (same allowance as the
  * player) when the best line still loses.
  */
+/** The opponent's picks this round as Hard expects them, on a copy of its row. */
+function predictPicks(board: Board, side: Side, state: AugmentState): void {
+  if (HARD_TUNING.learn) humanCommit(board, side, state);
+  else aiCommit(board, side, state, { difficulty: "normal" });
+}
+
 function hardCommit(
   board: Board,
   side: Side,
   state: AugmentState,
   oppAug: AugmentState,
   scout: Board,
+  trace?: AiTrace,
 ): string[] {
   const opp: Side = side === PLAYER ? ENEMY : PLAYER;
   const predicted = cloneBoard(scout);
-  aiCommit(predicted, opp, oppAug, { difficulty: "normal" });
+  predictPicks(predicted, opp, oppAug);
   const fightOf = hardFight(side, state, oppAug, scout, predicted);
   const search = (offer: string[]) => {
     // Every distinct row the picks can make, scored in the default formation;
@@ -655,10 +791,18 @@ function hardCommit(
     }
     return best;
   };
-  let best = search(rollOffer(OFFER_COUNT, state));
+  let dealt = rollOffer(OFFER_COUNT, state);
+  let best = search(dealt);
+  let rerolls = 0;
   for (let left = unitRerollsFor(state); left > 0 && best && best.fight < 0; left--) {
-    const next = search(rollOffer(OFFER_COUNT, state));
-    if (next && next.score > best.score) best = next;
+    const offer = rollOffer(OFFER_COUNT, state);
+    const next = search(offer);
+    rerolls++;
+    if (next && next.score > best.score) [best, dealt] = [next, offer];
+  }
+  if (trace) {
+    Object.assign(trace, { o: dealt, rr: rerolls, pred: rowTrace(predicted, opp) });
+    if (best) trace.est = Math.round(best.fight);
   }
   if (!best) return [];
   if (HARD_TUNING.climb === 1) best = { ...best, board: climb(best.board, side, fightOf).board };
@@ -680,19 +824,22 @@ export function aiCommit(
   opts: AiOptions = {},
 ): string[] {
   const difficulty = opts.difficulty ?? "normal";
-  if (difficulty === "easy") return easyCommit(board, side, state);
+  if (difficulty === "easy") return easyCommit(board, side, state, opts.trace);
   if (difficulty === "hard" && state && opts.oppAug) {
-    return hardCommit(board, side, state, opts.oppAug, opts.scout ?? board);
+    return hardCommit(board, side, state, opts.oppAug, opts.scout ?? board, opts.trace);
   }
   let offer = rollOffer(OFFER_COUNT, state);
   // Same rerolls as the player: spend them on an offer that's useless to a full
   // row (nothing it can merge into).
+  let rerolls = 0;
   for (let left = state ? unitRerollsFor(state) : UNIT_REROLLS; left > 0; left--) {
     const cap = mergeCapFor(board, side);
     const usable = offer.some((k) => sideUnits(board, side).some((u) => canAbsorb(u.key, u.merges, k, 1, cap)));
     if (usable || firstEmptySpot(board, side)) break;
     offer = rollOffer(OFFER_COUNT, state);
+    rerolls++;
   }
+  if (opts.trace) Object.assign(opts.trace, { o: offer, rr: rerolls });
   const available = offer.map((_, i) => i);
   const picked: string[] = [];
   while (picked.length < PICK_COUNT && available.length > 0) {
@@ -920,6 +1067,7 @@ export function aiTakeAugment(
   rarity: Rarity,
   difficulty: Difficulty = "normal",
   oppAug?: AugmentState,
+  trace?: AiTrace,
 ): string | null {
   const units = sideUnits(board, side);
   const startHp = startHpOf(board);
@@ -936,6 +1084,7 @@ export function aiTakeAugment(
       seen.push(next.id);
     });
   }
+  if (trace) trace.ao = offer.map((a) => a.id);
   const simmed = difficulty === "hard" && oppAug && HARD_TUNING.augSim ? hardUpgrade(board, side, state, offer, oppAug) : null;
   // Easy takes a card at random.
   const choice = simmed

@@ -599,6 +599,22 @@ for (const cap of [8, 10, 12, 15]) {
   check("vengeance", "a hit sends 30% back", back?.damage === Math.floor(raw * 0.3), [raw, back?.damage]);
 }
 {
+  // Side hits land without spending the dodge, so a Skirmisher waiting behind
+  // the front still has it for the first real blow (a player's report).
+  const s = setup(
+    [{ key: "guard", atk: 1, hp: 1 }, { key: "skirmisher", atk: 1, hp: 99 }],
+    [{ key: "lancer", atk: 5, hp: 999 }],
+  );
+  const onSkirm = attacks(resolveRound(s.board, { tickCap: 4 })).filter((a) => a.target === s.p[1].id);
+  check("evasion", "a side hit lands and doesn't spend the dodge", onSkirm[0]?.tag === "pierce" && onSkirm[0].damage > 0, onSkirm.slice(0, 3));
+  check(
+    "evasion",
+    "so the first blow aimed at it is still dodged",
+    onSkirm.find((a) => a.tag !== "pierce")?.tag === "dodge",
+    onSkirm.slice(0, 3).map((a) => [a.tag, a.damage]),
+  );
+}
+{
   // Evasion slips the first Retaliate each round, on top of the dodge it
   // spends on the Sentinel's own blow (a feedback report, 2026-11-02).
   const s = setup([{ key: "skirmisher", atk: 8, hp: 99 }], [{ key: "sentinel", atk: 1, hp: 999 }]);

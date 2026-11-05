@@ -10,6 +10,14 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.11.4",
+    date: "Nov 4, 2026",
+    notes: [
+      "🐛 Skirmisher fix: Evasion was being wasted on small side hits like Impale and Overflow while it waited behind the front, so the first real attack landed. It now dodges the first attack aimed at it; side hits land and don't use it up.",
+      "🧠 Hard now studies how real players play: it expects you to stack levels on your best units, and it leans toward the upgrades that have actually won matches. It will keep learning from new matches in future updates.",
+    ],
+  },
+  {
     version: "1.11.3",
     date: "Nov 4, 2026",
     notes: [

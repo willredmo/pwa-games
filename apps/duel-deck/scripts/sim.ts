@@ -1,9 +1,11 @@
 // Headless AI-vs-AI balance sim for Duel Deck, mirroring the app's round flow.
 // Usage: pnpm sim [matches=5000] [--draw=none|more-damage|both] [--cap=300] [--aug=ai|random] [--hp=N]
-//                 [--player=easy|normal|hard] [--enemy=easy|normal|hard] [--tune-player=level,conc] [--tune-enemy=…]
+//                 [--player=easy|normal|hard|human] [--enemy=…] [--tune-player=level,conc] [--tune-enemy=…]
 //
 // --player / --enemy set each side's AI difficulty (default normal), so
-// `--enemy=hard` reports how often a Normal AI beats a Hard one.
+// `--enemy=hard` reports how often a Normal AI beats a Hard one. "human" plays
+// the way real players do (`humanCommit`, from learned.json), with Normal's
+// upgrade choices: the nearest thing to testing Hard against people.
 //
 // --aug=random picks augments uniformly from each offer instead of by the AI's
 // score table. Use it for balance work: score-based picking means weak augments
@@ -13,7 +15,7 @@ import { capacityOf, cloneBoard, sideUnits } from "../src/engine/board";
 import { resolveRound } from "../src/engine/combat";
 import { synergyOf } from "../src/engine/units";
 import type { Side } from "../src/engine/types";
-import { newBoard, aiCommit, HARD_TUNING, drillFor, PICK_COUNT, type Difficulty, aiPickAugment, aiTakeAugment, isAugmentRound, refreshForRound, upgradeTier, augmentOfferCount } from "../src/game/match";
+import { newBoard, aiCommit, humanCommit, HARD_TUNING, drillFor, PICK_COUNT, type Difficulty, aiPickAugment, aiTakeAugment, isAugmentRound, refreshForRound, upgradeTier, augmentOfferCount } from "../src/game/match";
 import { createAugmentState, offerAugments, takeAugment, OFFERED_AUGMENTS as AUGMENTS, aiTarget, applyTarget, newUpgradeSeed, rollRarity } from "../src/game/augments";
 import { settleRound } from "../src/game/roundEnd";
 
@@ -26,7 +28,7 @@ const rule = (flag("draw") ?? "none") as DrawRule;
 if (!["none", "more-damage", "both"].includes(rule)) throw new Error(`bad --draw=${rule}`);
 const startHp = flag("hp") ? Number(flag("hp")) : null;
 const augMode = flag("aug") ?? "ai";
-const diff: Record<Side, Difficulty> = {
+const diff: Record<Side, Difficulty | "human"> = {
   player: (flag("player") ?? "normal") as Difficulty,
   enemy: (flag("enemy") ?? "normal") as Difficulty,
 };
@@ -46,7 +48,7 @@ const tune = (s: Side) => {
 const tunings = { player: tune("player"), enemy: tune("enemy") };
 const commit = (b: Parameters<typeof aiCommit>[0], s: Side, opts: Parameters<typeof aiCommit>[3]) => {
   Object.assign(HARD_TUNING, tunings[s]);
-  return aiCommit(b, s, aug[s], opts);
+  return opts?.difficulty === undefined ? humanCommit(b, s, aug[s]) : aiCommit(b, s, aug[s], opts);
 };
 let aug: Record<Side, ReturnType<typeof createAugmentState>>;
 if (!["ai", "random"].includes(augMode)) throw new Error(`bad --aug=${augMode}`);
@@ -93,7 +95,8 @@ for (let i = 0; i < N; i++) {
     if (isAugmentRound(r)) for (const s of SIDES) {
       if (augMode === "ai") {
         Object.assign(HARD_TUNING, tunings[s]);
-        aiTakeAugment(c, s, aug[s], rarity, diff[s], had[other(s)]);
+        const d = diff[s];
+        aiTakeAugment(c, s, aug[s], rarity, d === "human" ? "normal" : d, had[other(s)]);
         continue;
       }
       const ch = pickAug(offerAugments(aug[s], augmentOfferCount(aug[s]), rarity, { board: c, side: s }));
@@ -106,8 +109,9 @@ for (let i = 0; i < N; i++) {
     }
     // Hard scouts the rows as they stood before either side picked.
     const scout = cloneBoard(c);
-    const pp = commit(c, "player", { difficulty: diff.player, oppAug: aug.enemy, scout });
-    const ep = commit(c, "enemy", { difficulty: diff.enemy, oppAug: aug.player, scout });
+    const level = (s: Side) => { const d = diff[s]; return d === "human" ? undefined : d; };
+    const pp = commit(c, "player", { difficulty: level("player"), oppAug: aug.enemy, scout });
+    const ep = commit(c, "enemy", { difficulty: level("enemy"), oppAug: aug.player, scout });
     // Drill: a maxed row's unspent picks, this round only (as in the app).
     aug.player.drill = drillFor(c, "player", PICK_COUNT - pp.length);
     aug.enemy.drill = drillFor(c, "enemy", PICK_COUNT - ep.length);

@@ -33,6 +33,7 @@ import {
   chargeNewUpgrades,
   drillFor,
   rowMaxed,
+  type AiTrace,
   type Difficulty,
   isAugmentRound,
   knightAt,
@@ -461,6 +462,11 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   const [matchLog] = useState(() =>
     tutorial || challenge ? MatchLog.none() : online ? MatchLog.online(online.code, online.me, matchOf(online)) : MatchLog.cpu(!!saved, saved?.difficulty ?? startDifficulty),
   );
+  useEffect(() => {
+    matchLog.config({ hp: rules.startHp, cap: rules.levelCap, syn: rules.synergies, up: rules.upgrades, easy: rules.easy });
+    // Once: a match's rules never change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   /**
    * This round's log so far: the cards as dealt, each pick, and rerolls spent.
    * The picks are snapshotted for undo along with the board.
@@ -512,6 +518,9 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   const [confirmCommit, setConfirmCommit] = useState(false);
   /** A replace waiting on the player's OK: the offer card and the slot it would land on. */
   const [confirmReplace, setConfirmReplace] = useState<{ offerIndex: number; cell: Cell } | null>(null);
+  /** What the CPU saw and thought this round, logged with it (`AiTrace`). */
+  const aiTrace = useRef<AiTrace>({});
+  const aiPicks = useRef<string[]>([]);
   const [showAugments, setShowAugments] = useState(false);
   /** A challenge's upgrades, to read before placing a unit. */
   const [showChUpgrades, setShowChUpgrades] = useState(false);
@@ -1302,7 +1311,9 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         difficulty: difficultyRef.current,
         oppAug: playerAug.current,
         scout: scoutRef.current ?? current,
+        trace: aiTrace.current,
       });
+      aiPicks.current = aiPicked;
       enemyAug.current.drill = drillFor(committed, ENEMY, PICK_COUNT - aiPicked.length);
       refreshForRound(committed, playerAug.current, enemyAug.current);
       playRound(committed);
@@ -1941,7 +1952,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     // at the same time on their own device; their pick reaches us with their
     // commit, so there's nothing to do here but take ours.
     const enemyHad = enemyAug.current.active.length;
-    if (!online) aiTakeAugment(next, ENEMY, enemyAug.current, rarityFor(round), difficultyRef.current, playerHad);
+    if (!online) aiTakeAugment(next, ENEMY, enemyAug.current, rarityFor(round), difficultyRef.current, playerHad, aiTrace.current);
     matchLog.augment(round, {
       o: augOffers.map((a) => a.id),
       t: id,
@@ -2025,6 +2036,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         won: result.roundWinner === PLAYER ? 1 : result.roundWinner ? -1 : 0,
         hp: [result.board.hp.player, result.board.hp.enemy],
       });
+      if (!online) matchLog.cpu(round, { p: aiPicks.current, ...aiTrace.current });
+      aiTrace.current = {};
       if (result.matchWinner) {
         // Progression XP: every finished match, more for a win. Not the tutorial.
         if (!tutorial) setXpAward(awardMatch(result.matchWinner === PLAYER, startHpOf(result.board)));

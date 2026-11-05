@@ -1,0 +1,780 @@
+{
+  "through": "2026-11-04",
+  "matches": 141.26,
+  "picks": 6924.42,
+  "merges": 5713.19,
+  "cards": {
+    "guard": {
+      "offered": 1408.51,
+      "taken": 322.09
+    },
+    "squire": {
+      "offered": 1379.9,
+      "taken": 647.59
+    },
+    "herald": {
+      "offered": 1220.61,
+      "taken": 421.48
+    },
+    "medic": {
+      "offered": 1791.42,
+      "taken": 810.67
+    },
+    "berserker": {
+      "offered": 1140.95,
+      "taken": 419.37
+    },
+    "bulwark": {
+      "offered": 1588.49,
+      "taken": 694.2
+    },
+    "warden": {
+      "offered": 1648.59,
+      "taken": 460.91
+    },
+    "lancer": {
+      "offered": 1476.04,
+      "taken": 721.33
+    },
+    "striker": {
+      "offered": 1503.38,
+      "taken": 445.02
+    },
+    "acolyte": {
+      "offered": 1511.85,
+      "taken": 763.71
+    },
+    "skirmisher": {
+      "offered": 1397,
+      "taken": 379.68
+    },
+    "beacon": {
+      "offered": 1036.42,
+      "taken": 499.13
+    },
+    "sentinel": {
+      "offered": 608.75,
+      "taken": 339.24
+    }
+  },
+  "human": {
+    "united-front": {
+      "n": 3.58,
+      "won": 3.58
+    },
+    "spearwall": {
+      "n": 39.19,
+      "won": 33.54
+    },
+    "champion": {
+      "n": 36.54,
+      "won": 24.82
+    },
+    "unbreakable": {
+      "n": 32.09,
+      "won": 26.34
+    },
+    "momentum": {
+      "n": 44.17,
+      "won": 35.56
+    },
+    "bastion": {
+      "n": 16.01,
+      "won": 10.66
+    },
+    "sabotage": {
+      "n": 28.78,
+      "won": 20.57
+    },
+    "legion": {
+      "n": 37.68,
+      "won": 27.57
+    },
+    "long-reach": {
+      "n": 11.38,
+      "won": 7.94
+    },
+    "cleave": {
+      "n": 8.27,
+      "won": 5.71
+    },
+    "last-stand": {
+      "n": 30.5,
+      "won": 23.61
+    },
+    "scout": {
+      "n": 36.04,
+      "won": 25.86
+    },
+    "skewer": {
+      "n": 14.85,
+      "won": 10.11
+    },
+    "vanguards-edge": {
+      "n": 25.65,
+      "won": 20.92
+    },
+    "full-ranks": {
+      "n": 3.83,
+      "won": 3.05
+    },
+    "banner-of-hope": {
+      "n": 10.01,
+      "won": 7.43
+    },
+    "blessing": {
+      "n": 22.07,
+      "won": 16.79
+    },
+    "reinforcements": {
+      "n": 4.32,
+      "won": 3.08
+    },
+    "thorns": {
+      "n": 8.68,
+      "won": 6.1
+    },
+    "berserkers-rally": {
+      "n": 0.62,
+      "won": 0.62
+    },
+    "fusion": {
+      "n": 17.81,
+      "won": 14.62
+    },
+    "bloodthirst": {
+      "n": 25.5,
+      "won": 20.2
+    },
+    "executioner": {
+      "n": 33.26,
+      "won": 26.88
+    },
+    "devotion": {
+      "n": 12.07,
+      "won": 10.58
+    },
+    "reinforced-plating": {
+      "n": 7.02,
+      "won": 3.74
+    },
+    "war-chest": {
+      "n": 9.88,
+      "won": 7.17
+    },
+    "shield-wall": {
+      "n": 11.15,
+      "won": 9.04
+    },
+    "ascendant": {
+      "n": 1.85,
+      "won": 0.62
+    },
+    "lifesteal": {
+      "n": 11.54,
+      "won": 7.7
+    },
+    "early-knighthood": {
+      "n": 3.2,
+      "won": 2.58
+    },
+    "living-fortress": {
+      "n": 15.9,
+      "won": 11.92
+    },
+    "choir": {
+      "n": 22.87,
+      "won": 12.35
+    },
+    "triage": {
+      "n": 17.65,
+      "won": 13.39
+    },
+    "thick-barrier": {
+      "n": 6.42,
+      "won": 4.95
+    },
+    "last-light": {
+      "n": 12.7,
+      "won": 5.58
+    },
+    "battle-fury": {
+      "n": 13.88,
+      "won": 10.56
+    },
+    "aegis": {
+      "n": 6.55,
+      "won": 5.74
+    },
+    "stimulant": {
+      "n": 16.69,
+      "won": 10.98
+    },
+    "mixed-formation": {
+      "n": 5.05,
+      "won": 3.69
+    },
+    "last-breath": {
+      "n": 0.62,
+      "won": 0.62
+    },
+    "holdout": {
+      "n": 8.52,
+      "won": 4.66
+    },
+    "field-medic": {
+      "n": 9.07,
+      "won": 5.11
+    },
+    "knights-oath": {
+      "n": 5.23,
+      "won": 4.56
+    },
+    "war-horn": {
+      "n": 8.34,
+      "won": 7.54
+    },
+    "first-strike": {
+      "n": 13.77,
+      "won": 10.69
+    },
+    "veteran": {
+      "n": 21.67,
+      "won": 20.71
+    },
+    "iron-will": {
+      "n": 12.66,
+      "won": 10.45
+    },
+    "precision-strikes": {
+      "n": 6.04,
+      "won": 5.38
+    },
+    "tank-wall": {
+      "n": 1.37,
+      "won": 0.71
+    },
+    "overwhelm": {
+      "n": 8.49,
+      "won": 5.9
+    },
+    "sharpened-edge": {
+      "n": 5.68,
+      "won": 4.71
+    },
+    "tactician": {
+      "n": 2.96,
+      "won": 0.83
+    },
+    "squires-drill": {
+      "n": 7.08,
+      "won": 5.63
+    },
+    "counterstrike": {
+      "n": 0.68,
+      "won": 0.68
+    },
+    "adrenaline": {
+      "n": 3.27,
+      "won": 2.3
+    },
+    "bloodpact": {
+      "n": 0.69,
+      "won": 0.69
+    },
+    "steady-footing": {
+      "n": 0.71,
+      "won": 0.71
+    },
+    "warlord": {
+      "n": 12.55,
+      "won": 8.84
+    },
+    "sanctum": {
+      "n": 11.12,
+      "won": 7.43
+    },
+    "vengeance": {
+      "n": 8.65,
+      "won": 7.72
+    },
+    "colossus": {
+      "n": 9.62,
+      "won": 7.38
+    },
+    "iron-curtain": {
+      "n": 10.16,
+      "won": 6.2
+    },
+    "undying": {
+      "n": 3.91,
+      "won": 2.34
+    },
+    "phalanx": {
+      "n": 9.93,
+      "won": 8.04
+    },
+    "signal-fire": {
+      "n": 10.98,
+      "won": 8
+    },
+    "bounty": {
+      "n": 0.71,
+      "won": 0.71
+    },
+    "duelist": {
+      "n": 5.35,
+      "won": 4.61
+    },
+    "juggernaut": {
+      "n": 18.05,
+      "won": 12.41
+    },
+    "iron-skin": {
+      "n": 25.49,
+      "won": 20.13
+    },
+    "golden-age": {
+      "n": 15.2,
+      "won": 13.45
+    },
+    "twin-fangs": {
+      "n": 3.34,
+      "won": 1.57
+    },
+    "rear-guard": {
+      "n": 9.24,
+      "won": 5.98
+    },
+    "heros-mark": {
+      "n": 28.61,
+      "won": 24.18
+    },
+    "whetstone": {
+      "n": 14.58,
+      "won": 12.75
+    },
+    "desperate-measures": {
+      "n": 2.6,
+      "won": 1.83
+    },
+    "opening-salvo": {
+      "n": 3.46,
+      "won": 0.78
+    },
+    "drill-sergeant": {
+      "n": 13.54,
+      "won": 11.69
+    },
+    "spiked-line": {
+      "n": 4.99,
+      "won": 3.25
+    },
+    "commission": {
+      "n": 6.91,
+      "won": 5.98
+    },
+    "bloodbond": {
+      "n": 14.17,
+      "won": 12.44
+    },
+    "second-line": {
+      "n": 4.01,
+      "won": 2.42
+    },
+    "avalanche": {
+      "n": 6.74,
+      "won": 5.01
+    },
+    "field-promotion": {
+      "n": 13.49,
+      "won": 10.97
+    },
+    "blood-moon": {
+      "n": 6.77,
+      "won": 6.77
+    },
+    "mantis-shrimp": {
+      "n": 7.08,
+      "won": 5.17
+    },
+    "apotheosis": {
+      "n": 1.75,
+      "won": 1.75
+    },
+    "phoenix": {
+      "n": 3.38,
+      "won": 3.38
+    },
+    "hawk-eye": {
+      "n": 0.81,
+      "won": 0.81
+    },
+    "mirror-shield": {
+      "n": 1.7,
+      "won": 1.7
+    },
+    "vanguards-vow": {
+      "n": 0.87,
+      "won": 0.87
+    },
+    "ironclad": {
+      "n": 0.87,
+      "won": 0.87
+    }
+  },
+  "cpu": {
+    "cleave": {
+      "n": 34.98,
+      "won": 5.43
+    },
+    "spearwall": {
+      "n": 2.89,
+      "won": 1.58
+    },
+    "sabotage": {
+      "n": 24.85,
+      "won": 4.84
+    },
+    "bloodthirst": {
+      "n": 38.71,
+      "won": 11.83
+    },
+    "stimulant": {
+      "n": 9.31,
+      "won": 2.61
+    },
+    "choir": {
+      "n": 29.54,
+      "won": 4.64
+    },
+    "last-light": {
+      "n": 22.96,
+      "won": 4.16
+    },
+    "unbreakable": {
+      "n": 21.44,
+      "won": 3.26
+    },
+    "united-front": {
+      "n": 6.47,
+      "won": 2
+    },
+    "war-chest": {
+      "n": 3.7,
+      "won": 0
+    },
+    "berserkers-rally": {
+      "n": 11.98,
+      "won": 3.41
+    },
+    "vanguards-edge": {
+      "n": 6.26,
+      "won": 0
+    },
+    "bastion": {
+      "n": 32.61,
+      "won": 5.37
+    },
+    "living-fortress": {
+      "n": 12.65,
+      "won": 5.06
+    },
+    "early-knighthood": {
+      "n": 4.01,
+      "won": 0
+    },
+    "ascendant": {
+      "n": 3.74,
+      "won": 1.25
+    },
+    "sharpened-edge": {
+      "n": 36.71,
+      "won": 7.77
+    },
+    "champion": {
+      "n": 18.43,
+      "won": 3.92
+    },
+    "bloodpact": {
+      "n": 8.34,
+      "won": 1.4
+    },
+    "banner-of-hope": {
+      "n": 12.18,
+      "won": 4.35
+    },
+    "reinforced-plating": {
+      "n": 31.15,
+      "won": 6.37
+    },
+    "battle-fury": {
+      "n": 8.7,
+      "won": 0.78
+    },
+    "legion": {
+      "n": 23.85,
+      "won": 4.01
+    },
+    "tank-wall": {
+      "n": 5.3,
+      "won": 1.25
+    },
+    "adrenaline": {
+      "n": 8.04,
+      "won": 0.79
+    },
+    "full-ranks": {
+      "n": 7.92,
+      "won": 0
+    },
+    "blessing": {
+      "n": 14.07,
+      "won": 4.96
+    },
+    "glass-cannon-pact": {
+      "n": 6.61,
+      "won": 1.92
+    },
+    "aegis": {
+      "n": 4.09,
+      "won": 0
+    },
+    "desperate-measures": {
+      "n": 4.34,
+      "won": 0.64
+    },
+    "field-medic": {
+      "n": 9.07,
+      "won": 0.95
+    },
+    "skewer": {
+      "n": 8.62,
+      "won": 2.04
+    },
+    "steady-footing": {
+      "n": 3.38,
+      "won": 0
+    },
+    "last-stand": {
+      "n": 26.16,
+      "won": 4.85
+    },
+    "lifesteal": {
+      "n": 7.47,
+      "won": 0.95
+    },
+    "counterstrike": {
+      "n": 0.64,
+      "won": 0
+    },
+    "war-horn": {
+      "n": 8.06,
+      "won": 0
+    },
+    "overwhelm": {
+      "n": 5.71,
+      "won": 2.88
+    },
+    "thorns": {
+      "n": 23.16,
+      "won": 4.03
+    },
+    "holdout": {
+      "n": 5.27,
+      "won": 1.52
+    },
+    "long-reach": {
+      "n": 13.01,
+      "won": 2.45
+    },
+    "tactician": {
+      "n": 7.67,
+      "won": 1.59
+    },
+    "shield-wall": {
+      "n": 11.33,
+      "won": 1.66
+    },
+    "thick-barrier": {
+      "n": 3.2,
+      "won": 0.81
+    },
+    "first-strike": {
+      "n": 2.36,
+      "won": 0.87
+    },
+    "devotion": {
+      "n": 4.5,
+      "won": 0.71
+    },
+    "iron-will": {
+      "n": 11.77,
+      "won": 0.79
+    },
+    "warlord": {
+      "n": 3.62,
+      "won": 1.45
+    },
+    "twin-fangs": {
+      "n": 5.28,
+      "won": 2.43
+    },
+    "colossus": {
+      "n": 3.64,
+      "won": 0
+    },
+    "sanctum": {
+      "n": 5.96,
+      "won": 1.43
+    },
+    "executioner": {
+      "n": 3.03,
+      "won": 0
+    },
+    "iron-curtain": {
+      "n": 4.49,
+      "won": 0.71
+    },
+    "precision-strikes": {
+      "n": 9.99,
+      "won": 1.71
+    },
+    "vengeance": {
+      "n": 5.74,
+      "won": 0
+    },
+    "mantis-shrimp": {
+      "n": 24.03,
+      "won": 5.43
+    },
+    "mirror-shield": {
+      "n": 9.1,
+      "won": 0.78
+    },
+    "whetstone": {
+      "n": 7.6,
+      "won": 0.98
+    },
+    "mixed-formation": {
+      "n": 11,
+      "won": 0.79
+    },
+    "bloodbond": {
+      "n": 28.75,
+      "won": 5.39
+    },
+    "juggernaut": {
+      "n": 10.88,
+      "won": 2.73
+    },
+    "triage": {
+      "n": 4.27,
+      "won": 1.75
+    },
+    "commission": {
+      "n": 32.17,
+      "won": 8.78
+    },
+    "golden-age": {
+      "n": 10.5,
+      "won": 3.64
+    },
+    "second-line": {
+      "n": 12.92,
+      "won": 2.56
+    },
+    "drill-sergeant": {
+      "n": 16.97,
+      "won": 3.68
+    },
+    "apotheosis": {
+      "n": 17.05,
+      "won": 2.52
+    },
+    "mirror-image": {
+      "n": 4.21,
+      "won": 0
+    },
+    "field-promotion": {
+      "n": 41.11,
+      "won": 8.82
+    },
+    "heros-mark": {
+      "n": 12.1,
+      "won": 3.52
+    },
+    "fusion": {
+      "n": 8.57,
+      "won": 1.75
+    },
+    "hawk-eye": {
+      "n": 3.51,
+      "won": 0
+    },
+    "spiked-line": {
+      "n": 3.49,
+      "won": 0
+    },
+    "signal-fire": {
+      "n": 0.79,
+      "won": 0
+    },
+    "blood-moon": {
+      "n": 4.37,
+      "won": 2.7
+    },
+    "iron-skin": {
+      "n": 10.85,
+      "won": 3.38
+    },
+    "rear-guard": {
+      "n": 3.47,
+      "won": 0.79
+    },
+    "squires-drill": {
+      "n": 7.25,
+      "won": 0.95
+    },
+    "avalanche": {
+      "n": 0.79,
+      "won": 0
+    },
+    "scout": {
+      "n": 1.66,
+      "won": 0
+    },
+    "knights-oath": {
+      "n": 2.7,
+      "won": 0.95
+    },
+    "veteran": {
+      "n": 0.83,
+      "won": 0
+    },
+    "heroic-legion": {
+      "n": 2.61,
+      "won": 0
+    },
+    "duelist": {
+      "n": 0.89,
+      "won": 0
+    },
+    "momentum": {
+      "n": 1.87,
+      "won": 0
+    },
+    "phoenix": {
+      "n": 0.93,
+      "won": 0
+    }
+  },
+  "humanBase": {
+    "n": 1072.73,
+    "won": 815.48
+  },
+  "cpuBase": {
+    "n": 946.24,
+    "won": 189.3
+  }
+}
