@@ -1367,12 +1367,22 @@ earns XP, levels unlock upgrades, units and battle styles.
   opening the track (`ProgressPanel`: every level and its reward with what
   it does (`RewardCard`, from `rewardInfo`), ✓ unlocked or 🔒 locked, and a
   Sign in prompt for guests). The Codex marks locked upgrades and units
-  "🔒 Lv N" and fades them. **Motion** (feedback 2026-10-30): opening the
-  track fills the bar from the XP it showed last time on this device
-  (`duel-deck:xp-seen`, from empty after a level up) and says "+N XP";
-  claiming pops each claimed level's reward in, one after another, and
-  stamps its ✓ (transform/opacity; a fade under reduced motion). The XP
-  bars are `scaleX` transforms, not widths.
+  "🔒 Lv N" and fades them. **Motion** (reworked in 1.11.3, the user asked
+  for a bar that visibly fills and a moment for claiming): `useXpRun` counts
+  the shown XP from `from` to `to` by frame time, so the bar (`scaleX`, no
+  CSS transition) fills, flashes at each level crossed (`ups`, a keyed
+  `.xp-bar__flash`) and starts again from empty, and the numbers count with
+  it (1.1 s, +0.5 s a level, at most 3.2 s; reduced motion lands on the end).
+  The result screen runs it after its entrance, then raises "Ready to
+  claim", and marks the XP seen; the track runs it from
+  `duel-deck:xp-seen`, so one gain never plays twice. Claiming: `ClaimReveal`
+  shows each reward on its own card over the panel (turning conic rays,
+  sparks, the icon popping in; 1.5 s each, less when there are many, 5 s in
+  all down to 0.55 s a card; tap for the next, Skip to end), then the levels
+  pop in on the track with their ✓ as before. The claim is sent first: the
+  reveal is only for show, and a failed claim closes it. Transform and
+  opacity only. The reveal was checked mounted alone at 375×812; the claim
+  itself needs a verified account, so try it for real on the emulators.
 - **Claiming** (2026-10-24, the user's call): reaching a level doesn't
   unlock its upgrades; the player claims them on the track (Claim on a level,
   which takes the levels before it too, or Claim all). Only claimed upgrades
@@ -1467,11 +1477,19 @@ on a desktop, cached per page.
 **Played on the normal board** (the user's call, 2026-11-02: the first
 version's own list UI looked too unlike the game). `Game` takes
 `challenge: { ch, onDone }`: the board starts with the enemy row placed
-(`challengeRound` with an empty answer), the phase is "augment" with the
-day's 4 cards, taken one after another (`pickUpgrades` choices, no rerolls;
-the panel is keyed per choice so it resets, and its `hint` replaces the
-rarity line), then "pick" with the 7 units as the offer (cards show their
-level and stats via `chPool`; two rows, `.hand--many`) and `slots` picks.
+(`challengeRound` with an empty answer) and the phase is "pick", with the 7
+units as the offer (cards show their level and stats via `chPool`; two rows,
+`.hand--many`) and `slots` picks. **Units first, upgrades after** (the user's
+call, 1.11.3: many upgrades only make sense against the units you hold): the
+day's 4 cards stay in view in `.ch-upgrades` (tap for `AugmentPanel preview`,
+read-only), and the Battle button reads "⬆ Choose upgrades" (`chUpgradesDue`;
+needs a unit placed), which opens the panel in "augment": taken one after
+another (`pickUpgrades` choices, no rerolls; keyed per choice so it resets,
+its `hint` replaces the rarity line), with "← Back to your units". Then back
+to "pick" to reorder with them applied, and Battle. `resetChallengeUpgrades`
+(Change, or Back) puts them all back. Undo re-applies the upgrades to the
+restored row, since it can reach a move from before they were taken.
+Challenge upgrades exclude strategy ones, so taking one never trims the row.
 A card always places (`grownUnit` at its level): `dropActionFor` never
 merges or replaces for a challenge, and there's no reroll, freeze or
 picks-left confirm. Placed units still reorder and merge as usual. Battle

@@ -41,6 +41,10 @@ interface AugmentPanelProps {
   units: Unit[];
   /** Whether choose-a-unit upgrade `id` can land on `unit`. */
   canTarget: (id: string, unit: Unit) => boolean;
+  /** A way out without taking a card (the daily challenge, back to its units). */
+  onBack?: () => void;
+  /** Just to read: the cards can't be taken or rerolled, and `onBack` closes it. */
+  preview?: boolean;
 }
 
 /**
@@ -81,6 +85,8 @@ export function AugmentPanel({
   units,
   canTarget,
   hint,
+  onBack,
+  preview,
 }: AugmentPanelProps) {
   // Two steps, so one stray tap can't lock in an upgrade for the whole match:
   // tapping a card only selects it, and "Take" commits the selection.
@@ -101,7 +107,7 @@ export function AugmentPanel({
   }, [offerKey]);
   useEffect(() => () => window.clearTimeout(timer.current), []);
   const select = (id: string) => {
-    if (picked || peeking || performance.now() < armedAt.current) return;
+    if (preview || picked || peeking || performance.now() < armedAt.current) return;
     setSelected(id);
   };
   const selectedDef = offers.find((a) => a.id === selected);
@@ -126,7 +132,7 @@ export function AugmentPanel({
         <div className="panel__head">
           <h2 className="aug-panel__title">
             {hint ? (
-              "Choose an upgrade"
+              preview ? "Today's upgrades" : "Choose an upgrade"
             ) : (
               <>
                 <span className={`aug-panel__rarity aug-panel__rarity--${rarity}`}>{RARITY_LABEL[rarity]}</span> upgrade
@@ -134,9 +140,11 @@ export function AugmentPanel({
             )}
           </h2>
           {/* Several upgrades scale off your board, so let the player check it. */}
-          <button className="ghost-btn ghost-btn--sm peek-toggle" onClick={onPeek}>
-            {peeking ? "← Back to upgrades" : "View board"}
-          </button>
+          {!preview && (
+            <button className="ghost-btn ghost-btn--sm peek-toggle" onClick={onPeek}>
+              {peeking ? "← Back to upgrades" : "View board"}
+            </button>
+          )}
         </div>
         <div className="panel__hint">
           {hint ?? `Round ${round} · lasts this match only · both players draw ${RARITY_LABEL[rarity].toLowerCase()}`}
@@ -206,7 +214,7 @@ export function AugmentPanel({
                       </span>
                       <span className="aug-card__name">{a.name}</span>
                       <span className="aug-card__tag">{a.target ? "Choose a unit" : CATEGORY_LABEL[a.category]}</span>
-                      {a.repeatable && <span className="aug-card__again">🔁 Can pick again</span>}
+                      {a.repeatable && !onBack && <span className="aug-card__again">🔁 Can pick again</span>}
                       <span className="aug-card__desc">{a.description}</span>
                     </span>
                     {selected === a.id && !picked && (
@@ -215,32 +223,41 @@ export function AugmentPanel({
                       </span>
                     )}
                   </button>
-                  <button
-                    className="aug-reroll"
-                    onClick={() => onReroll(i)}
-                    disabled={(rerollsLeft[i] ?? 0) <= 0 || peeking || !!picked}
-                    aria-label={`Reroll ${a.name}`}
-                    title={(rerollsLeft[i] ?? 0) > 0 ? "Reroll this card" : "Already rerolled"}
-                  >
-                    ↻
-                  </button>
+                  {!onBack && (
+                    <button
+                      className="aug-reroll"
+                      onClick={() => onReroll(i)}
+                      disabled={(rerollsLeft[i] ?? 0) <= 0 || peeking || !!picked}
+                      aria-label={`Reroll ${a.name}`}
+                      title={(rerollsLeft[i] ?? 0) > 0 ? "Reroll this card" : "Already rerolled"}
+                    >
+                      ↻
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
-            <button
-              className="primary-btn primary-btn--wide take-btn"
-              onClick={() => selectedDef && take(selectedDef)}
-              disabled={!selectedDef || !!picked || peeking}
-              tabIndex={peeking ? -1 : undefined}
-            >
-              {selectedDef ? (
-                <>
-                  Take {selectedDef.icon} {selectedDef.name}
-                </>
-              ) : (
-                "Tap an upgrade to choose it"
-              )}
-            </button>
+            {!preview && (
+              <button
+                className="primary-btn primary-btn--wide take-btn"
+                onClick={() => selectedDef && take(selectedDef)}
+                disabled={!selectedDef || !!picked || peeking}
+                tabIndex={peeking ? -1 : undefined}
+              >
+                {selectedDef ? (
+                  <>
+                    Take {selectedDef.icon} {selectedDef.name}
+                  </>
+                ) : (
+                  "Tap an upgrade to choose it"
+                )}
+              </button>
+            )}
+            {onBack && (
+              <button className="ghost-btn aug-back" onClick={onBack} disabled={!!picked || peeking} tabIndex={peeking ? -1 : undefined}>
+                ← Back to your units
+              </button>
+            )}
           </>
         )}
       </div>

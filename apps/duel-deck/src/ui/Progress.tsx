@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { MAX_LEVEL, STARTER, STARTER_UNITS, levelOf, rewardInfo, rewardsAt, type Reward } from "../game/progression";
 import { UNITS } from "../engine/units";
 import { sfx } from "../game/sound";
+import { prefersReducedMotion } from "../board/anim";
 import { UnitPortrait } from "./UnitPortrait";
 import { claimTo, useProgress, type XpAward } from "../online/progress";
 
@@ -11,9 +12,10 @@ import { claimTo, useProgress, type XpAward } from "../online/progress";
 // progression needs an account. Reached levels are claimed here (Claim, or
 // Claim all) before their rewards count; the title's chip badges how many wait.
 //
-// Motion (feedback 2026-10-30): opening the track fills the bar from where
-// the player last saw it (`SEEN_KEY`), and a claimed level's reward pops in
-// with its ✓ stamped on. Transform and opacity only.
+// Motion: the bar runs up from where the player last saw it (`SEEN_KEY`),
+// wrapping at each level (`useXpRun`), and claiming reveals each reward on a
+// card of its own (`ClaimReveal`), then its level pops in with its ✓ stamped
+// on. Transform and opacity only.
 
 /** The XP the track showed the last time it was opened on this device. */
 const SEEN_KEY = "duel-deck:xp-seen";
@@ -35,30 +37,66 @@ function writeSeen(xp: number) {
   }
 }
 
+/** The bar waits this long: a beat after the panel opens, and for the result screen's entrance. */
+const XP_PANEL_DELAY_MS = 350;
+const XP_RESULT_DELAY_MS = 900;
+
+/** How long the XP run takes, plus a beat for each level it crosses, up to a limit. */
+const XP_RUN_MS = 1100;
+const XP_RUN_LEVEL_MS = 500;
+const XP_RUN_MAX_MS = 3200;
+
 /**
- * A level's progress bar. `from` (a fraction) animates up to `into / need`
- * when given. Scaled, not resized: iOS stutters on width transitions.
+ * Run the shown XP from `from` up to `to` after `delay` ms: the bar fills,
+ * and each level crossed flashes it (`ups` counts them) and starts it again
+ * from empty. Driven by frame time, so ProMotion phones run it at the same
+ * speed; under reduced motion it just lands on `to`.
  */
-export function XpBar({ into, need, from }: { into: number; need: number; from?: number }) {
-  const frac = need > 0 ? Math.min(1, into / need) : 1;
-  const start = from === undefined ? frac : Math.min(1, from);
-  const fill = useRef<HTMLDivElement>(null);
+function useXpRun(from: number, to: number, delay: number) {
+  const [xp, setXp] = useState(from);
+  const [ups, setUps] = useState(0);
   useEffect(() => {
-    // Grow from where it started, a beat after the panel opens.
-    const el = fill.current;
-    if (!el || start === frac) return;
-    el.style.transition = "none";
-    el.style.transform = `scaleX(${start})`;
-    void el.offsetWidth;
-    el.style.transition = "";
-    const t = window.setTimeout(() => {
-      el.style.transform = `scaleX(${frac})`;
-    }, 350);
-    return () => window.clearTimeout(t);
-  }, [start, frac]);
+    if (from >= to) {
+      setXp(to);
+      return;
+    }
+    if (prefersReducedMotion()) {
+      const t = window.setTimeout(() => setXp(to), delay);
+      return () => window.clearTimeout(t);
+    }
+    const start = levelOf(from).level;
+    const ms = Math.min(XP_RUN_MAX_MS, XP_RUN_MS + (levelOf(to).level - start) * XP_RUN_LEVEL_MS);
+    let level = start;
+    let began = 0;
+    let frame = 0;
+    const tick = (now: number) => {
+      began ||= now;
+      const t = Math.min(1, (now - began) / ms);
+      const shown = Math.round(from + (to - from) * (1 - (1 - t) ** 3));
+      setXp(shown);
+      const reached = levelOf(shown).level;
+      if (reached > level) {
+        level = reached;
+        setUps((n) => n + 1);
+        sfx("buff");
+      }
+      if (t < 1) frame = requestAnimationFrame(tick);
+    };
+    const wait = window.setTimeout(() => (frame = requestAnimationFrame(tick)), delay);
+    return () => {
+      window.clearTimeout(wait);
+      cancelAnimationFrame(frame);
+    };
+  }, [from, to, delay]);
+  return { xp, ups, done: xp >= to };
+}
+
+/** A level's progress bar. Scaled, not resized: iOS stutters on width changes. `ups` flashes it on a level up. */
+export function XpBar({ into, need, ups = 0 }: { into: number; need: number; ups?: number }) {
   return (
     <div className="xp-bar" role="progressbar" aria-valuemin={0} aria-valuemax={need || 1} aria-valuenow={need ? into : 1}>
-      <div ref={fill} className="xp-bar__fill" style={{ transform: `scaleX(${frac})` }} />
+      <div className="xp-bar__fill" style={{ transform: `scaleX(${need > 0 ? Math.min(1, into / need) : 1})` }} />
+      {ups > 0 && <span key={ups} className="xp-bar__flash" aria-hidden="true" />}
     </div>
   );
 }
@@ -117,6 +155,11 @@ export function LevelChip({ onClick }: { onClick: () => void }) {
 
 /** The result screen's block: XP earned, the bar filling, anything it unlocked. A guest gets a sign-in nudge. */
 export function XpResult({ award, onOpen }: { award: XpAward; onOpen?: () => void }) {
+  // After the panel's own entrance. Seen here, so the track doesn't run it again.
+  const run = useXpRun(award.counts ? award.from : award.to, award.to, XP_RESULT_DELAY_MS);
+  useEffect(() => {
+    if (award.counts) writeSeen(award.to);
+  }, [award]);
   if (!award.counts) {
     return (
       <div className="xp-result">
@@ -133,25 +176,24 @@ export function XpResult({ award, onOpen }: { award: XpAward; onOpen?: () => voi
     );
   }
   const before = levelOf(award.from);
-  const after = levelOf(award.to);
-  const levelled = after.level > before.level;
+  const now = levelOf(run.xp);
   return (
     <div className="xp-result">
       <div className="xp-result__head">
-        <span className="xp-result__gain">⭐ +{award.gained} XP</span>
-        <span className="xp-result__level">
-          {levelled ? (
+        <span className="xp-result__gain">⭐ +{run.xp - award.from} XP</span>
+        <span key={now.level} className={`xp-result__level${now.level > before.level ? " xp-level-pop" : ""}`}>
+          {now.level > before.level ? (
             <>
-              Level up! <b>{before.level} → {after.level}</b>
+              Level up! <b>{before.level} → {now.level}</b>
             </>
           ) : (
-            <>Level {after.level}</>
+            <>Level {now.level}</>
           )}
         </span>
       </div>
-      <XpBar into={after.into} need={after.need} from={levelled ? 0 : before.need ? before.into / before.need : 1} />
+      <XpBar into={now.into} need={now.need} ups={run.ups} />
       {award.unlocked.length > 0 && (
-        <div className="xp-result__unlocks">
+        <div className={`xp-result__unlocks${run.done ? " xp-result__unlocks--on" : ""}`}>
           <span className="xp-result__label">Ready to claim</span>
           {award.unlocked.map((r) => (
             <RewardChip key={`${r.kind}:${r.id}`} reward={r} />
@@ -167,23 +209,82 @@ export function XpResult({ award, onOpen }: { award: XpAward; onOpen?: () => voi
   );
 }
 
+/** How long each reward's card stays (`CLAIM_TOTAL_MS` shared out, within these). */
+const CLAIM_CARD_MS = 1500;
+const CLAIM_CARD_MIN_MS = 550;
+const CLAIM_TOTAL_MS = 5000;
+const SPARKS = Array.from({ length: 12 }, (_, i) => i);
+
+/**
+ * Claiming: each reward takes the stage on its own card, rays turning behind
+ * it and sparks flying off, and goes by itself. A tap moves on; Skip ends it.
+ * Only for show: the claim itself has already gone.
+ */
+export function ClaimReveal({ rewards, onDone }: { rewards: Reward[]; onDone: () => void }) {
+  const [i, setI] = useState(0);
+  const next = () => (i + 1 < rewards.length ? setI(i + 1) : onDone());
+  const hold = Math.max(CLAIM_CARD_MIN_MS, Math.min(CLAIM_CARD_MS, CLAIM_TOTAL_MS / rewards.length));
+  useEffect(() => {
+    sfx("upgrade");
+    const t = window.setTimeout(next, hold);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [i, hold]);
+  const reward = rewards[i];
+  const r = rewardInfo(reward);
+  return (
+    <div className="claim-reveal" role="status" aria-live="polite" onClick={next}>
+      <div key={i} className={`claim-card claim-card--${r.tone}`}>
+        <span className="claim-card__rays" aria-hidden="true" />
+        <span className="claim-card__sparks" aria-hidden="true">
+          {SPARKS.map((n) => (
+            <i key={n} style={{ "--a": `${n * 30 + 8}deg`, "--r": `${6 + (n % 3) * 1.6}rem` } as React.CSSProperties} />
+          ))}
+        </span>
+        <span className="claim-card__label">Unlocked!</span>
+        <span className="claim-card__icon" aria-hidden="true">
+          {reward.kind === "unit" ? <UnitPortrait unitKey={reward.id} side="player" size={84} pose="dance" /> : r.icon}
+        </span>
+        <strong className="claim-card__name">{r.name}</strong>
+        <span className="claim-card__kind">{reward.kind === "upgrade" ? `${r.tone} upgrade` : KIND_LABEL[reward.kind]}</span>
+        <span className="claim-card__desc">{r.description}</span>
+      </div>
+      {rewards.length > 1 && (
+        <div className="claim-reveal__foot">
+          <span>
+            {i + 1} of {rewards.length}
+          </span>
+          <button
+            className="link-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDone();
+            }}
+          >
+            Skip
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** The whole track. */
 export function ProgressPanel({ onClose, onSignIn }: { onClose: () => void; onSignIn: () => void }) {
   const p = useProgress();
-  const { into, need } = levelOf(p.xp);
   const current = useRef<HTMLLIElement>(null);
   useEffect(() => {
     current.current?.scrollIntoView({ block: "center" });
   }, []);
   const guest = p.owner === "guest";
-  // Fill the bar from where it stood last time this device opened the track
-  // (from empty after a level up), and say how much was earned since.
-  const [since] = useState(() => {
-    const seen = readSeen();
-    if (guest || seen === null || seen >= p.xp) return { from: undefined, gained: 0 };
-    const was = levelOf(seen);
-    return { from: was.level < levelOf(p.xp).level ? 0 : was.need ? was.into / was.need : 1, gained: p.xp - seen };
+  // Run the bar up from where this device last saw it, and say how much was
+  // earned since.
+  const [seen] = useState(() => {
+    const v = readSeen();
+    return guest || v === null ? p.xp : Math.min(v, p.xp);
   });
+  const run = useXpRun(seen, p.xp, XP_PANEL_DELAY_MS);
+  const { level, into, need } = levelOf(run.xp);
   useEffect(() => {
     if (!guest) writeSeen(p.xp);
   }, [guest, p.xp]);
@@ -191,15 +292,22 @@ export function ProgressPanel({ onClose, onSignIn }: { onClose: () => void; onSi
   const [error, setError] = useState("");
   /** Levels claimed while the panel is open: their rewards pop in. */
   const [fresh, setFresh] = useState<ReadonlySet<number>>(new Set());
-  const claim = (level: number) => {
+  /** What's being claimed, on stage (`ClaimReveal`); its levels pop in on the track after. */
+  const [reveal, setReveal] = useState<{ rewards: Reward[]; levels: number[] } | null>(null);
+  const endReveal = () => {
+    if (reveal) setFresh((f) => new Set([...f, ...reveal.levels]));
+    setReveal(null);
+  };
+  const claim = (to: number) => {
     setClaiming(true);
     setError("");
     const from = p.unlockedLevel;
-    const claimed = claimTo(level);
-    setFresh((f) => new Set([...f, ...Array.from({ length: Math.max(0, level - from) }, (_, i) => from + 1 + i)]));
-    sfx("upgrade");
+    const levels = Array.from({ length: Math.max(0, to - from) }, (_, i) => from + 1 + i);
+    const claimed = claimTo(to);
+    setReveal({ rewards: levels.flatMap(rewardsAt), levels });
     claimed
       .catch(() => {
+        setReveal(null);
         setFresh(new Set());
         setError("Couldn't claim. Check your connection and try again.");
       })
@@ -222,13 +330,13 @@ export function ProgressPanel({ onClose, onSignIn }: { onClose: () => void; onSi
           </button>
         </div>
         <div className="progress-panel__now">
-          <strong>Level {p.level}</strong>
+          <strong key={level} className={run.ups > 0 ? "xp-level-pop" : undefined}>Level {level}</strong>
           <span>
-            {since.gained > 0 && <b className="progress-panel__since">+{since.gained} XP </b>}
+            {run.xp > seen && <b className="progress-panel__since">+{run.xp - seen} XP </b>}
             {need ? `${into} / ${need} XP` : `${p.xp} XP · max level`}
           </span>
         </div>
-        <XpBar into={into} need={need} from={since.from} />
+        <XpBar into={into} need={need} ups={run.ups} />
         <p className="panel__hint">
           Every finished match earns XP, a win more than a loss, and more again the higher the starting health. Each
           level unlocks a new unit, upgrade or battle style to claim; the CPU can always use all of them.
@@ -301,6 +409,7 @@ export function ProgressPanel({ onClose, onSignIn }: { onClose: () => void; onSi
             );
           })}
         </ol>
+        {reveal && reveal.rewards.length > 0 && <ClaimReveal rewards={reveal.rewards} onDone={endReveal} />}
       </div>
     </div>
   );

@@ -52,6 +52,7 @@ import {
   createAugmentState,
   applyTarget,
   getAugment,
+  rarityOf,
   mergeRatioFor,
   newUpgradeSeed,
   offerAugments,
@@ -472,7 +473,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   });
   /** The win's slow-motion HP-bar explosion is playing (and the bar stays gone). */
   const [barBlast, setBarBlast] = useState(false);
-  const [phase, setPhase] = useState<Phase>(saved?.augmentPending || challenge ? "augment" : "pick");
+  const [phase, setPhase] = useState<Phase>(saved?.augmentPending ? "augment" : "pick");
   /**
    * Permanent gains your units just got at pick time (a choose-a-unit
    * upgrade, Last stand), shown on a card over the board that goes by itself
@@ -512,6 +513,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   /** A replace waiting on the player's OK: the offer card and the slot it would land on. */
   const [confirmReplace, setConfirmReplace] = useState<{ offerIndex: number; cell: Cell } | null>(null);
   const [showAugments, setShowAugments] = useState(false);
+  /** A challenge's upgrades, to read before placing a unit. */
+  const [showChUpgrades, setShowChUpgrades] = useState(false);
   /** Augment offer temporarily hidden so the player can inspect the board. */
   const [peeking, setPeeking] = useState(false);
   /**
@@ -1413,7 +1416,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     const prev = history[history.length - 1];
     setHistory(history.slice(0, -1));
     playerAug.current.grants = prev.grants;
-    setBoard(prev.board);
+    // A challenge can take its upgrades after the move being undone.
+    setBoard(challengeRef.current ? refreshed(prev.board) : prev.board);
     setUsedOffers(prev.usedOffers);
     setFrozen(prev.frozen);
     setPicksLeft(prev.picksLeft);
@@ -1890,11 +1894,25 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   };
 
   /** Take an upgrade; `unitId` is the unit a choose-a-unit upgrade lands on. */
+  /** A challenge's upgrades go back in the day's offer, and it's back to the row. */
+  const resetChallengeUpgrades = () => {
+    const ch = challengeRef.current?.ch;
+    if (!ch) return;
+    playerAug.current = createAugmentState();
+    const cards = ch.upgrades.map(getAugment).filter((a): a is AugmentDef => !!a);
+    setAugOffers(cards);
+    setAugRerolls(cards.map(() => 0));
+    setBoard(refreshed(board));
+    setPeeking(false);
+    setPhase("pick");
+  };
+
   const onPickAugment = (id: string, unitId?: string) => {
     sfx("upgrade");
     const ch = challengeRef.current?.ch;
     if (ch) {
       // A challenge: take the card, then the next choice from what's left.
+      // Back on the row after the last one, to reorder with them applied.
       takeAugment(playerAug.current, id, sideUnits(board, PLAYER));
       const next = cloneBoard(board);
       refreshForRound(next, playerAug.current, enemyAug.current);
@@ -2423,6 +2441,9 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     return s;
   };
 
+  /** A challenge plays units first: its upgrades are taken before Battle. */
+  const chUpgradesDue = !!challenge && playerAug.current.active.length < challenge.ch.pickUpgrades;
+
   /** Gains grouped by unit, in row order, for the units-upgraded step. */
   const growthRows = (list: Growth[]) =>
     sideUnits(board, PLAYER).flatMap((unit) => {
@@ -2599,10 +2620,27 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
             onPick={onPickAugment}
             peeking={peeking}
             onPeek={() => setPeeking((p) => !p)}
+            onBack={challenge ? resetChallengeUpgrades : undefined}
             rerollsLeft={augRerolls}
             onReroll={rerollAugmentCard}
             units={sideUnits(board, PLAYER)}
             canTarget={(id, u) => !!getAugment(id)?.target?.can(u, board, PLAYER)}
+          />
+        )}
+        {showChUpgrades && phase === "pick" && challenge && (
+          <AugmentPanel
+            preview
+            hint={`Take ${challenge.ch.pickUpgrades} once your units are placed`}
+            round={round}
+            offers={augOffers}
+            onPick={() => {}}
+            peeking={false}
+            onPeek={() => {}}
+            onBack={() => setShowChUpgrades(false)}
+            rerollsLeft={[]}
+            onReroll={() => {}}
+            units={[]}
+            canTarget={() => false}
           />
         )}
         {phase === "over" && result?.matchWinner && (
@@ -2770,10 +2808,16 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           className="primary-btn"
           // Unspent picks are almost always a misclick, not a plan — ask first.
           // (A maxed row's unspent picks aren't a misclick: they're Drill.)
-          onClick={() => (picksLeft > 0 && !rowMaxed(board, PLAYER) && !challenge ? setConfirmCommit(true) : finishPicks(board))}
-          disabled={phase !== "pick"}
+          onClick={() =>
+            chUpgradesDue
+              ? setPhase("augment")
+              : picksLeft > 0 && !rowMaxed(board, PLAYER) && !challenge
+                ? setConfirmCommit(true)
+                : finishPicks(board)
+          }
+          disabled={phase !== "pick" || (chUpgradesDue && sideUnits(board, PLAYER).length === 0)}
         >
-          ⚔ Battle
+          {chUpgradesDue ? "⬆ Choose upgrades" : "⚔ Battle"}
         </button>
         <button
           className={`ghost-btn${speed > 1 ? " ghost-btn--on" : ""}`}
@@ -2798,6 +2842,37 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         </button>
       </div>
 
+      {challenge && phase === "pick" && (
+        <div className="ch-upgrades">
+          {chUpgradesDue ? (
+            <button className="ch-upgrades__row" onClick={() => setShowChUpgrades(true)} title="Read today's upgrades">
+              {augOffers.map((a) => (
+                <span key={a.id} className={`ch-upgrade ch-upgrade--${rarityOf(a)}`}>
+                  <span aria-hidden="true">{a.icon}</span> <span className="ch-upgrade__name">{a.name}</span>
+                </span>
+              ))}
+            </button>
+          ) : (
+            <>
+              <button className="ch-upgrades__row ch-upgrades__row--taken" onClick={() => setShowAugments(true)} title="Your upgrades">
+                {playerAug.current.active.map((id) => {
+                  const a = getAugment(id);
+                  return (
+                    a && (
+                      <span key={id} className={`ch-upgrade ch-upgrade--taken ch-upgrade--${rarityOf(a)}`}>
+                        <span aria-hidden="true">{a.icon}</span> <span className="ch-upgrade__name">{a.name}</span>
+                      </span>
+                    )
+                  );
+                })}
+              </button>
+              <button className="link-btn replay-btn" onClick={resetChallengeUpgrades}>
+                Change
+              </button>
+            </>
+          )}
+        </div>
+      )}
       <div className={`pick-row${phase === "pick" ? "" : " pick-row--idle"}`}>
         <p
           key={picksLeft}

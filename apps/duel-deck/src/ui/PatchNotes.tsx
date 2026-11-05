@@ -10,6 +10,15 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.11.3",
+    date: "Nov 4, 2026",
+    notes: [
+      "📅 Daily challenge: place your units first, then choose upgrades, so upgrades that work on your units make sense. The day's upgrades stay in view while you build (tap to read them), and you can change them before you battle.",
+      "⭐ The XP bar now really fills: it counts up, flashes at every level up and carries on into the next level.",
+      "✨ Claiming shows each unlock on its own card, with a burst of rays and sparks. Tap to go faster, or Skip.",
+    ],
+  },
+  {
     version: "1.11.2",
     date: "Nov 4, 2026",
     notes: [
