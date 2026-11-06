@@ -1669,6 +1669,53 @@ Normal vs Normal): 21% of round 1, 9% of round 2, then 2-4% from round 3 on.
 Early-round draws are accepted as fine, so the `--draw=more-damage|both` rules
 in the sim are not used in the game. Revisit only if late-round draws climb.
 
+### Gold economy (game/economy.ts; a match setting, 1.12.0)
+`MatchRules.economy`, off by default, a toggle in the CPU match sheet only
+(`duelRules` strips it for a hosted room, whose rules refuse unknown fields).
+Each side's `Econ` (gold, slots, income upgrades, card tier) lives on its
+`AugmentState`, so it saves with the match. `picksLeft` means the cards the
+gold can still buy, so the pick code is unchanged: `placeFromOffer` charges
+`cardPrice`, and level-2 cards add one more merge. `earnRound` runs for both
+sides in `startRound`, and `startAug` gives round 1's gold. `refreshForRound`
+takes the row's capacity from `Econ.slots`, so locked slots draw and refuse
+drops as usual. `buy` and `sellUnit` go on the undo stack (`UndoEntry.econ`).
+The CPU plays `aiEconomyCommit`: income by round 6, a slot when the row is
+full, Hard keeps 6 gold and buys extra cards Normal's way before its search.
+It doesn't buy level-2 cards or sell. Level-3 cards were cut: they lost
+however they were priced. **Not done:** tuning Hard, online (gold needs to
+travel in the commit, `PROTOCOL` bump), the remove-a-unit upgrade.
+`cfg.eco` marks these matches in telemetry; deploy the rules first.
+
+### Economy prototype (`pnpm economy`, scripts/economy.ts)
+The review (2026-11-05, 207 real matches): the row is full by round 4, ~90% of
+picks merge from round 6, and both sides gain 2 levels a round, so nothing
+trades off. The user chose gold, saving, bought slots, selling, better cards,
+and an upgrade that takes a unit type out of the match. `pnpm economy` plays
+14 spending habits in a round-robin through the real engine, with no game
+change; bots share one way of choosing cards, so gaps come from spending.
+No bot plays like a person, and win rates depend on the field.
+- First draft (income 4, unit 2, interest +1 per 5 up to 3, 3 slots at 4/6,
+  income 6/10, tiers 6/12 at the same card price): tier-2 cards won 92%, every
+  saver beat plain spending, staying at 3 slots beat buying them, income lost.
+- Then 60 random rule sets (30 a pair; top 3 re-run at 150), and the user chose
+  a 4-slot start: a 3-slot start scored worse, with better cards dominating.
+- Then fairer habits (ban later, or a type you don't hold; sell more freely)
+  and rule variations. The script's defaults: start 4 slots, 5th for 2;
+  interest +1 per 6 held, up to 2; income 5/8; better cards 10, then 8, each
+  tier +1 a card; selling pays 2 + a gold per 2 levels.
+- At 300 a pair: income1 66%, income2 62%, staying at 4 slots 60%, tier2 59%,
+  lateSlots 56%, save15 55%, spend 53%, reroll 53%, banCounter 51%, sell 49%,
+  save10 48%, ban 43%, save5 40%, tier3 35%, tier3late 30%. Median 18 rounds
+  (18 under today's rules with the same bot); the round-6 leader lost 45%.
+- Standing problems: buying income once tops the table, and level-3 cards lose
+  however they're priced, so cut them unless a better idea turns up. A full-row
+  bonus (+1 gold) measured about as balanced but cut comebacks to 40%, also
+  paid a 4-unit row, and is a rule nobody asked for, so it's off (`fullBonus`).
+  A 20-gold holding cap ruined saving 15 (6%).
+- A ban costs that upgrade choice, and timing decides it: the opponent's top
+  type wins 43% at round 3; the best type they hold and you don't, at round 9,
+  51%. Hold the upgrade back for a counter rather than taking it early.
+
 ## Deferred (not v1)
 
 - Ranged units, multi-lane boards, economy/currency, scaling/rarity tiers.

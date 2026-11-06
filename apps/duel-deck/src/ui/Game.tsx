@@ -34,6 +34,7 @@ import {
   drillFor,
   rowMaxed,
   type AiTrace,
+  aiEconomyCommit,
   type Difficulty,
   isAugmentRound,
   knightAt,
@@ -120,6 +121,7 @@ import { displayName, isKawaii, kawaiiName, uwu, uwuWords } from "../game/kawaii
 import { MenuPanel } from "./MenuPanel";
 import { awardMatch, unlockedUnits, unlockedUpgrades, type XpAward } from "../online/progress";
 import { challengeRound, grownUnit, type Challenge } from "../game/challenge";
+import { ECON, affordable, cardPrice, earnRound, earnings, econOf, incomeCost, sellValue, type Econ } from "../game/economy";
 import { SidePanels } from "./SidePanels";
 
 // Battle playback pacing. Each tick is three beats: wind-up (lunge toward the
@@ -217,6 +219,8 @@ interface UndoEntry {
   /** Taking a frozen card unfreezes it, so undo must put that back. */
   frozen: number[];
   picksLeft: number;
+  /** The purse, in a gold match. */
+  econ?: Econ;
   /** The round's telemetry picks, so an undone pick isn't logged. */
   picks: PickLog[];
   /**
@@ -423,7 +427,18 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           ? TUTORIAL_OFFERS[1].slice()
           : rollOffer(OFFER_COUNT, saved?.player, unlockedUnits())),
   );
-  const [picksLeft, setPicksLeft] = useState(challenge ? challenge.ch.slots : PICK_COUNT);
+  // In a gold match, "picks" are the cards this round's gold can still buy.
+  const [picksLeft, setPicksLeft] = useState(
+    challenge
+      ? challenge.ch.slots
+      : board.rules?.economy
+        ? saved
+          ? affordable(econOf(saved.player))
+          : Math.floor(ECON.income / ECON.unit)
+        : PICK_COUNT,
+  );
+  /** Bumped when the purse changes on its own, as it isn't React state. */
+  const [, setEconTick] = useState(0);
   /** Click-selected and awaiting a destination click. Mirrors `drag`. */
   const [selected, setSelected] = useState<Grab | null>(null);
   /** Offer slots already taken this round — each of the 5 is single-use. */
@@ -463,7 +478,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     tutorial || challenge ? MatchLog.none() : online ? MatchLog.online(online.code, online.me, matchOf(online)) : MatchLog.cpu(!!saved, saved?.difficulty ?? startDifficulty),
   );
   useEffect(() => {
-    matchLog.config({ hp: rules.startHp, cap: rules.levelCap, syn: rules.synergies, up: rules.upgrades, easy: rules.easy });
+    matchLog.config({ hp: rules.startHp, cap: rules.levelCap, syn: rules.synergies, up: rules.upgrades, easy: rules.easy, ...(rules.economy ? { eco: true } : {}) });
     // Once: a match's rules never change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -808,8 +823,14 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     onSpeed(next);
   };
 
-  const playerAug = useRef<AugmentState>(saved?.player ?? createAugmentState());
-  const enemyAug = useRef<AugmentState>(saved?.enemy ?? chStart?.enemy ?? createAugmentState());
+  /** A new match's upgrade state, with round 1's gold in a gold match. */
+  const startAug = () => {
+    const state = createAugmentState();
+    if (rules.economy) earnRound(state);
+    return state;
+  };
+  const playerAug = useRef<AugmentState>(saved?.player ?? startAug());
+  const enemyAug = useRef<AugmentState>(saved?.enemy ?? chStart?.enemy ?? startAug());
   /**
    * The board as committed, before any blows land — every unit alive and in
    * queue order. Fallen units respawn at the end of the round, so this snapshot
@@ -1161,6 +1182,10 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       enemyAug.current.drill = 0;
       const next = refreshed(base);
       scoutRef.current = next;
+      if (rules.economy) {
+        earnRound(playerAug.current);
+        earnRound(enemyAug.current);
+      }
       // Frozen cards keep their slot; the rest are dealt fresh.
       const keep = frozenRef.current;
       const prevOffer = offerRef.current;
@@ -1202,7 +1227,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       setBoard(next);
       setRound(roundNum);
       setOffer(nextOffer);
-      setPicksLeft(PICK_COUNT);
+      setPicksLeft(rules.economy ? affordable(econOf(playerAug.current)) : PICK_COUNT);
       setUsedOffers([]);
       setHistory([]);
       setSelected(null);
@@ -1307,14 +1332,18 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         playRound(committed);
         return;
       }
-      const aiPicked = aiCommit(committed, ENEMY, enemyAug.current, {
+      const aiOpts = {
         difficulty: difficultyRef.current,
         oppAug: playerAug.current,
         scout: scoutRef.current ?? current,
         trace: aiTrace.current,
-      });
+      };
+      const gold = committed.rules?.economy === true;
+      const aiPicked = gold
+        ? aiEconomyCommit(committed, ENEMY, enemyAug.current, roundRef.current, aiOpts)
+        : aiCommit(committed, ENEMY, enemyAug.current, aiOpts);
       aiPicks.current = aiPicked;
-      enemyAug.current.drill = drillFor(committed, ENEMY, PICK_COUNT - aiPicked.length);
+      enemyAug.current.drill = gold ? 0 : drillFor(committed, ENEMY, PICK_COUNT - aiPicked.length);
       refreshForRound(committed, playerAug.current, enemyAug.current);
       playRound(committed);
     },
@@ -1411,6 +1440,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     usedOffers,
     frozen,
     picksLeft,
+    ...(rules.economy ? { econ: { ...econOf(playerAug.current) } } : {}),
     picks: roundLog.current.picks.slice(),
     grants: JSON.parse(JSON.stringify(playerAug.current.grants)),
     offer,
@@ -1427,8 +1457,10 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     const prev = history[history.length - 1];
     setHistory(history.slice(0, -1));
     playerAug.current.grants = prev.grants;
-    // A challenge can take its upgrades after the move being undone.
-    setBoard(challengeRef.current ? refreshed(prev.board) : prev.board);
+    if (prev.econ) playerAug.current.econ = { ...prev.econ };
+    // A challenge can take its upgrades after the move being undone, and a
+    // gold match can have bought the slot it's undoing.
+    setBoard(challengeRef.current || prev.econ ? refreshed(prev.board) : prev.board);
     setUsedOffers(prev.usedOffers);
     setFrozen(prev.frozen);
     setPicksLeft(prev.picksLeft);
@@ -1566,6 +1598,10 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
               : false;
       if (!ok) return;
       pushUndo();
+      const purse = rules.economy ? econOf(playerAug.current) : null;
+      // A level-2 card: one more level, as a merge of its own kind.
+      if (purse && purse.tier > 1) upgradeUnit(next, PLAYER, cell.lane, cell.spot, key, mergeRatioFor(playerAug.current));
+      if (purse) purse.gold -= cardPrice(purse);
       refreshForRound(next, playerAug.current, enemyAug.current);
       const landed = next.slots.player[cell.lane][cell.spot];
       if (landed) {
@@ -1588,7 +1624,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
       setSelected(null);
       setUsedOffers((u) => [...u, offerIndex]);
       setFrozen((f) => f.filter((i) => i !== offerIndex));
-      setPicksLeft(picksLeft - 1);
+      setPicksLeft(purse ? affordable(purse) : picksLeft - 1);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [board, offer, picksLeft, usedOffers, dropActionFor],
@@ -1871,17 +1907,55 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
   const rerollOffer = () => {
     // Allowed after both picks too: rerolling then is a look at more cards, to
     // freeze any worth keeping for next round.
-    if (phase !== "pick" || unitRerolls <= 0) return;
+    const purse = rules.economy ? econOf(playerAug.current) : null;
+    // Out of free rerolls, a gold match can pay for another.
+    const paid = !!purse && unitRerolls <= 0;
+    if (phase !== "pick" || (unitRerolls <= 0 && !(purse && purse.gold >= ECON.reroll))) return;
+    if (paid) {
+      purse.gold -= ECON.reroll;
+      setPicksLeft(affordable(purse));
+    }
     // Easy mode: the reroll goes on the undo stack like any other action.
     if (rules.easy) pushUndo();
     const fresh = rollOffer(OFFER_COUNT, playerAug.current, unlockedUnits());
     setOffer(offer.map((k, i) => (frozen.includes(i) ? k : fresh[i])));
     setUsedOffers([]);
-    setUnitRerolls(unitRerolls - 1);
+    if (!paid) setUnitRerolls(unitRerolls - 1);
     roundLog.current.rr++;
     setRerollN((n) => n + 1);
     if (!rules.easy) setHistory([]);
     setSelected(null);
+  };
+
+  /** A gold-match purchase: undoable, like any move, and it may change the row's size. */
+  const buy = (cost: number, apply: (e: Econ) => void) => {
+    const e = econOf(playerAug.current);
+    if (phase !== "pick" || e.gold < cost) return;
+    pushUndo();
+    e.gold -= cost;
+    apply(e);
+    sfx("upgrade");
+    setBoard(refreshed(board));
+    setPicksLeft(affordable(e));
+    setEconTick((n) => n + 1);
+  };
+
+  /** Sell a placed unit. Never the last one: a row can't be empty. */
+  const sellUnit = (g: UnitGrab) => {
+    const row = occupants(board, PLAYER, g.lane);
+    const unit = row.find((u) => u.id === g.unitId);
+    if (phase !== "pick" || !unit || row.length < 2) return;
+    pushUndo();
+    const e = econOf(playerAug.current);
+    e.gold += sellValue(unit.merges);
+    const next = cloneBoard(board);
+    writeLane(next, PLAYER, g.lane, row.filter((u) => u !== unit));
+    refreshForRound(next, playerAug.current, enemyAug.current);
+    sfx("pick");
+    setBoard(next);
+    setSelected(null);
+    setPicksLeft(affordable(e));
+    setEconTick((n) => n + 1);
   };
 
   /** Freeze or unfreeze an untaken offer card. Saved at once, so a reload keeps it. */
@@ -2454,6 +2528,13 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
     return s;
   };
 
+  /** The player's purse, in a gold match, and the unit a Sell button would sell. */
+  const purse = rules.economy ? econOf(playerAug.current) : null;
+  const sellable = (() => {
+    if (!purse || selected?.kind !== "unit") return null;
+    const unit = sideUnits(board, PLAYER).find((u) => u.id === selected.unitId);
+    return unit && sideUnits(board, PLAYER).length > 1 ? { grab: selected, name: unit.name, merges: unit.merges } : null;
+  })();
   /** A challenge plays units first: its upgrades are taken before Battle. */
   const chUpgradesDue = !!challenge && playerAug.current.active.length < challenge.ch.pickUpgrades;
 
@@ -2824,7 +2905,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           onClick={() =>
             chUpgradesDue
               ? setPhase("augment")
-              : picksLeft > 0 && !rowMaxed(board, PLAYER) && !challenge
+              : picksLeft > 0 && !rowMaxed(board, PLAYER) && !challenge && !rules.economy
                 ? setConfirmCommit(true)
                 : finishPicks(board)
           }
@@ -2886,6 +2967,37 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
           )}
         </div>
       )}
+      {purse && phase === "pick" && (
+        <div className="econ-bar">
+          <span className="econ-bar__gold" title="Gold now, and what you'll earn next round">
+            🪙 {purse.gold}
+            <small>+{earnings(purse)}</small>
+          </span>
+          {sellable ? (
+            <button className="econ-btn econ-btn--sell" onClick={() => sellUnit(sellable.grab)}>
+              Sell {sellable.name} +{sellValue(sellable.merges)}🪙
+            </button>
+          ) : (
+            <>
+              {purse.slots < ECON.maxSlots && (
+                <button className="econ-btn" disabled={purse.gold < ECON.slot} onClick={() => buy(ECON.slot, (e) => void e.slots++)}>
+                  Slot <b>{ECON.slot}</b>
+                </button>
+              )}
+              {incomeCost(purse) !== null && (
+                <button className="econ-btn" disabled={purse.gold < incomeCost(purse)!} onClick={() => buy(incomeCost(purse)!, (e) => void e.incomes++)}>
+                  +1 income <b>{incomeCost(purse)}</b>
+                </button>
+              )}
+              {purse.tier === 1 && (
+                <button className="econ-btn" disabled={purse.gold < ECON.tier2} onClick={() => buy(ECON.tier2, (e) => void (e.tier = 2))}>
+                  Lv2 cards <b>{ECON.tier2}</b>
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
       <div className={`pick-row${phase === "pick" ? "" : " pick-row--idle"}`}>
         <p
           key={picksLeft}
@@ -2893,7 +3005,9 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
         >
           {synergyGoal && <SynergyMeter goal={synergyGoal} />}
           {/* Phones get the short form: the label shares one line with Reroll. */}
-          {picksLeft > 0 && rowMaxed(board, PLAYER) ? (
+          {purse ? (
+            <LongShort long={`Cards ${cardPrice(purse)}🪙 each · can buy ${picksLeft}`} short={`${cardPrice(purse)}🪙 a card · ${picksLeft}`} />
+          ) : picksLeft > 0 && rowMaxed(board, PLAYER) ? (
             <LongShort long={`Row maxed · unused picks → 🎯 Drill +${picksLeft}⚔`} short={`🎯 Drill +${picksLeft}⚔ if unused`} />
           ) : picksLeft > 0 ? (
             <LongShort long={`Pick ${picksLeft}${boardFull ? " · row full" : ""}`} short={`Pick ${picksLeft}${boardFull ? " · full" : ""}`} />
@@ -2903,18 +3017,18 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
             <LongShort long="✓ Picks done — arrange your row, then battle" short="✓ Done · arrange, battle" />
           )}
         </p>
-        {(picksLeft > 0 || unitRerolls > 0) && !challenge && (
+        {(picksLeft > 0 || unitRerolls > 0 || purse) && !challenge && (
           <button
             className="ghost-btn ghost-btn--sm reroll-btn"
             onClick={rerollOffer}
-            disabled={unitRerolls <= 0}
+            disabled={unitRerolls <= 0 && !(purse && purse.gold >= ECON.reroll)}
             title={
               picksLeft > 0
                 ? "Swap the cards you haven't taken (or frozen) for new ones"
                 : "Picks done: reroll to find cards worth freezing for next round"
             }
           >
-            🎲<span className="hud__long"> Reroll</span> ({unitRerolls})
+            🎲<span className="hud__long"> Reroll</span> {purse && unitRerolls <= 0 ? `${ECON.reroll}🪙` : `(${unitRerolls})`}
           </button>
         )}
       </div>
@@ -2981,6 +3095,7 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
                 )}
                 {/* A challenge card comes at its level. */}
                 {chPool && !taken && <span className="card__merge">Lv{levelOf(chPool[i].merges)}</span>}
+                {purse?.tier === 2 && !taken && !mergeTargetFor(key) && <span className="card__merge">Lv2</span>}
                 {/* Which of your units this card would level up. */}
                 {!taken && !chPool &&
                   (() => {
@@ -2988,8 +3103,8 @@ export function Game({ resume, difficulty: startDifficulty, speed, onSpeed, soun
                     if (!target) return null;
                     const lv = levelOf(target.merges);
                     return (
-                      <span className="card__merge" title={`Merges into your ${target.name}: level ${lv} → ${lv + 1}`}>
-                        ⬆ Lv{lv}
+                      <span className="card__merge" title={`Merges into your ${target.name}: level ${lv} → ${lv + (purse?.tier ?? 1)}`}>
+                        ⬆ Lv{lv}{purse?.tier === 2 ? " +2" : ""}
                       </span>
                     );
                   })()}

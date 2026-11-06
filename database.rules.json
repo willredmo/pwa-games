@@ -60,6 +60,7 @@
               "syn": { ".validate": "newData.isBoolean()" },
               "up": { ".validate": "newData.isBoolean()" },
               "easy": { ".validate": "newData.isBoolean()" },
+              "eco": { ".validate": "newData.isBoolean()" },
               "$other": { ".validate": false }
             },
             "cpu": {

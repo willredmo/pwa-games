@@ -37,6 +37,7 @@ import {
   type Rarity,
   hpCostOf,
 } from "./augments";
+import { ECON, cardPrice, econOf, incomeCost } from "./economy";
 import learned from "./learned.json";
 
 // Match configuration and round flow, per the tracker doc's v1 scope.
@@ -129,6 +130,8 @@ export interface MatchRules {
   upgrades: boolean;
   /** Highest level a unit can reach, where its ability takes its Mastery form (LEVEL_CAP_OPTIONS). */
   levelCap: number;
+  /** Gold instead of two free picks (game/economy.ts). CPU matches only, so far. */
+  economy?: boolean;
 }
 
 export const DEFAULT_RULES: MatchRules = { startHp: START_HP, easy: false, synergies: true, upgrades: true, levelCap: MAX_LEVEL };
@@ -145,13 +148,16 @@ export function newBoard(rules: Partial<MatchRules> = {}): Board {
   const board = createBoard(LANES, DEPTH, r.startHp);
   if (r.levelCap && r.levelCap !== MAX_LEVEL) board.levelCap = r.levelCap;
   // Only the switches that differ from the defaults are stored.
-  if (r.easy || !r.synergies || !r.upgrades) {
+  if (r.easy || !r.synergies || !r.upgrades || r.economy) {
     board.rules = {
       ...(r.easy ? { easy: true } : {}),
+      ...(r.economy ? { economy: true } : {}),
       ...(!r.synergies ? { synergies: false } : {}),
       ...(!r.upgrades ? { upgrades: false } : {}),
     };
   }
+  // A gold match opens on the slots it starts with, before any refresh.
+  if (r.economy) board.mods = { player: { capacity: ECON.startSlots }, enemy: { capacity: ECON.startSlots } };
   return board;
 }
 
@@ -163,6 +169,7 @@ export function rulesOf(board: Board): MatchRules {
     synergies: board.rules?.synergies !== false,
     upgrades: board.rules?.upgrades !== false,
     levelCap: levelCapOf(board),
+    economy: board.rules?.economy === true,
   };
 }
 
@@ -174,6 +181,7 @@ export function rulesSummary(r: MatchRules): string[] {
     ...(!r.synergies ? ["No class bonuses"] : []),
     ...(!r.upgrades ? ["No upgrades"] : []),
     ...(r.levelCap && r.levelCap !== MAX_LEVEL ? [`Level cap ${r.levelCap}`] : []),
+    ...(r.economy ? ["Gold economy"] : []),
   ];
 }
 
@@ -281,7 +289,7 @@ const byAttack = (a: Unit, b: Unit) => b.baseAtk - a.baseAtk || b.baseMaxHp - a.
  * relayed to the front, amplified); then each further fighter followed by one
  * more support. Supports left over go at the back.
  */
-function supportOrder(row: Unit[]): Unit[] {
+export function supportOrder(row: Unit[]): Unit[] {
   const arch = (u: Unit) => UNITS[u.key]?.archetype;
   const fighters = row.filter((u) => arch(u) !== "support").sort(byAttack);
   const beacons = row.filter((u) => (u.traits?.relay ?? innateTraits(u.key, u.merges).relay ?? 0) > 0);
@@ -319,6 +327,8 @@ export interface AiOptions {
   scout?: Board;
   /** Filled in with what the CPU saw and thought, for telemetry. */
   trace?: AiTrace;
+  /** Cards to take, in place of `PICK_COUNT` (Easy and Normal). */
+  picks?: number;
 }
 
 /** The CPU's side of a round, logged beside the player's (`MatchLog.cpu`). */
@@ -446,13 +456,13 @@ export function learnedEdge(id: string): number {
 }
 
 /** Easy: two random cards, placed where they land, no rerolls, no arranging. */
-function easyCommit(board: Board, side: Side, state?: AugmentState, trace?: AiTrace): string[] {
+function easyCommit(board: Board, side: Side, state?: AugmentState, trace?: AiTrace, picks = PICK_COUNT): string[] {
   const offer = rollOffer(OFFER_COUNT, state);
   if (trace) Object.assign(trace, { o: offer, rr: 0 });
   const picked: string[] = [];
   const order = offer.map((_, i) => i).sort(() => Math.random() - 0.5);
   for (const i of order) {
-    if (picked.length >= PICK_COUNT) break;
+    if (picked.length >= picks) break;
     if (deployToBack(board, side, offer[i], state)) picked.push(offer[i]);
   }
   return picked;
@@ -832,7 +842,7 @@ export function aiCommit(
   opts: AiOptions = {},
 ): string[] {
   const difficulty = opts.difficulty ?? "normal";
-  if (difficulty === "easy") return easyCommit(board, side, state, opts.trace);
+  if (difficulty === "easy") return easyCommit(board, side, state, opts.trace, opts.picks);
   if (difficulty === "hard" && state && opts.oppAug) {
     return hardCommit(board, side, state, opts.oppAug, opts.scout ?? board, opts.trace);
   }
@@ -850,7 +860,7 @@ export function aiCommit(
   if (opts.trace) Object.assign(opts.trace, { o: offer, rr: rerolls });
   const available = offer.map((_, i) => i);
   const picked: string[] = [];
-  while (picked.length < PICK_COUNT && available.length > 0) {
+  while (picked.length < (opts.picks ?? PICK_COUNT) && available.length > 0) {
     // Units it could still merge into: same type, under the level cap.
     const cap = mergeCapFor(board, side);
     const mine = sideUnits(board, side);
@@ -892,6 +902,48 @@ export function aiCommit(
     }
   }
   sortByAttack(board, side);
+  return picked;
+}
+
+/** Gold Hard keeps back, for interest. */
+const HARD_GOLD_FLOOR = 6;
+/** The CPU buys its first income upgrade by this round, or not at all: later it can't pay back. */
+const AI_INCOME_BY = 6;
+
+/**
+ * The CPU's turn in a gold match: invest, then spend what's left on cards.
+ * Easy just buys cards. From `pnpm economy`, where one income upgrade and a
+ * filled row did well. Hard buys extra cards the Normal way first, since its
+ * search takes two and arranges the row last. It doesn't buy level-2 cards yet.
+ */
+export function aiEconomyCommit(board: Board, side: Side, state: AugmentState, round: number, opts: AiOptions): string[] {
+  const e = econOf(state);
+  const difficulty = opts.difficulty ?? "normal";
+  if (difficulty !== "easy") {
+    const income = incomeCost(e);
+    if (e.incomes === 0 && round <= AI_INCOME_BY && income !== null && e.gold >= income) {
+      e.gold -= income;
+      e.incomes++;
+    }
+    if (e.slots < ECON.maxSlots && e.gold >= ECON.slot && !firstEmptySpot(board, side)) {
+      e.gold -= ECON.slot;
+      e.slots++;
+      const mods = board.mods?.[side];
+      if (mods) mods.capacity = (mods.capacity ?? ECON.startSlots) + 1;
+    }
+  }
+  const price = cardPrice(e);
+  // Normal holds a card back on round 1, or it could never afford income.
+  const keep = difficulty === "hard" ? HARD_GOLD_FLOOR : difficulty === "normal" && round === 1 ? ECON.unit : 0;
+  const picks = Math.min(OFFER_COUNT, Math.max(0, Math.floor((e.gold - keep) / price)));
+  let picked: string[];
+  if (difficulty === "hard" && picks >= PICK_COUNT && opts.oppAug) {
+    const extra = aiCommit(board, side, state, { difficulty: "normal", picks: picks - PICK_COUNT });
+    picked = [...extra, ...aiCommit(board, side, state, opts)];
+  } else {
+    picked = aiCommit(board, side, state, { ...opts, difficulty: difficulty === "hard" ? "normal" : difficulty, picks });
+  }
+  e.gold -= picked.length * price;
   return picked;
 }
 
@@ -1236,7 +1288,9 @@ export function refreshForRound(
     const mods = sideModsFor(state);
     // Ascendant's single slot stays single.
     if (mods.uncapped) return { ...mods, capacity: mods.capacity ?? 1 };
-    return { ...mods, capacity: (mods.capacity ?? DEPTH) + (board.earnedSlots![side] ?? 0) };
+    // In a gold match the row's size is what's been paid for.
+    const base = board.rules?.economy ? econOf(state).slots : DEPTH;
+    return { ...mods, capacity: (mods.capacity ?? base) + (board.earnedSlots![side] ?? 0) };
   };
   board.mods = { player: withCapacity(playerAug, PLAYER), enemy: withCapacity(enemyAug, ENEMY) };
   // Ascendant: the row is one unit. Taking it trims the row to its best unit

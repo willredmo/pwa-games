@@ -217,7 +217,7 @@ export function Title(props: TitleProps) {
             <p className="panel__hint">
               {setup === "cpu" ? "Match settings for this match." : "Match settings for this duel. Your opponent plays under them too."}
             </p>
-            <MatchSettings rules={props.rules} onRules={props.onRules} />
+            <MatchSettings rules={props.rules} onRules={props.onRules} cpu={setup === "cpu"} />
             <LookSelect look={props.look} onLook={props.onLook} />
             {setup === "cpu" && saved && <p className="title__warn sheet__warn">Ends the match in progress.</p>}
             <button
@@ -253,17 +253,18 @@ function DockButton(p: { icon: string; label: string; onClick: () => void; dot?:
   );
 }
 
-const TOGGLES: { key: "easy" | "synergies" | "upgrades"; label: string; hint: string }[] = [
+const TOGGLES: { key: "easy" | "synergies" | "upgrades" | "economy"; label: string; hint: string }[] = [
   { key: "easy", label: "Easy mode", hint: "Undo also takes back rerolls" },
   { key: "synergies", label: "Class bonuses", hint: "Full-row bonuses for one class" },
   { key: "upgrades", label: "Upgrades", hint: `A pick every 3 rounds` },
+  { key: "economy", label: "Gold economy", hint: "New: earn gold, buy cards, slots and income" },
 ];
 
 /**
  * The match settings: starting health and three switches. They apply to a new
  * CPU match and to a duel you host (the guest plays under the host's).
  */
-function MatchSettings({ rules, onRules }: { rules: MatchRules; onRules: (r: Partial<MatchRules>) => void }) {
+function MatchSettings({ rules, onRules, cpu }: { rules: MatchRules; onRules: (r: Partial<MatchRules>) => void; cpu: boolean }) {
   const preset = (START_HP_OPTIONS as readonly number[]).includes(rules.startHp);
   /** Custom health: open while picked, holding what's typed until it's a valid number. */
   const [custom, setCustom] = useState(!preset);
@@ -347,9 +348,10 @@ function MatchSettings({ rules, onRules }: { rules: MatchRules; onRules: (r: Par
         Units stop levelling at the cap, where their ability gets its Mastery form. Higher caps make Knights stronger.
       </small>
       <div className="match-settings__toggles">
-        {TOGGLES.map((t) => (
+        {/* The gold economy isn't online yet. */}
+        {TOGGLES.filter((t) => cpu || t.key !== "economy").map((t) => (
           <label key={t.key} className="toggle">
-            <input type="checkbox" checked={rules[t.key]} onChange={(e) => onRules({ [t.key]: e.target.checked })} />
+            <input type="checkbox" checked={!!rules[t.key]} onChange={(e) => onRules({ [t.key]: e.target.checked })} />
             <span className="toggle__switch" aria-hidden="true" />
             <span>
               {t.label}

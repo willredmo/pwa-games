@@ -33,7 +33,18 @@ import "./App.css";
 type Screen = "title" | "game";
 
 /** The title screen's match settings, as the rules a match is built with. */
-const rulesFrom = (s: Settings): MatchRules => ({ startHp: s.startHp, easy: s.easy, synergies: s.synergies, upgrades: s.upgrades, levelCap: s.levelCap });
+const rulesFrom = (s: Settings): MatchRules => ({
+  startHp: s.startHp,
+  easy: s.easy,
+  synergies: s.synergies,
+  upgrades: s.upgrades,
+  levelCap: s.levelCap,
+  // Not sent in a hosted room: the database rules refuse unknown fields.
+  ...(s.economy ? { economy: true } : {}),
+});
+
+/** A hosted duel's rules: the gold economy isn't online yet. */
+const duelRules = (s: Settings): MatchRules => rulesFrom({ ...s, economy: false });
 
 /** What `Game` was mounted with. `key` forces a remount when this changes. */
 interface Run {
@@ -316,7 +327,7 @@ export default function App() {
       {lobby && (
         <Lobby
           {...lobby}
-          rules={rulesFrom(settings)}
+          rules={duelRules(settings)}
           onReady={startOnline}
           onClose={() => {
             setLobby(null);

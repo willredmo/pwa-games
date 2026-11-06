@@ -1084,6 +1084,29 @@ button.unit-entry__aug:hover, button.unit-entry__aug:focus-visible { border-colo
 .ch-upgrade--taken { background: rgba(240, 180, 41, 0.14); }
 .aug-back { display: block; margin: 0.45rem auto 0; }
 
+/* --- Gold economy: purse and shop, above the pick row --- */
+.econ-bar { display: flex; align-items: center; justify-content: center; gap: 0.3rem; min-width: 0; margin-bottom: 0.15rem; }
+.econ-bar__gold { flex: none; font-weight: 800; color: #ffd36b; font-size: 0.92rem; white-space: nowrap; }
+.econ-bar__gold small { margin-left: 0.2rem; font-size: 0.68rem; font-weight: 700; color: var(--muted); }
+.econ-btn {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 0.22rem 0.4rem;
+  border: 1px solid #3a3454;
+  border-radius: 999px;
+  background: #1f1b2e;
+  color: inherit;
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.econ-btn b { color: #ffd36b; margin-left: 0.1rem; }
+.econ-btn b::after { content: "🪙"; font-size: 0.85em; }
+.econ-btn:disabled { opacity: 0.45; cursor: default; }
+.econ-btn--sell { border-color: #e2b24a; background: rgba(240, 180, 41, 0.14); }
+
 /* --- Progression (ui/Progress.tsx) --- */
 .xp-bar { position: relative; height: 0.7rem; border-radius: 999px; background: #1f1b2e; border: 1px solid #3a3454; overflow: hidden; }
 /* Full width, scaled: a transform, since iOS stutters on width transitions.

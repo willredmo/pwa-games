@@ -1,3 +1,4 @@
+import type { Econ } from "./economy";
 import type { Archetype, AuraDetail, SideMods, Side, Unit, UnitTraits } from "../engine/types";
 import { KNIGHT_LEVEL, MAX_LEVEL, SYNERGIES, UNITS, UNIT_KEYS, innateTraits } from "../engine/units";
 import { firstEmptySpot, makeUnit, mergeCapFor, mergeGain, place, sideUnits } from "../engine/board";
@@ -167,6 +168,8 @@ export interface AugmentState {
    * cleared when the next round starts, and sent with the online commit.
    */
   drill?: number;
+  /** The side's gold and what it's bought (game/economy.ts), in a gold match. */
+  econ?: Econ;
 }
 
 /**

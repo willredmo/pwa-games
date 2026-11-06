@@ -10,6 +10,13 @@ interface Release {
 
 export const PATCH_NOTES: Release[] = [
   {
+    version: "1.12.0",
+    date: "Nov 5, 2026",
+    notes: [
+      "🪙 New match setting, Gold economy, for CPU matches: earn gold each round and spend it on cards, extra rerolls, a fifth slot, more income and level-2 cards. Save gold for interest, and tap a placed unit to sell it. It's new, so numbers may change. Tell us how it plays!",
+    ],
+  },
+  {
     version: "1.11.6",
     date: "Nov 5, 2026",
     notes: [

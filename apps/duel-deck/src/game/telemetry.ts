@@ -14,7 +14,7 @@ import type { Unit } from "../engine/types";
 //   rounds/<n>    { offer, picks, rr, row, foe, won, hp }
 //   augs/<n>      { o, t, rr, e? }
 //   cpu/<n>       { o?, p, rr?, pred?, est?, ao? }   (CPU matches: AiTrace, p its picks)
-//   cfg           { hp, cap, syn, up, easy }         (the match's rules)
+//   cfg           { hp, cap, syn, up, easy, eco? }   (the match's rules)
 //   end           { won, rounds, hp, aug, foeAug, mvp? }
 // Grouping by day makes the prune one delete per day. Every write is a new
 // path, and the rules only allow creating a path, never changing one.
@@ -110,7 +110,7 @@ export class MatchLog {
   }
 
   /** The match's settings: the CPU learns from them, and 300-health games aren't 100-health ones. */
-  config(entry: { hp: number; cap: number; syn: boolean; up: boolean; easy: boolean }) {
+  config(entry: { hp: number; cap: number; syn: boolean; up: boolean; easy: boolean; eco?: boolean }) {
     send(`${this.base}/cfg`, entry);
   }
 

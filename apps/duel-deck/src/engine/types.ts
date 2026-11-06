@@ -229,7 +229,7 @@ export interface Board {
   /** The match's level cap (a match setting; absent = MAX_LEVEL, 10). Read through `levelCapOf`. */
   levelCap?: number;
   /** Match settings beyond the pool (absent = the defaults: no easy mode, synergies and upgrades on). */
-  rules?: { easy?: boolean; synergies?: boolean; upgrades?: boolean };
+  rules?: { easy?: boolean; synergies?: boolean; upgrades?: boolean; economy?: boolean };
   /** Side-wide augment modifiers (bounty, capacity). Absent = none. */
   mods?: Partial<Record<Side, SideMods>>;
 }

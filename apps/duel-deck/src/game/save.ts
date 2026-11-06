@@ -92,6 +92,8 @@ export interface Settings {
   easy: boolean;
   synergies: boolean;
   upgrades: boolean;
+  /** Gold economy for a CPU match (MatchRules.economy). */
+  economy: boolean;
   /** Level cap (LEVEL_CAP_OPTIONS in match.ts). */
   levelCap: number;
   /** How battles look (cosmetic, local): see `Look`. */
@@ -115,6 +117,7 @@ const DEFAULTS: Settings = {
   easy: false,
   synergies: true,
   upgrades: true,
+  economy: false,
   levelCap: 10,
   look: "normal",
 };
@@ -159,6 +162,7 @@ export function loadSettings(): Settings {
     easy: saved.easy ?? DEFAULTS.easy,
     synergies: saved.synergies ?? DEFAULTS.synergies,
     upgrades: saved.upgrades ?? DEFAULTS.upgrades,
+    economy: saved.economy ?? DEFAULTS.economy,
     levelCap: LEVEL_CAPS.includes(saved.levelCap as number) ? (saved.levelCap as number) : DEFAULTS.levelCap,
     // Kawaii and Blood used to be switches of their own.
     look: LOOKS.includes(saved.look as Look) ? saved.look! : saved.kawaii ? "kawaii" : saved.blood ? "bloody" : DEFAULTS.look,

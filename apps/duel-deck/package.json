@@ -1,7 +1,7 @@
 {
   "name": "duel-deck",
   "private": true,
-  "version": "1.11.6",
+  "version": "1.12.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,6 +13,7 @@
     "synergy": "esbuild scripts/synergy.ts --bundle --platform=node --format=cjs --log-level=error --outfile=node_modules/.cache/synergy.cjs && node node_modules/.cache/synergy.cjs",
     "sim": "esbuild scripts/sim.ts --bundle --platform=node --format=cjs --log-level=error --outfile=node_modules/.cache/sim.cjs && node node_modules/.cache/sim.cjs",
     "learn": "esbuild scripts/learn.ts --bundle --platform=node --format=cjs --log-level=error --outfile=node_modules/.cache/learn.cjs && node node_modules/.cache/learn.cjs",
+    "economy": "esbuild scripts/economy.ts --bundle --platform=node --format=cjs --log-level=error --outfile=node_modules/.cache/economy.cjs && node node_modules/.cache/economy.cjs",
     "telemetry": "esbuild scripts/telemetry.ts --bundle --platform=node --format=cjs --log-level=error --outfile=node_modules/.cache/telemetry.cjs && node node_modules/.cache/telemetry.cjs",
     "feedback": "esbuild scripts/feedback.ts --bundle --platform=node --format=cjs --log-level=error --outfile=node_modules/.cache/feedback.cjs && node node_modules/.cache/feedback.cjs",
     "feedback:ui": "esbuild scripts/feedback-ui.ts --bundle --platform=node --format=cjs --log-level=error --outfile=node_modules/.cache/feedback-ui.cjs && node node_modules/.cache/feedback-ui.cjs",
